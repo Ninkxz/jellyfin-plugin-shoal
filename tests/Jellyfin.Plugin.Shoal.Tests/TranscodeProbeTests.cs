@@ -65,8 +65,8 @@ public sealed class TranscodeProbeTests
         await using (peer)
         {
             Assert.Null(result.Error);
-            Assert.InRange(result.MeanTtfbMs!.Value, 190, 2000); // the slow start of segments 0 to 2 is not counted (the delay is a floor; a slow machine only adds)
-            Assert.InRange(result.Speed!.Value, 0.3, 3.2); // 0.6 s of video per at least 0.2 s of waiting
+            Assert.InRange(result.MeanTtfbMs!.Value, 190, 450); // the slow start of segments 0 to 2 is not counted
+            Assert.InRange(result.Speed!.Value, 1.3, 3.2); // 0.6 s of video per about 0.2 s of waiting
             Assert.Equal(9, peer.To("/Videos/" + ItemId.ToString("N") + "/hls1/main/0.ts").Count() + Enumerable.Range(1, 8).Sum(i => peer.To($"/Videos/{ItemId:N}/hls1/main/{i}.ts").Count()));
 
             var kill = Assert.Single(peer.Requests, r => r.Method == "DELETE");

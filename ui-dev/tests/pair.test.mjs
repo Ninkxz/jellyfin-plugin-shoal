@@ -536,7 +536,7 @@ test('step 4: libraries, who can see them (only you), a required box for big lib
         assert.match(t, /Choose what to add/);
         assert.match(t, /Pick libraries from Willow\. At first only you can see them, so you can try them\./);
         assert.match(t, /TV shows are coming in a later version\./);
-        assert.equal(buttonIn(p.page, 'Add and start syncing').disabled, true);
+        assert.equal(buttonIn(p.page, 'Add and start syncing').getAttribute('aria-disabled'), 'true');
         assert.match(t, /Pick at least one library/);
         const rows = [...p.page.querySelectorAll('.shoal-libpick__item')];
         const movies = rows.find((r) => r.textContent.includes('Movies') && !r.textContent.includes('Everything'));
@@ -545,13 +545,18 @@ test('step 4: libraries, who can see them (only you), a required box for big lib
         assert.match(movies.textContent, /Name in your library/);
         assert.match(movies.textContent, /Only you/);
         assert.equal(movies.querySelector('.shoal-input').value, 'Willow Movies');
-        assert.equal(buttonIn(p.page, 'Add and start syncing').disabled, false);
+        assert.equal(buttonIn(p.page, 'Add and start syncing').getAttribute('aria-disabled'), null);
         const big = rows.find((r) => r.textContent.includes('Everything'));
         big.querySelector('input').click();
         await p.wait(30);
         assert.match(big.textContent, /Add all 8,400 titles/);
         assert.match(big.textContent, /The first sync takes a while and saves about 1\.7 GB of pictures\./);
-        assert.equal(buttonIn(p.page, 'Add and start syncing').disabled, true, 'the big library needs its box');
+        assert.equal(buttonIn(p.page, 'Add and start syncing').getAttribute('aria-disabled'), 'true', 'the big library needs its box');
+        assert.match(StepText(p), /Tick the box under .* to confirm adding all of its titles/, 'the reason stays visible');
+        buttonIn(p.page, 'Add and start syncing').click();
+        await p.wait(30);
+        assert.match(p.page.querySelector('[data-slot="adderror"]').textContent, /Tick the box under/, 'a click on a blocked button says why');
+        assert.equal(p.mock.calls.filter((c) => c.method === 'POST' && /Libraries$/.test(c.path)).length, 0, 'and sends nothing');
         [...big.querySelectorAll('.shoal-check')].find((c) => /Add all/.test(c.textContent)).querySelector('input').click();
         await p.wait(20);
         buttonIn(p.page, 'Add and start syncing').click();
@@ -888,6 +893,97 @@ test('the safety code the admin types is never stored, logged or put in a URL', 
         assert.equal(JSON.stringify(Object.entries(globalThis.localStorage || {})).includes('K7QM2XA4'), false);
         assert.equal(window.location.href.includes('K7QM'), false);
     } finally {
+        p.close();
+    }
+});
+
+/* ---------------- step 5: an add that fails says so next to the button ---------------- */
+
+async function toChoose(p) {
+    await toCheck(p, 'invite');
+    buttonIn(p.page, 'Start pairing').click();
+    await p.wait(150);
+    p.clock.advance(7000);
+    await p.poll();
+    assert.equal(p.wiz().step, 'choose');
+    await p.wait(200); // the libraries load
+    [...p.page.querySelectorAll('.shoal-libpick__item')][0].querySelector('input').click();
+    await p.wait(30);
+}
+
+test('no folder for library files: the add error stands next to the button, with a way to Settings (fresh-install bug)', async () => {
+    const p = await pair({ addLibraryError: 'noStubRoot' });
+    try {
+        await toChoose(p);
+        const add = buttonIn(p.page, 'Add and start syncing');
+        assert.equal(add.disabled, false);
+        add.click();
+        await p.wait(150);
+        const slot = p.page.querySelector('[data-slot="adderror"]');
+        assert.ok(slot, 'the error host is part of the step');
+        assert.match(slot.textContent, /Shoal has no folder for its library files yet\. Choose one in Settings, then add the libraries again\./);
+        assert.ok(slot.querySelector('[role="alert"]'));
+        assert.ok(buttonIn(slot, 'Open Settings'));
+        assert.equal(p.wiz().step, 'choose', 'the wizard stays where it is');
+        assert.equal(p.mock.calls.filter((c) => c.method === 'POST' && c.path === 'Peers/' + p.wiz().peerHandle + '/Libraries').length, 1);
+        assert.equal(buttonIn(p.page, 'Add and start syncing').getAttribute('aria-disabled'), null, 'the button works again');
+    } finally {
+        p.close();
+    }
+});
+
+test('any other add failure is also shown next to the button, and a retry clears it', async () => {
+    const p = await pair({ addLibraryError: 'server' });
+    try {
+        await toChoose(p);
+        buttonIn(p.page, 'Add and start syncing').click();
+        await p.wait(150);
+        const slot = p.page.querySelector('[data-slot="adderror"]');
+        assert.match(slot.textContent, /Couldn't add those libraries\. Try again in a moment\./);
+        assert.equal(buttonIn(slot, 'Open Settings'), undefined, 'the Settings button is only for the missing folder');
+    } finally {
+        p.close();
+    }
+});
+
+test('step 4 works with jellyfin-web upgrading every button[is=emby-button] (the v0 registerElement prototype), and the add request goes out', async () => {
+    // jellyfin-web registers emby-button with document.registerElement: elements carrying is="emby-button" get its prototype
+    // (createdCallback adds the class, attachedCallback does nothing for a button). This stands in for it.
+    const proto = Object.create(window.HTMLButtonElement.prototype);
+    proto.createdCallback = function created() {
+        if (!this.classList.contains('emby-button')) {
+            this.classList.add('emby-button');
+        }
+    };
+
+    proto.attachedCallback = function attached() { /* anchors only */ };
+    const upgrade = (node) => {
+        if (node.nodeType === 1 && node.matches && node.matches('button[is="emby-button"]') && Object.getPrototypeOf(node) !== proto) {
+            Object.setPrototypeOf(node, proto);
+            node.createdCallback();
+            node.attachedCallback();
+        }
+
+        if (node.querySelectorAll) {
+            node.querySelectorAll('button[is="emby-button"]').forEach(upgrade);
+        }
+    };
+
+    const observer = new window.MutationObserver((records) => records.forEach((r) => r.addedNodes.forEach(upgrade)));
+    observer.observe(window.document.body, { childList: true, subtree: true });
+    const p = await pair();
+    try {
+        await toChoose(p);
+        const add = buttonIn(p.page, 'Add and start syncing');
+        await p.wait(30);
+        assert.equal(Object.getPrototypeOf(add), proto, 'the button was upgraded like jellyfin-web does');
+        assert.equal(add.getAttribute('aria-disabled'), null, 'a ticked library enables it');
+        add.click();
+        await p.wait(250);
+        assert.equal(p.mock.calls.filter((c) => c.method === 'POST' && /\/Libraries$/.test(c.path)).length, 1, 'the request went out');
+        assert.equal(p.wiz().step, 'done');
+    } finally {
+        observer.disconnect();
         p.close();
     }
 });

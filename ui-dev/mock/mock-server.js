@@ -820,10 +820,14 @@ export function createMock(options) {
         { mappingKey: 'rl-tv', name: 'TV shows', type: 'tvshows', count: 90, selectable: false }
     ]));
     route('POST', 'Peers/([^/]+)/Libraries', (m, body) => {
+        if (opt.addLibraryError) {
+            return fail(409, opt.addLibraryError);
+        }
+
         const h = decodeURIComponent(m[1]);
         const s = servers.get(h);
         const hidden = [];
-        for (const lib of (body && body.libraries) || []) {
+        for (const lib of Array.isArray(body) ? body : []) { // the real controller takes a bare array
             mappings.push({
                 mappingKey: 'm-' + h + '-' + lib.mappingKey, localLibraryName: lib.localLibraryName, remoteName: lib.localLibraryName, serverHandle: h, serverName: s ? s.displayName : '', count: 0,
                 lastSync: null, heldRemovals: 0, heldAdditions: 0, access: { mode: 'Selected', selectedUserIds: lib.selectedUserIds || [], includeRestricted: false }, drift: []

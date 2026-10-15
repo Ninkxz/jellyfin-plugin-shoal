@@ -73,11 +73,6 @@ public sealed class PeerClient : IDisposable
     internal bool EnforceAddressPolicy { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets a replacement for opening the TCP connection (tests: an in-memory peer on a simulated clock). Never set in production.
-    /// </summary>
-    internal Func<System.Net.DnsEndPoint, CancellationToken, ValueTask<Stream>>? ConnectOverride { get; set; }
-
-    /// <summary>
     /// Gets or sets the name resolver (a seam for the rebinding tests).
     /// </summary>
     internal Func<string, CancellationToken, Task<IPAddress[]>> Resolver { get; set; } = (host, token) => Dns.GetHostAddressesAsync(host, token);
@@ -418,7 +413,7 @@ public sealed class PeerClient : IDisposable
             }
             else
             {
-                handler.ConnectCallback = (context, token) => owner.ConnectOverride is { } simulated ? simulated(context.DnsEndPoint, token) : owner.ConnectAsync(network, context, token);
+                handler.ConnectCallback = (context, token) => owner.ConnectAsync(network, context, token);
             }
 
             // Every call applies its own deadlines (CallBudget); the client-wide timeout would also cut a movie that streams for hours.

@@ -81,7 +81,7 @@ public sealed class AdminPeerLibrariesTests : IAsyncLifetime
         }
     }
 
-    private AdminPeerLibrariesController NewController(PeerEndpoint endpoint, Guid? user = null)
+    private AdminPeerLibrariesController NewController(PeerEndpoint endpoint, Guid? user = null, Jellyfin.Plugin.Shoal.State.StubRootInitializer? stubRoots = null)
     {
         var trust = new PeerTrust(_rig.Client, _rig.Registry, _rig.Time);
         var reader = new PeerCatalogReader(_rig.Client, trust, _rig.Registry, new MetadataSanitizer(new Ratings()), _rig.Log);
@@ -92,7 +92,7 @@ public sealed class AdminPeerLibrariesTests : IAsyncLifetime
         {
             User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("Jellyfin-UserId", (user ?? _admin.Id).ToString("N"))], "test")),
         };
-        return new AdminPeerLibrariesController(_rig.State, new Endpoints(endpoint), reader, service, access, _rig.Catalogs, _live, NullLogger<AdminPeerLibrariesController>.Instance)
+        return new AdminPeerLibrariesController(_rig.State, new Endpoints(endpoint), reader, service, access, _rig.Catalogs, _live, NullLogger<AdminPeerLibrariesController>.Instance, stubRoots)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
         };
@@ -264,6 +264,20 @@ public sealed class AdminPeerLibrariesTests : IAsyncLifetime
 
         Assert.Equal(409, rendered.Status);
         Assert.Empty(Peer.Libraries);
+    }
+
+    [Fact]
+    public async Task Add_OnAFreshInstall_SetsTheDefaultStubRoot_AndSucceeds()
+    {
+        await _rig.State.UpdateAsync(s => s.StubRoot = string.Empty);
+        var initializer = new Jellyfin.Plugin.Shoal.State.StubRootInitializer(_rig.State, new StubRootChecker(static () => []), _rig.Paths, NullLogger<Jellyfin.Plugin.Shoal.State.StubRootInitializer>.Instance);
+        var controller = NewController(_rig.Endpoint, stubRoots: initializer);
+
+        var rendered = AdminTestSupport.Render(await AddAsync(Single(), controller));
+
+        Assert.Equal(200, rendered.Status);
+        Assert.Equal(_rig.Paths.DefaultStubRoot, _rig.State.Current.StubRoot);
+        Assert.NotEmpty(Peer.Libraries);
     }
 
     [Fact]

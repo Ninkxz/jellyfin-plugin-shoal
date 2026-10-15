@@ -50,6 +50,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.TryAddSingleton<IPeerLiveStatus, StateBackedLiveStatus>();
         serviceCollection.AddSingleton<ISettingsAccessor, PluginSettingsAccessor>();
         serviceCollection.AddSingleton<IStubRootChecker, StubRootChecker>();
+        serviceCollection.AddSingleton<StubRootInitializer>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<StubRootInitializer>());
         serviceCollection.AddShoalGuard();
         Jellyfin.Plugin.Shoal.Diagnostics.DiagnosticsRegistration.AddShoalDiagnostics(serviceCollection);
         serviceCollection.AddSingleton<IFindingsSource, ReconciliationFindings>();

@@ -39,6 +39,7 @@ public class AdminPeerLibrariesController : ControllerBase
     private readonly CatalogStore _catalogs;
     private readonly IPeerLiveStatus _live;
     private readonly ILogger<AdminPeerLibrariesController> _logger;
+    private readonly StubRootInitializer? _stubRoots;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdminPeerLibrariesController"/> class.
@@ -51,8 +52,10 @@ public class AdminPeerLibrariesController : ControllerBase
     /// <param name="catalogs">The catalogs.</param>
     /// <param name="live">The live status (starts the first sync).</param>
     /// <param name="logger">The logger.</param>
-    public AdminPeerLibrariesController(IStateStore state, IPeerEndpoints peers, PeerCatalogReader reader, ShoalLibraryService libraries, AccessService access, CatalogStore catalogs, IPeerLiveStatus live, ILogger<AdminPeerLibrariesController> logger)
+    /// <param name="stubRoots">Sets the default stub root when none is set, so a fresh install can add a library; none means the 409 stands.</param>
+    public AdminPeerLibrariesController(IStateStore state, IPeerEndpoints peers, PeerCatalogReader reader, ShoalLibraryService libraries, AccessService access, CatalogStore catalogs, IPeerLiveStatus live, ILogger<AdminPeerLibrariesController> logger, StubRootInitializer? stubRoots = null)
     {
+        _stubRoots = stubRoots;
         _state = state;
         _peers = peers;
         _reader = reader;
@@ -147,7 +150,7 @@ public class AdminPeerLibrariesController : ControllerBase
             return AdminReply.Error(StatusCodes.Status400BadRequest, "invalid");
         }
 
-        if (!Path.IsPathRooted(_state.Current.StubRoot))
+        if (!Path.IsPathRooted(_state.Current.StubRoot) && !(_stubRoots is not null && await _stubRoots.EnsureAsync(cancellationToken).ConfigureAwait(false) && Path.IsPathRooted(_state.Current.StubRoot)))
         {
             return AdminReply.Error(StatusCodes.Status409Conflict, "noStubRoot");
         }

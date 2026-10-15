@@ -874,8 +874,10 @@ const STRINGS = {
     addAllNote: "The first sync takes a while and saves about {gb} GB of pictures.",
     addAndSync: "Add and start syncing",
     pickAtLeastOne: "Pick at least one library",
+    confirmBigAdd: "Tick the box under {library} to confirm adding all of its titles.",
     adding: "Adding…",
     addFailed: "Couldn't add those libraries. Try again in a moment.",
+    noStubRootAdd: "Shoal has no folder for its library files yet. Choose one in Settings, then add the libraries again.",
     pairedTitle: "{server} is paired",
     addingProgress: "Adding titles: {done} of {total}",
     addingTitles: "Adding titles",
@@ -6799,16 +6801,54 @@ function pairScreen(ctx) {
         const server = serverName();
         const wrap = el('div', { class: 'shoal-step__body' }, stepTitle(t('chooseTitle')), paragraph(t('chooseBody', { server })));
         const listHost = el('div', { class: 'shoal-libpick' }, el('p', { class: 'shoal-meta', text: t('loadingLibraries') }));
-        const addBtn = button({ label: t('addAndSync'), variant: 'primary', disabled: true });
-        const why = el('span', { class: 'shoal-meta shoal-step__why', text: t('pickAtLeastOne') });
-        wrap.append(listHost, actions(addBtn, why));
+        // Never natively disabled: a disabled button swallows the click and the page looks dead. It is aria-disabled with the reason beside it, and a click says the reason again.
+        const whyId = uid('shoal-why');
+        const addBtn = button({ label: t('addAndSync'), variant: 'primary', describedby: whyId });
+        addBtn.setAttribute('aria-disabled', 'true');
+        const why = el('span', { class: 'shoal-meta shoal-step__why', id: whyId, text: t('pickAtLeastOne') });
+        // Add errors show here, next to the button: the page alert at the top is out of sight when the list is long.
+        const addError = el('div', { class: 'shoal-step__error', 'data-slot': 'adderror' });
+        wrap.append(listHost, actions(addBtn, why), addError);
+
+        function showAddError(err) {
+            const noRoot = !!err && err.kind === 'noStubRoot';
+            const kids = [el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: noRoot ? t('noStubRootAdd') : failureMessage(err, 'addFailed') }))];
+            if (noRoot) {
+                kids.push(button({ label: t('openSettings'), small: true, onClick: () => ctx.navigate('settings') }));
+            }
+
+            replaceKids(addError, kids);
+        }
         const ticked = new Map();
         const required = new Set();
+        const bigNames = new Map();
+
+        /** Why Add cannot run yet, or an empty string when it can. */
+        function blockedReason() {
+            if (ticked.size === 0) {
+                return t('pickAtLeastOne');
+            }
+
+            const open = Array.from(required).find((k) => !(ticked.has(k) && ticked.get(k).bigOk));
+            return open ? t('confirmBigAdd', { library: bigNames.get(open) || '' }) : '';
+        }
 
         function sync() {
-            const allRequired = Array.from(required).every((k) => ticked.has(k) && ticked.get(k).bigOk);
-            addBtn.disabled = ticked.size === 0 || !allRequired;
-            why.hidden = ticked.size > 0;
+            const reason = blockedReason();
+            if (!addBtn.classList.contains('is-busy')) {
+                if (reason) {
+                    addBtn.setAttribute('aria-disabled', 'true');
+                } else {
+                    addBtn.removeAttribute('aria-disabled');
+                }
+            }
+
+            why.textContent = reason;
+            why.hidden = !reason;
+            if (!reason && addError.dataset.kind === 'blocked') {
+                clear(addError);
+                delete addError.dataset.kind;
+            }
         }
 
         async function build() {
@@ -6839,6 +6879,7 @@ function pairScreen(ctx) {
                                 ticked.set(lib.mappingKey, entry);
                                 if (lib.count > 5000) {
                                     required.add(lib.mappingKey);
+                                    bigNames.set(lib.mappingKey, lib.name);
                                 }
 
                                 buildDetail(lib, entry, detail, users, youId);
@@ -6892,17 +6933,31 @@ function pairScreen(ctx) {
             replaceKids(detail, kids);
         }
 
-        addBtn.addEventListener('click', () => runAction(ctx, addBtn, {
-            busyText: t('adding'),
-            run: () => ctx.api.addLibrary(wiz.peerHandle, Array.from(ticked.values()).map((e) => ({ mappingKey: e.mappingKey, localLibraryName: e.localLibraryName, selectedUserIds: e.selectedUserIds, ratingsAcknowledged: e.ratingsAcknowledged }))),
-            onDone: (result) => {
-                wiz.added = result || {};
-                wiz.step = 'done';
-                render();
-                focusStep();
-            },
-            onError: (err) => ctx.alertMessage(failureMessage(err, 'addFailed'))
-        }));
+        addBtn.addEventListener('click', () => {
+            const reason = blockedReason();
+            if (reason) {
+                replaceKids(addError, el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: reason })));
+                addError.dataset.kind = 'blocked';
+                return null;
+            }
+
+            return runAction(ctx, addBtn, {
+                busyText: t('adding'),
+                run: () => {
+                    clear(addError);
+                    delete addError.dataset.kind;
+                    return ctx.api.addLibrary(wiz.peerHandle, Array.from(ticked.values()).map((e) => ({ mappingKey: e.mappingKey, localLibraryName: e.localLibraryName, selectedUserIds: e.selectedUserIds, ratingsAcknowledged: e.ratingsAcknowledged })));
+                },
+                onDone: (result) => {
+                    wiz.added = result || {};
+                    wiz.step = 'done';
+                    render();
+                    focusStep();
+                },
+                onError: showAddError,
+                afterBusy: sync
+            });
+        });
         build();
         return wrap;
     }
@@ -7995,7 +8050,7 @@ function serverDetailScreen(ctx) {
         });
         if (res && res.length) {
             try {
-                await ctx.api.addLibrary(s.handle, { libraries: res.map((k) => ({ mappingKey: k, localLibraryName: t('defaultLocalName', { server: s.displayName, library: (remote.find((r) => r.mappingKey === k) || {}).name || '' }), selectedUserIds: [] })) });
+                await ctx.api.addLibrary(s.handle, res.map((k) => ({ mappingKey: k, localLibraryName: t('defaultLocalName', { server: s.displayName, library: (remote.find((r) => r.mappingKey === k) || {}).name || '' }), selectedUserIds: [] })));
                 ctx.announce(t('announceLibraryAdded'));
                 load(false, true);
             } catch (err) {

@@ -416,3 +416,27 @@ test('S2/S3: the fix comes first; the pause help sits under Pause and is describ
         hops.close();
     }
 });
+
+test('Server detail: Add a library sends the bare array the controller reads (it answered 400 for a wrapped object)', async () => {
+    const p = await server('h-hops');
+    try {
+        buttonIn(p.page, 'Add another library').click();
+        await p.wait(200);
+        const d = dialog(p);
+        assert.ok(d, 'the dialog opens');
+        const box = [...d.querySelectorAll('.shoal-check input')].find((i) => !i.disabled);
+        assert.ok(box, 'a library can be ticked');
+        box.click();
+        await p.wait(30);
+        buttonIn(d, 'Add and start syncing').click();
+        await p.wait(250);
+        const sent = calls(p, 'POST', /Peers\/h-hops\/Libraries$/);
+        assert.equal(sent.length, 1);
+        assert.ok(Array.isArray(sent[0].body), 'a bare array, not { libraries }');
+        assert.equal(sent[0].body.length, 1);
+        assert.match(sent[0].body[0].mappingKey, /^rl-/);
+        assert.ok(Array.isArray(sent[0].body[0].selectedUserIds));
+    } finally {
+        p.close();
+    }
+});
