@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
@@ -23,6 +24,17 @@ public static class TlsPin
     {
         ArgumentNullException.ThrowIfNull(certificate);
         return Convert.ToBase64String(SHA256.HashData(certificate.PublicKey.ExportSubjectPublicKeyInfo()));
+    }
+
+    /// <summary>
+    /// Writes a pin the way people read a fingerprint aloud: the 32 bytes as upper-case hex pairs separated by colons.
+    /// </summary>
+    /// <param name="pin">A valid pin.</param>
+    /// <returns>The fingerprint, for example <c>AB:CD:...</c> (95 characters).</returns>
+    public static string Fingerprint(string pin)
+    {
+        ArgumentNullException.ThrowIfNull(pin);
+        return Convert.ToHexString(Convert.FromBase64String(pin)).Chunk(2).Select(static pair => new string(pair)).Aggregate((a, b) => a + ":" + b);
     }
 
     /// <summary>

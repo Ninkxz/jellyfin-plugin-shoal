@@ -134,7 +134,22 @@ public sealed class PeerAddressService
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>True when the host changed and the stored token was dropped (the peer needs a new pairing).</returns>
     /// <exception cref="PeerAddressChangeException">The change was refused; nothing was changed.</exception>
-    public async Task<bool> ChangeBaseUrlAsync(string peerKey, string newBaseUrl, CancellationToken cancellationToken = default)
+    public Task<bool> ChangeBaseUrlAsync(string peerKey, string newBaseUrl, CancellationToken cancellationToken = default) =>
+        ChangeAddressAsync(peerKey, newBaseUrl, null, useProxy: false, alsoApply: null, cancellationToken);
+
+    /// <summary>
+    /// Changes the base URL and the proxy of a peer, and whatever else the caller edits at the same time, in <b>one</b> state write (Warden 11 L4):
+    /// either all of it happens or none of it. A new host still drops the stored token first, before that write.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="newBaseUrl">The new base URL; it is checked by <see cref="AddressPolicy"/> for the peer's network type together with the proxy.</param>
+    /// <param name="proxyUrl">The proxy to store, or null for none; used only when <paramref name="useProxy"/> is true.</param>
+    /// <param name="useProxy">Whether <paramref name="proxyUrl"/> replaces the stored proxy.</param>
+    /// <param name="alsoApply">More edits to the peer record, applied in the same write after the address (and after a new host cleared the pin), or null.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>True when the host changed and the stored token was dropped (the peer needs a new pairing).</returns>
+    /// <exception cref="PeerAddressChangeException">The change was refused; nothing was changed.</exception>
+    public async Task<bool> ChangeAddressAsync(string peerKey, string newBaseUrl, string? proxyUrl, bool useProxy, Action<PeerState>? alsoApply, CancellationToken cancellationToken = default)
     {
         var peer = _state.Current.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, peerKey, StringComparison.Ordinal))
             ?? throw new PeerAddressChangeException(PeerAddressChangeProblem.UnknownPeer);
@@ -143,7 +158,8 @@ public sealed class PeerAddressService
             throw new PeerAddressChangeException(PeerAddressChangeProblem.PairingActive);
         }
 
-        var check = AddressPolicy.Validate(newBaseUrl, peer.Network, peer.LanCleartextAck, peer.ProxyUrl);
+        var proxy = useProxy ? proxyUrl : peer.ProxyUrl;
+        var check = AddressPolicy.Validate(newBaseUrl, peer.Network, peer.LanCleartextAck, proxy);
         if (!check.Ok)
         {
             throw new PeerAddressChangeException(PeerAddressChangeProblem.InvalidAddress, check.Problem);
@@ -167,10 +183,17 @@ public sealed class PeerAddressService
             {
                 var target = state.Home.Peers.First(p => string.Equals(p.PeerKey, peerKey, StringComparison.Ordinal));
                 target.BaseUrl = normalized;
+                if (useProxy)
+                {
+                    target.ProxyUrl = proxy;
+                }
+
                 if (hostChanged)
                 {
                     target.TlsSpkiPin = null;
                 }
+
+                alsoApply?.Invoke(target);
             },
             cancellationToken).ConfigureAwait(false);
         if (hostChanged)

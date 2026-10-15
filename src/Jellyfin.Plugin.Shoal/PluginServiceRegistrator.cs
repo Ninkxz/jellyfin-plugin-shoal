@@ -84,6 +84,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ILocalMovies, JellyfinLocalMovies>();
         serviceCollection.AddSingleton<ILibraryRefresh, JellyfinLibraryRefresh>();
         serviceCollection.AddSingleton<CatalogSyncService>();
+        serviceCollection.AddSingleton<ISyncActivity>(sp => sp.GetRequiredService<CatalogSyncService>());
         serviceCollection.AddHostedService<SyncScheduler>();
 
         // Who may see a Shoal library (DESIGN 5.6).

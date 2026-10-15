@@ -29,7 +29,7 @@ public enum ReleaseKind
 /// Syncs a peer's movie catalog into stubs (DESIGN 5.1 to 5.3, 5.8 to 5.10): enumerate, diff, dedup, guard, fetch details, write the stubs,
 /// save the catalog and tell core which folders changed. One sync runs at a time, whichever peer it is for.
 /// </summary>
-public sealed class CatalogSyncService : IDisposable
+public sealed class CatalogSyncService : IDisposable, ISyncActivity
 {
     /// <summary>The shortest time between two manual syncs of one peer.</summary>
     public static readonly TimeSpan ManualInterval = TimeSpan.FromMinutes(5);
@@ -42,6 +42,7 @@ public sealed class CatalogSyncService : IDisposable
     private readonly Func<string, PeerEndpoint?> _find;
     private readonly Func<SyncSettings> _settings;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private volatile string? _syncing;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CatalogSyncService"/> class.
@@ -165,6 +166,9 @@ public sealed class CatalogSyncService : IDisposable
     }
 
     /// <inheritdoc />
+    public bool IsSyncing(string peerKey) => string.Equals(_syncing, peerKey, StringComparison.Ordinal);
+
+    /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
     private async Task<SyncReport> RunAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, CancellationToken cancellationToken)
@@ -174,6 +178,7 @@ public sealed class CatalogSyncService : IDisposable
             return SyncReport.Skipped("busy");
         }
 
+        _syncing = peerKey;
         try
         {
             return await RunLockedAsync(peerKey, trigger, bypassRemovals, bypassAdditions, cancellationToken).ConfigureAwait(false);
@@ -197,6 +202,7 @@ public sealed class CatalogSyncService : IDisposable
         }
         finally
         {
+            _syncing = null;
             _gate.Release();
         }
     }

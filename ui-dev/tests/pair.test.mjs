@@ -987,3 +987,45 @@ test('step 4 works with jellyfin-web upgrading every button[is=emby-button] (the
         p.close();
     }
 });
+
+test('v1.0.2: the address path points to invites, carries a copyable block for the friend, and warns about unreachable addresses', async () => {
+    const p = await pair();
+    try {
+        await chooseMethod(p, 'qc');
+        assert.match(p.text(), /If your friend has Shoal, ask them for an invite instead\. It's easier and sets up their side for you\./);
+        const block = [...p.page.querySelectorAll('details')].find((d) => d.querySelector('summary').textContent.trim() === 'Send this to your friend');
+        assert.ok(block, 'the Send this to your friend block exists');
+        assert.match(block.textContent, /Quick Connect/);
+        assert.ok(buttonIn(block, 'Copy steps'));
+
+        // A home network address is flagged on the address path, and again when it changes to something reachable.
+        setValue(input(p, 'Server address'), 'http://192.168.1.40:8096');
+        assert.match(p.text(), /This looks like an address on your friend's home network\. You probably can't reach it from here\. Use their Tailscale address \(100\.x or \.ts\.net\) or an https address\./);
+        setValue(input(p, 'Server address'), 'http://100.101.102.103:8096');
+        assert.doesNotMatch(p.text(), /address on your friend's home network/);
+        setValue(input(p, 'Server address'), 'https://willow.example.net:8096');
+        assert.match(p.text(), /Jellyfin usually uses http on 8096 or https on 8920\./);
+        setValue(input(p, 'Server address'), 'https://willow.example.net:8920');
+        assert.doesNotMatch(p.text(), /Jellyfin usually uses/);
+        // The warnings never block the check.
+        assert.doesNotMatch(p.text().replace(/\s+/g, ' '), /—|–/);
+    } finally {
+        p.close();
+    }
+});
+
+test('v1.0.2: the invite path says the address must be Tailscale or https, warns the same way, and has no friend block', async () => {
+    const p = await pair();
+    try {
+        await chooseMethod(p, 'invite');
+        assert.match(p.text(), /It must be a Tailscale address \(100\.x or \.ts\.net\) or an https address\./);
+        assert.doesNotMatch(p.text(), /ask them for an invite instead/);
+        assert.doesNotMatch(p.text(), /Send this to your friend/);
+        setValue(input(p, 'Server address'), 'http://172.20.0.5:8096');
+        assert.match(p.text(), /address on your friend's home network/);
+        setValue(input(p, 'Server address'), 'http://172.32.0.5:8096');
+        assert.doesNotMatch(p.text(), /address on your friend's home network/);
+    } finally {
+        p.close();
+    }
+});

@@ -223,6 +223,27 @@ public sealed class AdminF5Tests
         // Settings (K33): the cache clear answers a number of bytes and nothing else.
         Record("DELETE", "Shoal/Admin/TrickplayCache", prefs.ClearTrickplayCache());
 
+        // Overlap: numbers and words only.
+        var overlap = new AdminOverlapController(rig.State, catalogs) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Peers/{handle}/Overlap", overlap.Overlap(StateSamples.PeerKeyA));
+        Record("GET", "Shoal/Admin/Peers/{handle}/Overlap", overlap.Overlap("nope"));
+
+        // Server detail settings: words only.
+        var peerSettings = new AdminPeerSettingsController(rig.State, new Jellyfin.Plugin.Shoal.Peers.PeerDirectory(rig.State, rig.Secrets), rig.Client, rig.Registry, new Jellyfin.Plugin.Shoal.Peers.PeerAddressService(rig.State, rig.Secrets, rig.Registry, rig.Service), rig.Secrets, libraryService, rig.Paths, NullLogger<AdminPeerSettingsController>.Instance, rig.Service) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Peers/{handle}/Certificate", await peerSettings.Certificate(StateSamples.PeerKeyA, default));
+        Record("GET", "Shoal/Admin/Peers/{handle}/Certificate", await peerSettings.Certificate("nope", default));
+        Send(peerSettings, """{"expectedPin":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}""");
+        Record("POST", "Shoal/Admin/Peers/{handle}/TrustCertificate", await peerSettings.TrustCertificate(StateSamples.PeerKeyA, default));
+        Record("POST", "Shoal/Admin/Peers/{handle}/TrustCertificate", await peerSettings.TrustCertificate("nope", default));
+        Send(peerSettings, """{"maxConcurrentStreams":5,"priority":50}""");
+        Record("PUT", "Shoal/Admin/Peers/{handle}", await peerSettings.Update(StateSamples.PeerKeyA, default));
+        Send(peerSettings, """{"url":"http://elsewhere.tail1234.ts.net:8096","confirmName":"wrong"}""");
+        Record("PUT", "Shoal/Admin/Peers/{handle}", await peerSettings.Update(StateSamples.PeerKeyA, default));
+        Send(peerSettings, """{"confirmName":"wrong"}""");
+        Record("DELETE", "Shoal/Admin/Peers/{handle}", await peerSettings.Remove(StateSamples.PeerKeyA, true, default));
+        Send(peerSettings, """{"confirmName":"Hops"}""");
+        Record("DELETE", "Shoal/Admin/Peers/{handle}", await peerSettings.Remove(pairedKey, false, default));
+
         // Every admin route of the assembly has a step above (a new route fails here until it has one).
         var all = AdminRouteTests.AllRoutes()
             .Where(r => r.Route.StartsWith("Shoal/Admin", StringComparison.OrdinalIgnoreCase))

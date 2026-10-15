@@ -113,10 +113,22 @@ test('certificate changed: primary is Check certificate, the keys are labelled, 
         const d = dialog(p);
         assert.match(d.textContent, /Trust Cedar's new certificate\?/);
         assert.match(d.textContent, /Only do this if your friend told you they changed it\./);
+        // H1: the key shown now is read first and compared with the friend before anything is trusted.
+        assert.equal(calls(p, 'GET', /Peers\/h-cedar\/Certificate/).length, 1);
+        assert.match(d.textContent, /Fingerprint \(SHA-256\)/);
+        assert.match(d.querySelector('.shoal-fingerprint').textContent, /^([0-9A-F]{4} ){15}[0-9A-F]{4}$/);
+        const trust = buttonIn(d, 'Trust it');
+        assert.equal(trust.disabled, true);
         assert.equal(calls(p, 'POST', /TrustCertificate/).length, 0);
-        buttonIn(d, 'Trust it').click();
+        const agree = d.querySelector('input[type="checkbox"]');
+        agree.click();
+        assert.equal(trust.disabled, false);
+        trust.click();
         await p.wait(150);
-        assert.equal(calls(p, 'POST', /TrustCertificate/).length, 1);
+        const post = calls(p, 'POST', /TrustCertificate/);
+        assert.equal(post.length, 1);
+        assert.match(post[0].body.expectedPin, /^[A-Za-z0-9+/]{43}=$/);
+        assert.equal(post[0].body.acceptUntrusted, undefined);
     } finally {
         p.close();
     }
@@ -436,6 +448,79 @@ test('Server detail: Add a library sends the bare array the controller reads (it
         assert.equal(sent[0].body.length, 1);
         assert.match(sent[0].body[0].mappingKey, /^rl-/);
         assert.ok(Array.isArray(sent[0].body[0].selectedUserIds));
+    } finally {
+        p.close();
+    }
+});
+
+test('H1: a Public certificate that fails the chain check needs a second tick and sends acceptUntrusted', async () => {
+    const p = await server('h-cedar', { scenario: 'problems', certChainValid: false });
+    try {
+        buttonIn(p.page.querySelector('.shoal-alert'), 'Trust new certificate').click();
+        await p.wait(60);
+        const d = dialog(p);
+        assert.match(d.textContent, /This certificate doesn't pass the normal checks/);
+        const [agree, anyway] = d.querySelectorAll('input[type="checkbox"]');
+        const trust = buttonIn(d, 'Trust it');
+        agree.click();
+        assert.equal(trust.disabled, true);
+        anyway.click();
+        assert.equal(trust.disabled, false);
+        trust.click();
+        await p.wait(150);
+        assert.equal(calls(p, 'POST', /TrustCertificate/).at(-1).body.acceptUntrusted, true);
+    } finally {
+        p.close();
+    }
+});
+
+test('H1: when the certificate changed again the page says so and nothing is trusted', async () => {
+    const p = await server('h-cedar', { scenario: 'problems', certMoves: true });
+    try {
+        buttonIn(p.page.querySelector('.shoal-alert'), 'Trust new certificate').click();
+        await p.wait(60);
+        const d = dialog(p);
+        d.querySelector('input[type="checkbox"]').click();
+        buttonIn(d, 'Trust it').click();
+        await p.wait(150);
+        assert.match(p.page.textContent, /The certificate changed again, check with your friend/);
+    } finally {
+        p.close();
+    }
+});
+
+test('M2: pinning a certificate in Settings shows the fingerprint first and sends expectedPin', async () => {
+    const p = await server('h-fern');
+    try {
+        const pin = [...p.page.querySelectorAll('label.shoal-check')].find((l) => /Pin this server's certificate/.test(l.textContent)).querySelector('input');
+        pin.click();
+        buttonIn(p.page, 'Save').click();
+        await p.wait(80);
+        const d = dialog(p);
+        assert.match(d.textContent, /Pin Fernwood's certificate\?/);
+        assert.equal(calls(p, 'PUT', /^Peers\/h-fern$/).length, 0);
+        d.querySelector('input[type="checkbox"]').click();
+        buttonIn(d, 'Pin it').click();
+        await p.wait(150);
+        const put = calls(p, 'PUT', /^Peers\/h-fern$/).at(-1);
+        assert.equal(put.body.tlsPinned, true);
+        assert.match(put.body.expectedPin, /^[A-Za-z0-9+/]{43}=$/);
+    } finally {
+        p.close();
+    }
+});
+
+test('L7: unticking Also delete the library says the library stays in Jellyfin', async () => {
+    const p = await server('h-hops');
+    try {
+        buttonIn(p.page, 'Remove server…').click();
+        await p.wait(60);
+        const d = dialog(p);
+        const note = [...d.querySelectorAll('.shoal-hint')].find((n) => /library stays in Jellyfin/.test(n.textContent));
+        assert.equal(note.hidden, true);
+        d.querySelector('input[type="checkbox"]').click();
+        assert.equal(note.hidden, false);
+        assert.match(note.textContent, /The library stays in Jellyfin and Shoal won't manage it any more\./);
     } finally {
         p.close();
     }

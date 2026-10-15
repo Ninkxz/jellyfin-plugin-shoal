@@ -40,6 +40,9 @@ public sealed class TlsPeerFixture : IAsyncLifetime
 
     public int Requests => _requests;
 
+    /// <summary>Gets the Authorization header of the last request, or null when it had none.</summary>
+    public string? LastAuthorization { get; private set; }
+
     private int _requests;
 
     public async Task InitializeAsync()
@@ -59,6 +62,7 @@ public sealed class TlsPeerFixture : IAsyncLifetime
         app.Use(async (context, next) =>
         {
             Interlocked.Increment(ref _requests);
+            LastAuthorization = context.Request.Headers.Authorization.ToString() is { Length: > 0 } auth ? auth : null;
             await next();
         });
         app.MapGet("/ok", () => "ok");

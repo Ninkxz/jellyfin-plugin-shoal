@@ -1,7 +1,7 @@
 // Lumen M3: no screen ever prints "null", "undefined", "NaN" or an unfilled {placeholder}, in any view of any scenario.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mountPage, JUNK } from './helpers.mjs';
+import { mountPage, makeClock, JUNK } from './helpers.mjs';
 
 const VIEWS = [
     ['overview', {}], ['libraries', {}], ['settings', {}], ['pair', { dir: 'watch' }], ['pair', { dir: 'share' }],
@@ -48,8 +48,10 @@ for (const [scenario, ids] of [['problems', ['h-hops', 'h-fern', 'h-gran', 'h-pi
 test('null instead of absent changes nothing on any view', async () => {
     const same = async (view, extra, scenario) => {
         const params = Object.assign({ view }, extra);
-        const a = await mountPage({ scenario, params, settleMs: 500 });
-        const b = await mountPage({ scenario, params, settleMs: 500, nulls: true });
+        // One frozen clock for both runs: with the real one the two mounts straddle a minute boundary now and then (Offline from 5:36 vs 5:37).
+        const clock = makeClock(Date.UTC(2026, 9, 15, 12, 0, 0));
+        const a = await mountPage({ scenario, params, settleMs: 500, now: clock.now });
+        const b = await mountPage({ scenario, params, settleMs: 500, nulls: true, now: clock.now });
         try {
             assert.doesNotMatch(b.text(), JUNK, 'null run: ' + view + ' ' + scenario);
             assert.equal(b.text(), a.text(), view + ' ' + JSON.stringify(extra) + ' ' + scenario);

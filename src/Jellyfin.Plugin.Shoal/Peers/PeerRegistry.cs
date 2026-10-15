@@ -196,6 +196,24 @@ public sealed class PeerRegistry
     }
 
     /// <summary>
+    /// Lifts a TLS stop after the admin trusted a new key, but keeps every token-bearing call blocked until the next <b>identity check</b>
+    /// (the unauthenticated server id call, <see cref="RecordPinVerified"/>) has passed on the new key (Warden 11 M3). Without this, a plain
+    /// <see cref="SetStatus"/> to <see cref="PeerStatus.Offline"/> would let calls that need no trust window (sign-out, rotation) carry the token to the new key first.
+    /// </summary>
+    /// <param name="peerKey">The peer key.</param>
+    public void BeginRetrust(string peerKey)
+    {
+        var entry = _peers.GetOrAdd(peerKey, _ => new Entry());
+        lock (entry)
+        {
+            entry.Status = PeerStatus.Offline;
+            entry.PinVerifiedUtc = null;
+            entry.AuthVerifiedUtc = null;
+            entry.IdentityRequired = true;
+        }
+    }
+
+    /// <summary>
     /// Records that the server id was confirmed by an unauthenticated call just now. Ignored while the status blocks the peer.
     /// </summary>
     /// <param name="peerKey">The peer key.</param>
@@ -207,6 +225,7 @@ public sealed class PeerRegistry
             if (entry.Status is not (PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged))
             {
                 entry.PinVerifiedUtc = _time.GetUtcNow();
+                entry.IdentityRequired = false;
             }
         }
     }
@@ -283,6 +302,11 @@ public sealed class PeerRegistry
             return TrustDenial.None;
         }
 
+        if (_peers.TryGetValue(peerKey, out var retrust) && retrust.IdentityRequired)
+        {
+            return TrustDenial.Blocked; // a new key was trusted: no token goes to it before the server id is confirmed
+        }
+
         if (status == PeerStatus.AuthFailed)
         {
             return TrustDenial.Blocked;
@@ -321,5 +345,7 @@ public sealed class PeerRegistry
         public DateTimeOffset? AuthVerifiedUtc { get; set; }
 
         public DateTimeOffset? RotatingUntil { get; set; }
+
+        public bool IdentityRequired { get; set; }
     }
 }

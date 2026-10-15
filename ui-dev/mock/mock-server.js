@@ -419,7 +419,7 @@ export function createMock(options) {
             users: clone(users),
             alerts: alertsFor(s),
             usage: { diskBytes: 0.8e9, quotaBytes: 2e9, stubs: s.titleCount, people: 4120, genres: 38, studios: 210 },
-            settings: { maxConcurrentStreams: 4, priority: 100, proxyUrl: s.proxy ? 'socks5://127.0.0.1:1055' : '', tlsPinned: false },
+            settings: { maxConcurrentStreams: 4, priority: 100, proxyUrl: s.proxy ? 'socks5://127.0.0.1:1055' : '', tlsPinned: !!s.pinned },
             rotation: rotationOf(s),
             link: (() => {
                 const pair = linkedPairs.find((p) => p[1] === s.handle && shares.has(p[0]));
@@ -739,6 +739,22 @@ export function createMock(options) {
             s.url = body.url;
         }
 
+        if (body.tlsPinned === true && !s.pinned) {
+            if (!body.expectedPin) {
+                return fail(400, 'expectedPin');
+            }
+
+            const c = certOf(s);
+            if (body.expectedPin !== c.pin) {
+                return fail(409, 'changedAgain');
+            }
+
+            if (!c.chainValid && body.acceptUntrusted !== true) {
+                return fail(409, 'untrusted');
+            }
+        }
+
+        s.pinned = body.tlsPinned === true;
         return ok({});
     });
     route('DELETE', 'Peers/([^/]+)', (m, body) => {
@@ -786,9 +802,46 @@ export function createMock(options) {
 
         return ok({});
     });
-    route('POST', 'Peers/([^/]+)/TrustCertificate', (m) => {
+    // The key a server shows now: 32 bytes as a base64 pin and as colon separated hex pairs. opt.certChainValid=false makes it fail the chain check;
+    // opt.certMoves makes the key change between the read and the trust (409 changedAgain).
+    const certBytes = (s) => Array.from({ length: 32 }, (_, i) => (s.handle.charCodeAt(i % s.handle.length) * 7 + i * 13 + (s.certGeneration || 0)) % 256);
+    const certOf = (s) => {
+        const bytes = certBytes(s);
+        return {
+            pin: typeof Buffer !== 'undefined' ? Buffer.from(bytes).toString('base64') : btoa(String.fromCharCode(...bytes)),
+            fingerprint: bytes.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':'),
+            chainValid: opt.certChainValid !== false
+        };
+    };
+    route('GET', 'Peers/([^/]+)/Certificate', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (!s) {
+            return fail(404, 'notFound');
+        }
+
+        if (!/^https:/i.test(s.url)) {
+            return fail(400, 'notHttps');
+        }
+
+        const c = certOf(s);
+        if (opt.certMoves) {
+            s.certGeneration = (s.certGeneration || 0) + 1;
+        }
+
+        return ok(c);
+    });
+    route('POST', 'Peers/([^/]+)/TrustCertificate', (m, body) => {
         const s = servers.get(decodeURIComponent(m[1]));
         if (s) {
+            const c = certOf(s);
+            if (!body || body.expectedPin !== c.pin) {
+                return fail(409, 'changedAgain');
+            }
+
+            if (s.network === 'Public' && !c.chainValid && body.acceptUntrusted !== true) {
+                return fail(409, 'untrusted');
+            }
+
             s.status = 'Online';
             s.path = 'direct';
             s.rttMs = 52;

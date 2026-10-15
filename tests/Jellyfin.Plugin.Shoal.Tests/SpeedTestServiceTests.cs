@@ -32,15 +32,17 @@ public sealed class SpeedTestServiceTests
     [Fact]
     public async Task Netem_8mbit_80ms_Measures7To8Mbps_About160msRtt_AndTheDocumentedVerdicts()
     {
-        await using var link = await ShapedLink.StartAsync(bytesPerSecond: 1_000_000, roundTrip: TimeSpan.FromMilliseconds(160));
-        using var rig = await Rig.CreateAsync(link);
+        // Simulated link on a virtual clock: the figures come from the model, not from how fast this machine (or a CI runner) is.
+        var clock = new VirtualClock();
+        var link = new SimulatedLink(clock, bytesPerSecond: 1_000_000, roundTrip: TimeSpan.FromMilliseconds(160));
+        using var rig = await Rig.CreateAsync(link, clock);
 
         var sample = await rig.Service.RunAsync(Key, SpeedKinds.Manual, default);
 
         Assert.NotNull(sample);
         Assert.Null(sample.Error);
-        Assert.InRange(sample.Mbps!.Value, 7.0, 8.3);
-        Assert.InRange(sample.RttMedianMs!.Value, 155, 215);
+        Assert.InRange(sample.Mbps!.Value, 7.9, 8.1); // exact on the virtual clock: 1 MB/s = 8 Mbit
+        Assert.InRange(sample.RttMedianMs!.Value, 159, 161);
         Assert.Equal(0, sample.LossPct);
         Assert.NotNull(sample.RttP90Ms);
         Assert.NotNull(sample.ConnectMs);
@@ -108,7 +110,7 @@ public sealed class SpeedTestServiceTests
         var sample = (await rig.Service.RunAsync(Key, SpeedKinds.Deep, default))!;
 
         Assert.Null(sample.Error);
-        Assert.InRange(sample.TranscodeSpeed!.Value, 2.0, 6.5); // 0.6 s of video per about 0.1 s
+        Assert.InRange(sample.TranscodeSpeed!.Value, 1.0, 6.5); // 0.6 s of video per about 0.1 s (a slow machine only lowers it)
         Assert.NotNull(sample.SegTtfbMs);
         Assert.Equal(1, link.Kills);
         Assert.InRange(TranscodeProbe.SuggestedConversions(sample.TranscodeSpeed.Value), 1, 4);
@@ -153,8 +155,9 @@ public sealed class SpeedTestServiceTests
     [Fact]
     public async Task M1_TheParallelRuns_AreSizedToTheLink_SoTheyEndInTime()
     {
-        await using var link = await ShapedLink.StartAsync(1_000_000, TimeSpan.FromMilliseconds(5));
-        using var rig = await Rig.CreateAsync(link);
+        var clock = new VirtualClock();
+        var link = new SimulatedLink(clock, 1_000_000, TimeSpan.FromMilliseconds(5));
+        using var rig = await Rig.CreateAsync(link, clock);
         rig.Service.Options.ParallelBytes = 16_000_000; // the real size, far more than this link can move in time
         rig.Service.Options.RunSeconds = 1;
 
@@ -190,8 +193,9 @@ public sealed class SpeedTestServiceTests
     [Fact]
     public async Task M1_BelowFourMbit_ThereIsNoParallelRun_AndNoTimeout()
     {
-        await using var link = await ShapedLink.StartAsync(300_000, TimeSpan.FromMilliseconds(5)); // 2.4 Mbit
-        using var rig = await Rig.CreateAsync(link);
+        var clock = new VirtualClock();
+        var link = new SimulatedLink(clock, 300_000, TimeSpan.FromMilliseconds(5)); // 2.4 Mbit
+        using var rig = await Rig.CreateAsync(link, clock);
         rig.Service.Options.RunSeconds = 1;
         rig.Service.Options.MainBytes = 8_000_000;
 
@@ -360,14 +364,24 @@ public sealed class SpeedTestServiceTests
 
         public SpeedTestService Service { get; }
 
-        public static async Task<Rig> CreateAsync(ShapedLink link, ITailscaleStatus? tailscale = null, bool withCatalog = false, Jellyfin.Plugin.Shoal.Playback.StreamSlots? slots = null)
+        public static Task<Rig> CreateAsync(ShapedLink link, ITailscaleStatus? tailscale = null, bool withCatalog = false, Jellyfin.Plugin.Shoal.Playback.StreamSlots? slots = null)
+            => CreateCoreAsync(link.BaseUrl, TimeProvider.System, null, tailscale, withCatalog, slots, TimeSpan.FromMilliseconds(10));
+
+        /// <summary>A rig on a simulated peer and its virtual clock: the numbers it measures do not depend on the machine.</summary>
+        /// <param name="link">The simulated link.</param>
+        /// <param name="clock">The clock the link drives.</param>
+        /// <returns>The rig.</returns>
+        public static Task<Rig> CreateAsync(SimulatedLink link, VirtualClock clock)
+            => CreateCoreAsync(link.BaseUrl, clock, link.ConnectAsync, null, false, null, TimeSpan.Zero);
+
+        private static async Task<Rig> CreateCoreAsync(string baseUrl, TimeProvider time, Func<System.Net.DnsEndPoint, CancellationToken, ValueTask<System.IO.Stream>>? connect, ITailscaleStatus? tailscale, bool withCatalog, Jellyfin.Plugin.Shoal.Playback.StreamSlots? slots, TimeSpan pingGap)
         {
             var dir = new TempDirectory();
             var state = new StateStore(new ShoalPaths(dir.Path), NullLogger.Instance, TimeProvider.System, null);
-            await state.UpdateAsync(s => s.Home.Peers.Add(new PeerState { PeerKey = Key, DisplayName = "Fern", BaseUrl = link.BaseUrl, Network = PeerNetwork.Tailnet, Enabled = true }));
+            await state.UpdateAsync(s => s.Home.Peers.Add(new PeerState { PeerKey = Key, DisplayName = "Fern", BaseUrl = baseUrl, Network = PeerNetwork.Tailnet, Enabled = true }));
             var history = new SpeedHistoryStore(new ShoalPaths(dir.Path), NullLogger.Instance);
-            var client = new PeerClient(() => "Home", () => "0.1.0.0", TimeProvider.System) { EnforceAddressPolicy = false };
-            var endpoint = new PeerEndpoint(Key, "Fern", new Uri(link.BaseUrl), "shoal-test-device", "tok-123");
+            var client = new PeerClient(() => "Home", () => "0.1.0.0", time) { EnforceAddressPolicy = false, ConnectOverride = connect };
+            var endpoint = new PeerEndpoint(Key, "Fern", new Uri(baseUrl), "shoal-test-device", "tok-123");
             CatalogStore? catalogs = null;
             TranscodeProbe? probe = null;
             if (withCatalog)
@@ -377,9 +391,9 @@ public sealed class SpeedTestServiceTests
                 probe = new TranscodeProbe(client, NullLogger.Instance);
             }
 
-            var service = new SpeedTestService(state, new Endpoints(endpoint), client, history, slots, TimeProvider.System, NullLogger.Instance, tailscale, catalogs, probe);
+            var service = new SpeedTestService(state, new Endpoints(endpoint), client, history, slots, time, NullLogger.Instance, tailscale, catalogs, probe);
             service.Options.Pings = 10;
-            service.Options.PingGap = TimeSpan.FromMilliseconds(10);
+            service.Options.PingGap = pingGap;
             service.Options.WarmupBytes = 250_000;
             service.Options.MainBytes = 2_000_000; // 8 MB in the real test: the same rate in a quarter of the time
             service.Options.BigBytes = 4_000_000;

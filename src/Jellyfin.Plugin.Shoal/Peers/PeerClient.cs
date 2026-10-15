@@ -73,6 +73,11 @@ public sealed class PeerClient : IDisposable
     internal bool EnforceAddressPolicy { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a replacement for opening the TCP connection (tests: an in-memory peer on a simulated clock). Never set in production.
+    /// </summary>
+    internal Func<System.Net.DnsEndPoint, CancellationToken, ValueTask<Stream>>? ConnectOverride { get; set; }
+
+    /// <summary>
     /// Gets or sets the name resolver (a seam for the rebinding tests).
     /// </summary>
     internal Func<string, CancellationToken, Task<IPAddress[]>> Resolver { get; set; } = (host, token) => Dns.GetHostAddressesAsync(host, token);
@@ -98,6 +103,77 @@ public sealed class PeerClient : IDisposable
         {
             connection.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Reads the public-key pin the server presents right now, for "Trust the new certificate" and for pinning (DESIGN 4.4). The connection
+    /// accepts whatever certificate comes (that is the point: the admin asked to learn it), so it sends <b>nothing</b> but an unauthenticated
+    /// HEAD request: no token, no device name, no body. The address policy still applies to the address and to every address a name resolves to.
+    /// </summary>
+    /// <param name="peer">The peer (only its address, network type and proxy are used).</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The pin (44 characters of base64) and whether the certificate also passes the normal chain and host name checks, or null when the address is not https, is refused by the policy, cannot be reached or presents no certificate.</returns>
+    public async Task<PresentedKey?> ReadPresentedKeyAsync(PeerEndpoint peer, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(peer);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!string.Equals(peer.BaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
+            || (EnforceAddressPolicy && !AddressPolicy.Validate(peer.BaseUri.AbsoluteUri, peer.Network, peer.LanCleartextAck, peer.ProxyUrl).Ok))
+        {
+            return null;
+        }
+
+        PresentedKey? found = null;
+        using var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.None,
+            UseCookies = false,
+            UseProxy = false,
+            MaxResponseHeadersLength = 32,
+            PooledConnectionLifetime = TimeSpan.FromSeconds(1),
+#pragma warning disable CA5398 // see PeerConnection
+#pragma warning disable CA5359 // on purpose: this connection only learns the key the server shows; it sends no credential and nothing is trusted from it
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+                {
+                    if (certificate is not null)
+                    {
+                        using var presented = new X509Certificate2(certificate);
+                        found = new PresentedKey(TlsPin.Compute(presented), errors == SslPolicyErrors.None);
+                    }
+
+                    return true; // only the key is read; nothing that matters is sent on this connection
+                }
+            }
+#pragma warning restore CA5359
+#pragma warning restore CA5398
+        };
+        if (AddressPolicy.TryParseProxy(peer.ProxyUrl, out var proxy))
+        {
+            handler.UseProxy = true;
+            handler.Proxy = new WebProxy(proxy);
+        }
+        else
+        {
+            var network = peer.Network;
+            handler.ConnectCallback = (context, token) => ConnectAsync(network, context, token);
+        }
+
+        using var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(8) };
+        using var message = new HttpRequestMessage(HttpMethod.Head, peer.BaseUri.GetLeftPart(UriPartial.Authority) + "/") { Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionOrLower };
+        try
+        {
+            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or AuthenticationException or TaskCanceledException)
+        {
+            // The handshake is what matters: a server that refuses the request after it still showed its certificate has told us its key.
+        }
+
+        return found;
     }
 
     /// <summary>
@@ -413,7 +489,7 @@ public sealed class PeerClient : IDisposable
             }
             else
             {
-                handler.ConnectCallback = (context, token) => owner.ConnectAsync(network, context, token);
+                handler.ConnectCallback = (context, token) => owner.ConnectOverride is { } simulated ? simulated(context.DnsEndPoint, token) : owner.ConnectAsync(network, context, token);
             }
 
             // Every call applies its own deadlines (CallBudget); the client-wide timeout would also cut a movie that streams for hours.

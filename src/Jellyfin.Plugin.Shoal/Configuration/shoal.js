@@ -774,6 +774,12 @@ const STRINGS = {
     fServerAddress: "Server address",
     fServerAddressHelp: "For example http://hops-jellyfin.tail1234.ts.net:8096",
     fServerAddressInvite: "Your friend's server address. The invite only works there.",
+    fServerAddressInviteNet: "It must be a Tailscale address (100.x or .ts.net) or an https address.",
+    inviteNudge: "If your friend has Shoal, ask them for an invite instead. It's easier and sets up their side for you.",
+    sendToFriend: "Send this to your friend",
+    sendToFriendIntro: "I'd like to watch some of your movies through Shoal. Please follow these steps on your Jellyfin server and tell me when you reach the code.",
+    addrPrivate: "This looks like an address on your friend's home network. You probably can't reach it from here. Use their Tailscale address (100.x or .ts.net) or an https address.",
+    addrHttps8096: "Jellyfin usually uses http on 8096 or https on 8920.",
     fReach: "How you reach it",
     reachTailnet: "Tailscale (private)",
     reachLan: "Home network (same house)",
@@ -1068,6 +1074,7 @@ const STRINGS = {
     removeTitle: "Remove {server}?",
     removeItem1: "Shoal signs out of {server} and deletes its key.",
     removeItem2: "People here stop seeing {server}'s titles.",
+    removeKeepsLibrary: "The library stays in Jellyfin and Shoal won't manage it any more.",
     removeAlsoDelete: ["Also delete the {library} library and its {count} entry", "Also delete the {library} library and its {count} entries"],
     removeConfirm: "Remove server",
 
@@ -1084,8 +1091,19 @@ const STRINGS = {
     notNow: "Not now",
     alertCertBody: "Shoal stopped talking to {server} because its certificate key is different from the one you pinned. That's normal when your friend renews or replaces the certificate, and a warning sign if they didn't. Ask them before you trust it.",
     trustTitle: "Trust {server}'s new certificate?",
-    trustBody: "Only do this if your friend told you they changed it.",
+    trustBody: "Only do this if your friend told you they changed it. Compare the fingerprint below with your friend before you continue.",
     trustIt: "Trust it",
+    pinTitle: "Pin {server}'s certificate?",
+    pinBody: "Shoal will only talk to this server while it shows this exact key. Compare the fingerprint below with your friend before you continue.",
+    pinIt: "Pin it",
+    pinAfterAddress: "Save the new address first, pair again, then pin the certificate.",
+    certFingerprint: "Fingerprint (SHA-256)",
+    certMatches: "My friend confirmed that this fingerprint matches",
+    certUntrustedWarn: "This certificate doesn't pass the normal checks. It may be self signed, expired or made for another name.",
+    certUntrustedCheck: "I trust this certificate anyway",
+    certReadFailed: "Shoal couldn't read the certificate. Check that the server is online.",
+    certChangedAgain: "The certificate changed again, check with your friend",
+    certUntrustedRefused: "That certificate doesn't pass the normal checks. Open the dialog again and tick the box to trust it anyway.",
     alertPolicyTitle: "The sharing account can do too much",
     alertPolicyBody: "{server}'s sharing account is allowed to {list}. Ask your friend to turn that off in the account's settings.",
     policy_allLibraries: "see all libraries",
@@ -1741,7 +1759,8 @@ function createApi(client) {
         syncPeer: (h) => call('POST', 'Peers/' + enc(h) + '/Sync'),
         pausePeer: (h) => call('POST', 'Peers/' + enc(h) + '/Pause'),
         resumePeer: (h) => call('POST', 'Peers/' + enc(h) + '/Resume'),
-        trustCertificate: (h) => call('POST', 'Peers/' + enc(h) + '/TrustCertificate'),
+        certificate: (h) => call('GET', 'Peers/' + enc(h) + '/Certificate'),
+        trustCertificate: (h, body) => call('POST', 'Peers/' + enc(h) + '/TrustCertificate', body),
         remoteLibraries: (h) => call('GET', 'Peers/' + enc(h) + '/RemoteLibraries'),
         addLibrary: (h, list) => call('POST', 'Peers/' + enc(h) + '/Libraries', list),
         removeLibrary: (h, m) => call('DELETE', 'Peers/' + enc(h) + '/Libraries/' + enc(m)),
@@ -2745,6 +2764,36 @@ function friendSteps(o) {
     return { node, text };
 }
 
+/**
+ * Soft warnings about a typed server address (not errors, Shoal still checks it): a private home network address can't be reached from
+ * another house, and https on Jellyfin's plain http port is unusual. Returns string keys. Tailscale addresses (100.64 to 100.127, .ts.net) are fine.
+ */
+function addressNotes(value) {
+    let u;
+    try {
+        u = new URL(String(value).trim());
+    } catch {
+        return [];
+    }
+
+    const host = u.hostname.replace(/^\[|\]$/g, '');
+    const notes = [];
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    if (m) {
+        const a = Number(m[1]);
+        const b = Number(m[2]);
+        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
+            notes.push('addrPrivate');
+        }
+    }
+
+    if (u.protocol === 'https:' && u.port === '8096') {
+        notes.push('addrHttps8096');
+    }
+
+    return notes;
+}
+
 /** The invite input's client check (ui-spec 6.10): after removing spaces and hyphens it starts with shoal1 and is long enough. */
 function looksLikeInvite(value) {
     const raw = String(value).replace(/[\s-]/g, '').toLowerCase();
@@ -2918,6 +2967,15 @@ async function confirmDialog(ctx, o) {
             if (o.checkbox) {
                 checkbox = checkRow({ id: uid('shoal-chk'), label: o.checkbox.label, checked: o.checkbox.checked });
                 body.append(checkbox.root);
+                if (o.checkbox.whenUnchecked) {
+                    // A note that only shows while the box is empty (Warden 11 L7: what "keep the library" leaves behind).
+                    const note = el('div', { class: 'shoal-hint shoal-hint--info', role: 'note', hidden: checkbox.input.checked }, icon('info', true), el('div', { class: 'shoal-hint__body', text: o.checkbox.whenUnchecked }));
+                    checkbox.input.addEventListener('change', () => {
+                        note.hidden = checkbox.input.checked;
+                    });
+                    body.append(note);
+                }
+
                 if (o.requireChecked) {
                     checkbox.input.addEventListener('change', () => {
                         dlg.buttons.confirm.disabled = !checkbox.input.checked;
@@ -2942,6 +3000,87 @@ async function confirmDialog(ctx, o) {
         ]
     });
     return { confirmed: result === 'confirm', checked: checkbox ? checkbox.input.checked : false };
+}
+
+/** The SHA-256 fingerprint as groups of four hex characters, easy to read out loud ("01:AB:CD:..." in, ["01AB", "CD.."] out). */
+function fingerprintGroups(fingerprint) {
+    const hex = String(fingerprint || '').replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+    const groups = [];
+    for (let i = 0; i < hex.length; i += 4) {
+        groups.push(hex.slice(i, i + 4));
+    }
+
+    return groups;
+}
+
+/** The words for a refused trust or pin (Warden 11 H1): the key moved again, or the chain check needs the extra tick. */
+function certErrorMessage(err, fallbackKey) {
+    if (err && err.kind === 'changedAgain') {
+        return t('certChangedAgain');
+    }
+
+    if (err && err.kind === 'untrusted') {
+        return t('certUntrustedRefused');
+    }
+
+    return failureMessage(err, fallbackKey);
+}
+
+/**
+ * Shows the key a server presents now (GET Certificate) and asks the admin to confirm its fingerprint with the friend before it is trusted
+ * or pinned (Warden 11 H1, M2). A Public server whose certificate fails the normal chain checks needs a second tick. Resolves to
+ * { expectedPin, acceptUntrusted? } for the request that follows, or null when the admin backed out or the key could not be read.
+ * o: { handle, title, intro, confirmLabel, publicNet }
+ */
+async function certificateCheck(ctx, o) {
+    let cert;
+    try {
+        cert = await ctx.api.certificate(o.handle);
+    } catch {
+        ctx.alertMessage(t('certReadFailed'));
+        return null;
+    }
+
+    const needsExtra = !!o.publicNet && cert.chainValid === false;
+    let agree = null;
+    let extra = null;
+    const result = await openDialog(ctx, {
+        title: o.title,
+        safeFocus: true,
+        build(body, dlg) {
+            body.append(paragraph(o.intro));
+            body.append(el('p', { class: 'shoal-meta', text: t('certFingerprint') }), el('p', { class: 'shoal-mono shoal-fingerprint', 'data-testid': 'fingerprint', text: fingerprintGroups(cert.fingerprint).join(' ') }));
+            agree = checkRow({ id: uid('shoal-cert'), label: t('certMatches'), checked: false });
+            if (needsExtra) {
+                body.append(hint('warn', 'warn', t('certUntrustedWarn')));
+                extra = checkRow({ id: uid('shoal-cert'), label: t('certUntrustedCheck'), checked: false });
+            }
+
+            body.append(agree.root);
+            if (extra) {
+                body.append(extra.root);
+            }
+
+            const refresh = () => {
+                dlg.buttons.confirm.disabled = !agree.input.checked || (extra !== null && !extra.input.checked);
+            };
+            agree.input.addEventListener('change', refresh);
+            if (extra) {
+                extra.input.addEventListener('change', refresh);
+            }
+
+            return null;
+        },
+        buttons: [
+            { label: t('cancel'), key: 'cancel', close: undefined },
+            { label: o.confirmLabel, key: 'confirm', variant: 'primary', disabled: true, close: 'confirm' }
+        ]
+    });
+    if (result !== 'confirm') {
+        return null;
+    }
+
+    return needsExtra ? { expectedPin: cert.pin, acceptUntrusted: true } : { expectedPin: cert.pin };
 }
 
 /* ====================================================================================== */
@@ -6357,7 +6496,7 @@ function pairScreen(ctx) {
             const fields = {};
             fields.invite = invite ? textField({ id: uid('shoal-pf'), label: t('fInvite'), help: t('fInviteHelp'), value: f.invite, mono: true, spellcheck: false, autocapitalize: 'characters', required: true }) : null;
             fields.name = textField({ id: uid('shoal-pf'), label: t('fServerName'), help: t('fServerNameHelp'), value: f.name, maxlength: 64, required: true });
-            fields.url = textField({ id: uid('shoal-pf'), label: t('fServerAddress'), help: t('fServerAddressHelp') + (invite ? ' ' + t('fServerAddressInvite') : ''), value: f.url, type: 'url', inputmode: 'url', spellcheck: false, required: true });
+            fields.url = textField({ id: uid('shoal-pf'), label: t('fServerAddress'), help: t('fServerAddressHelp') + (invite ? ' ' + t('fServerAddressInvite') + ' ' + t('fServerAddressInviteNet') : ''), value: f.url, type: 'url', inputmode: 'url', spellcheck: false, required: true });
             fields.network = selectField({
                 id: uid('shoal-pf'),
                 label: t('fReach'),
@@ -6368,7 +6507,13 @@ function pairScreen(ctx) {
             fields.proxy = textField({ id: uid('shoal-pf'), label: t('fProxy'), help: t('fProxyHelp'), value: f.proxy, mono: true, spellcheck: false });
             fields.lanAck = checkRow({ id: uid('shoal-pf'), label: t('fLanAck'), note: t('fLanAckNote'), checked: f.lanAck });
             const advanced = collapse(t('advanced'), fields.proxy.root);
+            const notesHost = el('div', { class: 'shoal-addrnotes' });
             const sync = () => {
+                clear(notesHost);
+                for (const key of addressNotes(fields.url.input.value)) {
+                    notesHost.append(hint('warn', 'warn', t(key)));
+                }
+
                 const net = fields.network.select.value;
                 const http = /^http:/i.test(fields.url.input.value.trim());
                 fields.lanAck.root.hidden = invite || !(net === 'LAN' && http);
@@ -6391,6 +6536,7 @@ function pairScreen(ctx) {
                 fields.invite ? fields.invite.root : null,
                 fields.name.root,
                 fields.url.root,
+                notesHost,
                 fields.network.root,
                 fields.lanAck.root,
                 advanced,
@@ -6479,6 +6625,15 @@ function pairScreen(ctx) {
                     }
                 });
             });
+            if (!invite) {
+                // The address path is the harder one for both sides: say so, and give the friend what they need (ui copy, no dashes).
+                const steps = friendSteps({ home: homeName(), code: '' });
+                formHost.append(hint('info', 'info', t('inviteNudge')), form, collapse(t('sendToFriend'), el('div', {},
+                    paragraph(t('sendToFriendIntro')), steps.node,
+                    copyButton(ctx, t('sendToFriendIntro') + '\n\n' + steps.text, 'copySteps', 'announceStepsCopied'))));
+                return;
+            }
+
             formHost.append(form);
         }
 
@@ -7516,7 +7671,7 @@ function serverDetailScreen(ctx) {
                     ctx.setCooldown(o.cooldownKey, err.retryAfter || 60);
                     ctx.alertMessage(t('availableIn', { n: ctx.cooldownMinutes(o.cooldownKey) || 1 }));
                 } else {
-                    ctx.alertMessage(failureMessage(err));
+                    ctx.alertMessage(o.errorText ? o.errorText(err) : failureMessage(err));
                 }
             }
         });
@@ -7543,7 +7698,7 @@ function serverDetailScreen(ctx) {
                     el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t(qc ? 'removeNoteQc' : 'removeNoteInvite') })),
                     alsoWatching() ? el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('removeStillWatches', { name: s.displayName }) })) : null
                 ],
-                checkbox: libs.length ? { label: t('removeAlsoDelete', { library: libs[0], count: ctx.fmt.num(entries), n: entries }), checked: true } : null,
+                checkbox: libs.length ? { label: t('removeAlsoDelete', { library: libs[0], count: ctx.fmt.num(entries), n: entries }), checked: true, whenUnchecked: t('removeKeepsLibrary') } : null,
                 typed: { label: t('typeToConfirm', { text: s.displayName }), expected: s.displayName },
                 confirmLabel: t('removeConfirm'),
                 danger: true
@@ -7708,9 +7863,9 @@ function serverDetailScreen(ctx) {
                 case 'tlsKeyChanged': {
                     const box = alertBox('bad', t('alertCertTitle', { server: sv }), t('alertCertBody', { server: sv }), [
                         button({ label: t('trustNewCert'), variant: 'primary', onClick: async (ev, btn) => {
-                            const res = await confirmDialog(ctx, { title: t('trustTitle', { server: sv }), intro: t('trustBody'), confirmLabel: t('trustIt') });
-                            if (res.confirmed) {
-                                act(btn, { busy: t('applying'), run: () => ctx.api.trustCertificate(s.handle), announce: t('announceCertTrusted') });
+                            const seen = await certificateCheck(ctx, { handle: s.handle, title: t('trustTitle', { server: sv }), intro: t('trustBody'), confirmLabel: t('trustIt'), publicNet: netClass(s) === 'public' });
+                            if (seen) {
+                                act(btn, { busy: t('applying'), run: () => ctx.api.trustCertificate(s.handle, seen), announce: t('announceCertTrusted'), errorText: certErrorMessage });
                             }
                         } }),
                         button({ label: t('removeServerEllipsis'), onClick: removeDialog(s) })
@@ -8131,12 +8286,20 @@ function serverDetailScreen(ctx) {
         const publicNet = netClass(s) === 'public';
         const pin = publicNet ? checkRow({ id: uid('shoal-ss'), label: t('fPin'), note: t('fPinNote'), checked: !!set.tlsPinned }) : null;
         const saved = el('span', { class: 'shoal-meta shoal-tone--ok', role: 'status', hidden: true }, icon('ok', true), t('saved'));
-        async function doSave(btn, confirmName) {
+        async function doSave(btn, confirmName, seen) {
             const a = Number(streams.input.value);
             const b = Number(priority.input.value);
             const payload = { maxConcurrentStreams: a, priority: b, url: address.value(), proxyUrl: proxy.value() || null, tlsPinned: pin ? pin.input.checked : false };
             if (confirmName) {
                 payload.confirmName = confirmName;
+            }
+
+            if (seen) {
+                // A new pin carries the key the admin compared with the friend (Warden 11 M2).
+                payload.expectedPin = seen.expectedPin;
+                if (seen.acceptUntrusted) {
+                    payload.acceptUntrusted = true;
+                }
             }
 
             await runAction(ctx, btn, {
@@ -8149,7 +8312,7 @@ function serverDetailScreen(ctx) {
                         load(false, true);
                     }
                 },
-                onError: (err) => ctx.alertMessage(failureMessage(err, 'saveFailed'))
+                onError: (err) => ctx.alertMessage(certErrorMessage(err, 'saveFailed'))
             });
         }
 
@@ -8160,6 +8323,20 @@ function serverDetailScreen(ctx) {
             priority.setError(Number.isInteger(b) && b >= 1 && b <= 1000 ? '' : t('errWholeNumber', { min: 1, max: 1000 }));
             if (streams.input.getAttribute('aria-invalid') || priority.input.getAttribute('aria-invalid')) {
                 return;
+            }
+
+            const newPin = !!pin && pin.input.checked && !set.tlsPinned;
+            if (newPin && !locked && hostChanged(s.url, address.value())) {
+                ctx.alertMessage(t('pinAfterAddress'));
+                return;
+            }
+
+            let seen = null;
+            if (newPin) {
+                seen = await certificateCheck(ctx, { handle: s.handle, title: t('pinTitle', { server: s.displayName }), intro: t('pinBody'), confirmLabel: t('pinIt'), publicNet: true });
+                if (!seen) {
+                    return;
+                }
             }
 
             if (!locked && hostChanged(s.url, address.value())) {
@@ -8178,7 +8355,7 @@ function serverDetailScreen(ctx) {
                 return;
             }
 
-            await doSave(btn, null);
+            await doSave(btn, null, seen);
         } });
         const reach = factList([[t('factReach'), t(netClass(s) === 'public' ? 'reachPublic' : netClass(s) === 'lan' ? 'reachLan' : 'reachTailnet')]]);
         const content = el('div', { class: 'shoal-form' }, streams.root, priority.root, address.root, proxy.root, reach, paragraph(t('reachChange'), 'shoal-meta'), pin ? pin.root : null, el('div', { class: 'shoal-step__actions' }, saveBtn, saved));
@@ -9384,5 +9561,5 @@ export default function ShoalController(view, params) {
 export {
     mount, createApi, createContext, makeFormat, chartModel, chartSummary, niceCeil, describeServer, describeFriend,
     summarizeServers, pickSelection, sortServers, verdictLine, serverStateKey, luminanceOf, uniquify, t, STRINGS, QUALITY_LINES,
-    admittedUsers, bottleneckText, ladderRows, nameList, toApiError, bannerModel, MISSING_STRINGS, friendSteps, outcomeInfo, normalizeCode, validCode, looksLikeInvite, describeLinkStatus
+    admittedUsers, bottleneckText, ladderRows, nameList, toApiError, bannerModel, MISSING_STRINGS, friendSteps, addressNotes, fingerprintGroups, outcomeInfo, normalizeCode, validCode, looksLikeInvite, describeLinkStatus
 };
