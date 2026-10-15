@@ -360,20 +360,20 @@ public sealed class SpeedTestService
         var size = Fit(Options.ParallelBytes, singleMbps / 2); // two streams share the link: each needs about half of it
         var both = await Task.WhenAll(RunBitrateAsync(endpoint, size, cancellationToken), RunBitrateAsync(endpoint, size, cancellationToken)).ConfigureAwait(false);
         var span = both.Max(r => r.EndTicks) - both.Min(r => r.StartTicks);
-        var seconds = Stopwatch.GetElapsedTime(0, span).TotalSeconds;
+        var seconds = _time.GetElapsedTime(0, span).TotalSeconds;
         return seconds > 0 ? Round(both.Sum(r => r.Bytes) * 8 / 1e6 / seconds) : null;
     }
 
     private async Task<double> PingAsync(PeerEndpoint endpoint, CancellationToken cancellationToken)
     {
-        var clock = Stopwatch.StartNew();
+        var started = _time.GetTimestamp();
         using var response = await _client.SendAsync(endpoint, PeerRequest.GetAnonymous("/System/Ping").WithoutBreaker(), PingProfile, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccess)
         {
             throw new PeerCallException(PeerFailureKind.BadResponse);
         }
 
-        return clock.Elapsed.TotalMilliseconds;
+        return _time.GetElapsedTime(started).TotalMilliseconds;
     }
 
     private async Task<BitrateRun> RunBitrateAsync(PeerEndpoint endpoint, long size, CancellationToken cancellationToken)
@@ -405,7 +405,7 @@ public sealed class SpeedTestService
             if (total == 0)
             {
                 // The clock starts when the first bytes arrive, so the wait for the first byte (latency) is not part of the rate.
-                startTicks = Stopwatch.GetTimestamp();
+                startTicks = _time.GetTimestamp();
                 first = read;
             }
 
@@ -416,8 +416,8 @@ public sealed class SpeedTestService
             }
         }
 
-        var endTicks = Stopwatch.GetTimestamp();
-        var elapsed = Stopwatch.GetElapsedTime(startTicks, endTicks);
+        var endTicks = _time.GetTimestamp();
+        var elapsed = _time.GetElapsedTime(startTicks, endTicks);
         var counted = total - first;
         if (total == 0 || counted <= 0 || elapsed <= TimeSpan.Zero)
         {
