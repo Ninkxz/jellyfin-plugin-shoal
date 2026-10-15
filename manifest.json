@@ -9,6 +9,14 @@
         "imageUrl":  "https://raw.githubusercontent.com/Ninkxz/jellyfin-plugin-shoal/main/docs/brand/shoal-plugin.png",
         "versions":  [
                          {
+                             "version":  "1.0.2.0",
+                             "changelog":  "Pairing guidance (ask for an invite, home network address warning), certificate trust shows the fingerprint before pinning, edit and remove friend servers, Overlap report.",
+                             "targetAbi":  "12.0.0.0",
+                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.2/shoal_1.0.2.0.zip",
+                             "checksum":  "da55e7d1d43ae14ba18a993ecacebf4f",
+                             "timestamp":  "2026-10-15T20:06:24Z"
+                         },
+                         {
                              "version":  "1.0.1.0",
                              "changelog":  "Fixes: the Add and start syncing button did nothing; a fresh install now picks its library folder automatically; add errors show next to the button.",
                              "targetAbi":  "12.0.0.0",
