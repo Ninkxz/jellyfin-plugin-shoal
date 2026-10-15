@@ -48,7 +48,7 @@ jobs:
 
       - name: Shell scripts parse
         run: |
-          for f in lab/*.sh tools/*.sh; do bash -n "$f"; done
+          shopt -s nullglob; for f in lab/*.sh tools/*.sh; do bash -n "$f"; done
 
       - name: Package (smoke test of build/build.ps1 and build/manifest.ps1)
         shell: pwsh
