@@ -1,0 +1,1259 @@
+/*
+ * In-memory stand-in for Shoal/Admin/* (DESIGN 9.6, ui-spec 13), used by the development harness and
+ * the render tests. It is the only place that knows the mock data; shoal.js has no alternate source.
+ *
+ * Shapes follow ui-spec 13 with the v2 names (serverIdPrefix, pairing session, access/drift, ...).
+ * Shapes DESIGN does not define yet are marked "proposed" in docs/kiro2-02-ui.md.
+ *
+ * Plain ES module, no Node or browser APIs, so jsdom tests and the browser harness share it.
+ */
+
+export const SCENARIOS = [
+    'default', 'empty', 'friendsOnly', 'problems', 'recovery', 'recoveryNewer', 'keys', 'restored',
+    'hostile', 'error', 'slow', 'oneServer', 'nothingShared'
+];
+
+export const XSS = '<img src=x onerror=alert(1)>';
+
+const MIN = 60000;
+const HOUR = 3600000;
+const DAY = 86400000;
+
+function iso(ms) {
+    return new Date(ms).toISOString();
+}
+
+/** Small deterministic generator so charts look the same on every load. */
+function rng(seed) {
+    let s = seed >>> 0 || 1;
+    return () => {
+        s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+        return s / 4294967296;
+    };
+}
+
+function clone(v) {
+    return v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+}
+
+function fail(status, error, headers) {
+    return { status, body: error ? { error } : {}, headers: headers || {} };
+}
+
+function ok(body, status) {
+    return { status: status || 200, body: body === undefined ? {} : body, headers: {} };
+}
+
+const NEEDED = { remux4k: 70, remux1080: 35, '4k': 30, '1080p': 15, '1080pTranscode': 8, '720p': 5 };
+
+function ladderFor(mbps, transcodeOk) {
+    return Object.entries(NEEDED).map(([cls, needed]) => {
+        let verdict;
+        if (mbps >= needed * 1.5) {
+            verdict = 'smooth';
+        } else if (mbps >= needed) {
+            verdict = 'mayBuffer';
+        } else if (transcodeOk && cls !== '720p' && cls !== '1080pTranscode' && mbps >= 8) {
+            verdict = 'needsTranscode';
+        } else {
+            verdict = 'willBuffer';
+        }
+
+        return { cls, verdict, neededMbps: needed };
+    });
+}
+
+function verdictSummary(mbps) {
+    const l = ladderFor(mbps, true);
+    const by = Object.fromEntries(l.map((r) => [r.cls, r.verdict]));
+    return [
+        { cls: '1080p', verdict: by['1080p'] },
+        { cls: '4k', verdict: by['4k'] },
+        { cls: 'remux', verdict: by.remux4k }
+    ];
+}
+
+export function createMock(options) {
+    const opt = Object.assign({ scenario: 'default', now: () => Date.now(), delayMs: 0, pairing: 'ok', probeError: '' }, options || {});
+    const now = () => opt.now();
+    const calls = [];
+    const hostile = opt.scenario === 'hostile';
+    const X = (label) => (hostile ? XSS : label);
+
+    /* ---------------- local users ---------------- */
+    const users = [
+        { id: 'u-rich', name: hostile ? XSS : 'Rich', imageTag: 'a1', isAdmin: true, isDisabled: false, allLibraries: true, managedByShoal: false, restricted: false },
+        { id: 'u-sam', name: hostile ? XSS + ' sam' : 'Sam', imageTag: null, isAdmin: false, isDisabled: false, allLibraries: true, managedByShoal: false, restricted: false },
+        { id: 'u-alex', name: 'Alex', imageTag: null, isAdmin: false, isDisabled: false, allLibraries: false, managedByShoal: false, restricted: false },
+        { id: 'u-kit', name: 'Kit', imageTag: null, isAdmin: false, isDisabled: false, allLibraries: false, managedByShoal: true, restricted: true },
+        { id: 'u-mum', name: 'Mum', imageTag: null, isAdmin: false, isDisabled: false, allLibraries: true, managedByShoal: false, restricted: false },
+        { id: 'u-jo', name: 'Jo', imageTag: null, isAdmin: true, isDisabled: true, allLibraries: true, managedByShoal: false, restricted: false },
+        { id: 'u-share-sam', name: 'shoal-sam', imageTag: null, isAdmin: false, isDisabled: false, allLibraries: false, managedByShoal: false, restricted: false, isShareUser: true }
+    ];
+
+    const self = { homeName: 'Rich’s Jellyfin', currentUserId: 'u-rich' };
+
+    /* ---------------- servers ---------------- */
+    const t0 = now();
+    const mkLatest = (key, title, year) => ({ localItemId: 'item-' + key, title: X(title), year, backdropTag: 'bd-' + key, primaryTag: 'pr-' + key });
+
+    const servers = new Map();
+    const detail = new Map();
+
+    function addServer(def) {
+        const s = Object.assign({
+            proxy: false, pairingError: null, paired: true, path: 'direct', derpRegion: null, rttMs: 38, mbps: 42, jitterMs: 4, lossPct: 0,
+            offlineSinceUtc: null, nextCheckUtc: null, syncing: false, titleCount: 0, alertCount: 0, heldRemovals: 0, heldAdditions: 0,
+            activeStreams: { n: 0, max: 4 }, hints: [], latest: null,
+            lastSync: { atUtc: iso(t0 - 12 * MIN), result: 'ok', added: 3, removed: 0 }
+        }, def);
+        s.verdictSummary = def.verdictSummary || (s.mbps ? verdictSummary(s.mbps) : []);
+        servers.set(s.handle, s);
+        return s;
+    }
+
+    if (!['empty', 'friendsOnly'].includes(opt.scenario)) {
+        addServer({
+            handle: 'h-hops', displayName: X('Hops'), url: 'http://hops-jellyfin.tail1234.ts.net:8096', network: 'Tailnet', status: 'Online',
+            path: 'direct', rttMs: 38, mbps: 42, titleCount: 1204, latest: mkLatest('hops-1', 'Sintel', 2010)
+        });
+        if (opt.scenario !== 'oneServer') {
+            addServer({
+                handle: 'h-fern', displayName: X('Fernwood'), url: 'https://fernwood.example.net', network: 'Public', status: 'Online',
+                path: 'derp', derpRegion: 'Frankfurt', rttMs: 96, mbps: 17, jitterMs: 9, titleCount: 386, activeStreams: { n: 1, max: 4 },
+                latest: mkLatest('fern-1', 'Tears of Steel', 2012),
+                hints: [{ kind: 'relayed', severity: 'warn' }]
+            });
+            addServer({
+                handle: 'h-gran', displayName: X('Granite'), url: 'http://192.168.1.40:8096', network: 'LAN', status: 'Offline',
+                path: 'unknown', rttMs: null, mbps: null, titleCount: 612, offlineSinceUtc: iso(t0 - 2 * HOUR - 20 * MIN), nextCheckUtc: iso(t0 + 4 * MIN),
+                latest: mkLatest('gran-1', 'Big Buck Bunny', 2008), lastSync: { atUtc: iso(t0 - 3 * HOUR), result: 'ok', added: 0, removed: 0 }
+            });
+        }
+    }
+
+    if (opt.scenario === 'nothingShared') {
+        servers.forEach((s) => { s.titleCount = 0; s.latest = null; });
+    }
+
+    if (opt.scenario === 'problems') {
+        servers.clear();
+        addServer({ handle: 'h-hops', displayName: 'Hops', url: 'http://hops-jellyfin.tail1234.ts.net:8096', network: 'Tailnet', status: 'Online', path: 'direct', titleCount: 1204, syncing: true, latest: mkLatest('hops-1', 'Sintel', 2010), heldRemovals: 140, heldAdditions: 0, alertCount: 3 });
+        addServer({ handle: 'h-fern', displayName: 'Fernwood', url: 'https://fernwood.example.net', network: 'Public', status: 'Degraded', path: 'derp?', rttMs: 140, mbps: 9, jitterMs: 62, lossPct: 4, titleCount: 386, latest: mkLatest('fern-1', 'Tears of Steel', 2012), heldAdditions: 600, alertCount: 1 });
+        addServer({ handle: 'h-gran', displayName: 'Granite', url: 'http://192.168.1.40:8096', network: 'LAN', status: 'Offline', path: 'unknown', rttMs: null, mbps: null, titleCount: 612, offlineSinceUtc: iso(t0 - 2 * HOUR), nextCheckUtc: iso(t0 + 4 * MIN), latest: mkLatest('gran-1', 'Big Buck Bunny', 2008) });
+        addServer({ handle: 'h-pine', displayName: 'Pinecone', url: 'https://pinecone.example.net', network: 'Public', status: 'AuthFailed', path: 'unknown', rttMs: null, mbps: null, titleCount: 90, latest: mkLatest('pine-1', 'Spring', 2019) });
+        addServer({ handle: 'h-ivy', displayName: 'Ivy', url: 'http://ivy.tail1234.ts.net:8096', network: 'Tailnet', status: 'IdentityMismatch', path: 'unknown', rttMs: null, mbps: null, titleCount: 52, latest: mkLatest('ivy-1', 'Cosmos Laundromat', 2015) });
+        addServer({ handle: 'h-cedar', displayName: 'Cedar', url: 'https://cedar.example.net', network: 'Public', status: 'TlsKeyChanged', path: 'unknown', rttMs: null, mbps: null, titleCount: 210, alertCount: 1, latest: mkLatest('cedar-1', 'Agent 327', 2017) });
+        addServer({ handle: 'h-maple', displayName: 'Maple', url: 'http://maple.tail1234.ts.net:8096', network: 'Tailnet', status: 'Disabled', path: 'unknown', rttMs: null, mbps: null, titleCount: 77, latest: mkLatest('maple-1', 'Hero', 2018) });
+        addServer({ handle: 'h-new', displayName: 'Willow', url: 'http://willow.tail1234.ts.net:8096', network: 'Tailnet', status: 'Pairing', path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
+        addServer({ handle: 'h-stop', displayName: 'Birch', url: 'https://birch.example.net', network: 'Public', status: 'PairingAborted', pairingError: 'codesDidNotMatch', pairingMethod: 'qc', pairingStoppedUtc: iso(t0 - 20 * MIN), paired: false, path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
+        addServer({ handle: 'h-alder', displayName: 'Alder', url: 'http://alder.tail1234.ts.net:8096', network: 'Tailnet', status: 'PairingAborted', pairingError: 'network', pairingMethod: 'qc', pairingStoppedUtc: iso(t0 - 3 * HOUR), paired: true, path: 'unknown', rttMs: null, mbps: null, titleCount: 340 });
+        addServer({ handle: 'h-elm', displayName: 'Elm', url: 'https://elm.example.net', network: 'Public', status: 'PairingAborted', pairingError: 'interrupted', pairingPhase: 'awaitingConfirm', pairingMethod: 'qc', pairingStoppedUtc: iso(t0 - 50 * MIN), paired: false, path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
+    }
+
+    const recentlyShared = [];
+    const posterDefs = [['Sintel', 2010, 15, 'hops-1', 'h-hops', 'Hops'], ['Tears of Steel', 2012, 12, 'fern-1', 'h-fern', 'Fernwood'], ['Big Buck Bunny', 2008, 10, 'gran-1', 'h-gran', 'Granite'], ['Spring', 2019, 8, 'hops-2', 'h-hops', 'Hops'],
+        ['Cosmos Laundromat', 2015, 12, 'hops-3', 'h-hops', 'Hops'], ['Agent 327', 2017, 4, 'fern-2', 'h-fern', 'Fernwood'], ['Hero', 2018, 5, 'hops-4', 'h-hops', 'Hops'], ['Caminandes', 2013, 6, 'gran-2', 'h-gran', 'Granite'],
+        ['Glass Half', 2015, 3, 'fern-3', 'h-fern', 'Fernwood'], ['Charge', 2022, 4, 'hops-5', 'h-hops', 'Hops'], ['Coffee Run', 2020, 3, 'hops-6', 'h-hops', 'Hops'], ['Wing It!', 2023, 4, 'fern-4', 'h-fern', 'Fernwood']];
+    if (servers.size && opt.scenario !== 'nothingShared') {
+        posterDefs.forEach(([title, year, runtimeMin, key, serverHandle, serverName], i) => {
+            if (servers.has(serverHandle)) {
+                recentlyShared.push({ localItemId: 'item-' + key, title: X(title), year, runtimeMin, serverHandle, serverName: X(serverName), primaryTag: 'pr-' + key, kind: i === 3 ? 'yourCopy' : 'shared' });
+            }
+        });
+    }
+
+    /* ---------------- libraries (mappings) ---------------- */
+    const mappings = [];
+    if (servers.size) {
+        const mk = (key, name, serverHandle, serverName, count, access, extra) => Object.assign({
+            mappingKey: key, localLibraryName: X(name), remoteName: 'Movies', serverHandle, serverName: X(serverName), count,
+            lastSync: { atUtc: iso(t0 - 12 * MIN), result: 'ok', added: 3, removed: 0 }, heldRemovals: 0, heldAdditions: 0,
+            access, drift: []
+        }, extra || {});
+        if (servers.has('h-hops')) {
+            mappings.push(mk('m-hops-movies', 'Hops Movies', 'h-hops', 'Hops', 1204, { mode: 'Selected', selectedUserIds: ['u-rich'], includeRestricted: false }));
+        }
+
+        if (servers.has('h-fern')) {
+            mappings.push(mk('m-fern-movies', 'Fernwood Movies', 'h-fern', 'Fernwood', 386, { mode: 'Everyone', selectedUserIds: ['u-rich', 'u-sam'], includeRestricted: false },
+                { heldAdditions: opt.scenario === 'problems' ? 600 : 0 }));
+        }
+
+        if (servers.has('h-gran')) {
+            mappings.push(mk('m-gran-movies', 'Granite Movies', 'h-gran', 'Granite', 612, { mode: 'Selected', selectedUserIds: [], includeRestricted: false }, {
+                lastSync: { atUtc: iso(t0 - 3 * HOUR), result: 'ok', added: 0, removed: 0 },
+                drift: [{ userId: 'u-alex', kind: 'extraAccess' }, { userId: 'u-kit', kind: 'managed' }]
+            }));
+        }
+
+        if (opt.scenario === 'problems') {
+            mappings.forEach((m) => {
+                if (m.serverHandle === 'h-hops') {
+                    m.heldRemovals = 140;
+                }
+            });
+        }
+    }
+
+    /* ---------------- friends (sharing side) ---------------- */
+    const shares = new Map();
+    function addShare(def) {
+        shares.set(def.handle, Object.assign({
+            status: 'Active', libraryIds: ['lib-movies'], maxBitrateMbps: 20, maxConcurrentTranscodes: 4, shareUserName: 'shoal-' + def.handle.replace('f-', ''),
+            sinceUtc: iso(t0 - 9 * DAY), lastSeenUtc: iso(t0 - 4 * MIN), playingNow: 0, transcodingNow: 0, unexpectedDeviceCount: 0,
+            invite: { state: 'none' }, approval: { state: 'none' },
+            lastRotatedUtc: null, rotationCount: 0, rotationFailed: false,
+            devices: []
+        }, def));
+    }
+
+    if (opt.scenario !== 'empty') {
+        addShare({
+            handle: 'f-sam', friendName: hostile ? XSS : 'Sam', playingNow: 2, transcodingNow: 1,
+            devices: [{ deviceHandle: 'd-1', name: hostile ? XSS : 'Shoal: Sam’s Jellyfin (K7QM)', app: 'Shoal', version: '0.1.0', firstSeenUtc: iso(t0 - 9 * DAY), lastSeenUtc: iso(t0 - 4 * MIN), expected: true, signedOut: false }]
+        });
+        addShare({
+            handle: 'f-jo', friendName: 'Jo', status: 'Paused', libraryIds: ['lib-movies', 'lib-kids'], maxBitrateMbps: null, lastSeenUtc: iso(t0 - 3 * DAY), unexpectedDeviceCount: opt.scenario === 'problems' ? 2 : 1,
+            devices: [
+                { deviceHandle: 'd-2', name: 'Shoal: Jo’s Jellyfin (4RZP)', app: 'Shoal', version: '0.1.0', firstSeenUtc: iso(t0 - 20 * DAY), lastSeenUtc: iso(t0 - 3 * DAY), expected: true, signedOut: false },
+                { deviceHandle: 'd-3', name: hostile ? XSS : 'Chrome on Windows', app: 'Jellyfin Web', version: '12.1.0', firstSeenUtc: iso(t0 - 3 * DAY), lastSeenUtc: iso(t0 - 3 * DAY), expected: false, signedOut: true }
+            ]
+        });
+        if (opt.scenario === 'problems') {
+            addShare({ handle: 'f-lee', friendName: 'Lee', status: 'AccessRemoved', libraryIds: ['lib-movies'], lastSeenUtc: iso(t0 - 10 * DAY) });
+            const sam = shares.get('f-sam');
+            sam.approval = { state: 'pending', homeName: hostile ? XSS : 'Sam’s Jellyfin', homeServerIdPrefix: '3fa91c7e', addressClass: 'tailnet', triesLeft: 3 };
+            sam.invite = { state: 'active', expiresUtc: iso(t0 + 9 * MIN) };
+        }
+    }
+
+    /* ---------------- two-way friends and token rotation (DESIGN v2.6.1, v2.6.2) ---------------- */
+    const ROLL_UP = ['AuthFailed', 'IdentityMismatch', 'TlsKeyChanged', 'PairingAborted', 'Offline', 'Degraded', 'Paused', 'Online'];
+    const rollUp = (a, b) => {
+        const rank = (x) => (x === null || x === undefined ? 99 : ROLL_UP.indexOf(x) < 0 ? ROLL_UP.indexOf('Degraded') : ROLL_UP.indexOf(x));
+        return rank(a) <= rank(b) ? (a ?? b) : b;
+    };
+
+    // Sam's server is Hops: the same person on both sides (linked by the server id prefix in the real thing).
+    const linkedPairs = opt.twoWay === false ? [] : [['f-sam', 'h-hops']];
+    if (opt.twoWayShare && shares.get('f-sam')) {
+        shares.get('f-sam').status = opt.twoWayShare;
+    }
+
+    if (shares.get('f-sam') && (opt.shareRotationFailed || opt.shareRotatedDaysAgo)) {
+        shares.get('f-sam').rotationFailed = !!opt.shareRotationFailed;
+        shares.get('f-sam').lastRotatedUtc = opt.shareRotatedDaysAgo ? iso(t0 - opt.shareRotatedDaysAgo * DAY) : null;
+        shares.get('f-sam').rotationCount = opt.shareRotatedDaysAgo ? 2 : 0;
+    }
+
+    if (opt.twoWayServer && servers.get('h-hops')) {
+        servers.get('h-hops').status = opt.twoWayServer;
+    }
+
+    const rotationState = new Map([['h-fern', { days: 0, lastRotatedUtc: iso(t0 - 12 * DAY), error: opt.rotationError || null, overdue: !!opt.rotationOverdue }]]);
+    const shareStatusWord = (f) => (f.status === 'Active' ? 'Online' : f.status === 'Paused' ? 'Paused' : 'AuthFailed');
+
+    function shareSide(f) {
+        return {
+            shareHandle: f.handle, status: f.status, libraryCount: f.libraryIds.length, deviceCount: f.devices.length, unexpectedDeviceCount: f.unexpectedDeviceCount,
+            playingNow: f.playingNow, transcodingNow: f.transcodingNow, lastSeenUtc: f.lastSeenUtc
+        };
+    }
+
+    function friendLinks() {
+        const out = [];
+        const usedShares = new Set();
+        for (const s of servers.values()) {
+            const pair = linkedPairs.find((p) => p[1] === s.handle && shares.has(p[0]));
+            const f = pair ? shares.get(pair[0]) : null;
+            if (f) {
+                usedShares.add(f.handle);
+            }
+
+            out.push({
+                friendHandle: 'fl-' + s.handle + (f ? '-' + f.handle : ''), name: s.displayName, linked: !!f,
+                status: f ? rollUp(s.status, shareStatusWord(f)) : s.status,
+                watch: { peerHandle: s.handle, status: s.status, titles: s.titleCount, activeStreams: s.activeStreams.n },
+                share: f ? shareSide(f) : null
+            });
+        }
+
+        for (const f of shares.values()) {
+            if (!usedShares.has(f.handle)) {
+                out.push({ friendHandle: 'fl-' + f.handle, name: f.friendName, linked: false, status: shareStatusWord(f), watch: null, share: shareSide(f) });
+            }
+        }
+
+        return out;
+    }
+
+    function rotationOf(s) {
+        const supported = (s.pairingMethod || (s.handle === 'h-fern' ? 'invite' : 'qc')) === 'invite';
+        const r = rotationState.get(s.handle) || { days: 0, lastRotatedUtc: null, error: null, overdue: false };
+        const base = r.lastRotatedUtc ? Date.parse(r.lastRotatedUtc) : t0 - 9 * DAY;
+        return {
+            supported, days: supported ? r.days : 0, lastRotatedUtc: supported ? r.lastRotatedUtc : null,
+            nextDueUtc: supported && r.days > 0 ? iso(base + r.days * DAY) : null, error: supported ? r.error : null, overdue: supported && r.overdue
+        };
+    }
+
+    const ownLibraries = [
+        { id: 'lib-movies', name: hostile ? XSS : 'Movies', type: 'movies', count: 2480, selectable: true },
+        { id: 'lib-kids', name: 'Kids', type: 'movies', count: 310, selectable: true },
+        { id: 'lib-tv', name: 'TV shows', type: 'tvshows', count: 120, selectable: false },
+        { id: 'lib-friend', name: hostile ? XSS : 'Hops Movies', type: 'movies', count: 1204, selectable: false, shareable: false, reason: 'federated' }
+    ];
+
+    /* ---------------- settings, protection, state ---------------- */
+    const settings = {
+        stubRoot: '/var/lib/jellyfin/shoal/library', stubRootCheck: 'ok', syncIntervalHours: 6,
+        massDeletionMinCount: 25, massDeletionPercent: 10, newItemsMinCount: 500, newItemsPercent: 20,
+        diskQuotaGbPerPeer: 2, artQuality: 'Standard', autoFitQualityToLink: true, maxStreamsPerUser: 4, hlsSubtitlesEnabled: true,
+        speedTestIntervalHours: 6, notifyClientsWhenOffline: true, parkOfflinePeers: false, parkAfterHours: 72,
+        tailscaleSocket: 'auto', tailscaleDetected: true, keySource: 'file', secretsVolumeUnsafe: false,
+        alternateVersionsEnabled: false, trickplayEnabled: true, trickplayCacheGb: 1, trickplayCacheBytes: opt.trickplayBytes ?? 312 * 1024 * 1024, attachmentsEnabled: true, reencodeImages: true,
+        imageSandbox: opt.sandbox === 'unavailable' ? { state: 'unavailable', limits: 'partial', reason: opt.sandboxReason || 'ffmpegMissing', rejected: 0 }
+            : opt.sandbox === 'partial' ? { state: 'active', limits: 'partial', reason: null, rejected: 4 } : { state: 'active', limits: 'full', reason: null, rejected: 0 }
+    };
+
+    // Sharing accounts no share uses (Warden 08 M7): the Overview lists them, the admin deletes them.
+    const orphans = new Map((opt.orphans ? [
+        { id: '9a1e0000-0000-4000-8000-000000000001', name: hostile ? XSS : 'shoal-riley-3f2a', isDisabled: false },
+        { id: '9a1e0000-0000-4000-8000-000000000002', name: 'shoal-old-91bc', isDisabled: true }
+    ] : []).map((a) => [a.id, a]));
+
+    const hardening = {
+        mode: 'LogOnly', modes: ['LogOnly', 'Enforce', 'Off'], sinceUtc: iso(t0 - 9 * DAY),
+        counters: [
+            { app: hostile ? XSS : 'Jellyfin for Kodi', network: 'tailnet', kind: 'stream', count: 14 },
+            { app: 'VLC', network: 'internet', kind: 'stream', count: 3 }
+        ],
+        guardErrors: 0, shieldHits: 12, transcodeCapHits: 2,
+        inviteFailures: { lastHour: opt.inviteFails || 0, notice: (opt.inviteFails || 0) >= 5 }, proxySuspected: !!opt.proxySuspected
+    };
+
+    const stateInfo = {
+        mode: 'Normal', files: [
+            { file: 'state.json.bak', writtenUtc: iso(t0 - 2 * HOUR), kind: 'bak' },
+            { file: 'state-2026-10-14.json', writtenUtc: iso(t0 - 1 * DAY), kind: 'daily' },
+            { file: 'state-2026-10-13.json', writtenUtc: iso(t0 - 2 * DAY), kind: 'daily' }
+        ],
+        lastBackupUtc: iso(t0 - 2 * HOUR), findings: [], backupByCopy: !!opt.backupByCopy
+    };
+    if (opt.scenario === 'problems') {
+        stateInfo.findings = [
+            { kind: 'missingKey', peerHandle: 'h-pine', serverName: 'Pinecone' },
+            { kind: 'missingFolder', peerHandle: 'h-ivy', serverName: 'Ivy' },
+            { kind: 'orphanLibrary', library: 'Old Friend Movies' }
+        ];
+    }
+
+    const banner = { mode: 'Normal', reason: null, restoredFrom: null };
+    let secretsUnreadable = false;
+    if (opt.scenario === 'recovery') {
+        banner.mode = 'Recovery';
+        banner.reason = 'unreadable';
+        banner.guardLastGood = opt.guardLastGood || 'ok';
+        stateInfo.mode = 'Recovery';
+    } else if (opt.scenario === 'recoveryNewer') {
+        banner.mode = 'Recovery';
+        banner.reason = 'newerSchema';
+        banner.guardLastGood = opt.guardLastGood || 'unreadable';
+        stateInfo.mode = 'Recovery';
+    } else if (opt.scenario === 'keys') {
+        secretsUnreadable = true;
+    } else if (opt.scenario === 'restored') {
+        banner.restoredFrom = { file: 'state.json.bak', atUtc: iso(t0 - 5 * HOUR), needsConfirm: true };
+    }
+
+    const cooldownUntil = new Map();
+
+    /* ---------------- derived: alerts and server detail ---------------- */
+    function alertsFor(s) {
+        const a = [];
+        const ex = [X('Sintel'), X('Spring'), X('Hero')];
+        if (s.heldRemovals) {
+            a.push({ kind: 'heldRemovals', severity: 'warn', count: s.heldRemovals, examples: ex });
+        }
+
+        if (s.heldAdditions) {
+            a.push({ kind: 'heldAdditions', severity: 'warn', count: s.heldAdditions, examples: ex });
+        }
+
+        if (s.status === 'AuthFailed') {
+            a.push({ kind: 'authFailed', severity: 'bad' });
+        }
+
+        if (s.status === 'IdentityMismatch') {
+            a.push({ kind: 'identityMismatch', severity: 'bad' });
+        }
+
+        if (s.status === 'TlsKeyChanged') {
+            a.push({ kind: 'tlsKeyChanged', severity: 'bad', pinnedKey: 'sha256:9f2c1b7a44d0e8aa3b65c1f0d2e97a18b3c4d5e6f708192a3b4c5d6e7f801234', presentedKey: hostile ? XSS : 'sha256:41ab90cc7d1e2f3a4b5c6d7e8f9091a2b3c4d5e6f708192a3b4c5d6e7f805678' });
+        }
+
+        if (opt.scenario === 'problems' && s.handle === 'h-hops') {
+            a.push({ kind: 'foreignDevice', severity: 'bad', deviceName: XSS });
+            a.push({ kind: 'policy', severity: 'warn', policy: ['allLibraries', 'download'] });
+            a.push({ kind: 'mergedVersion', severity: 'warn', localItemId: 'item-hops-1', title: X('Sintel') });
+            a.push({ kind: 'diskQuota', severity: 'warn' });
+            a.push({ kind: 'entityCap', severity: 'warn' });
+            a.push({ kind: 'entryCap', severity: 'bad' });
+            a.push({ kind: 'stubFolder', severity: 'bad' });
+        }
+
+        return a;
+    }
+
+    function serverDetail(s) {
+        const d = detail.get(s.handle) || {};
+        return Object.assign(clone(s), {
+            serverIdPrefix: d.serverIdPrefix || (s.handle.length * 1234567).toString(16).padStart(8, '0').slice(0, 8),
+            pairedUtc: s.paired === false ? undefined : iso(t0 - 9 * DAY), pairingMethod: s.pairingMethod || (s.handle === 'h-fern' ? 'invite' : 'qc'),
+            deviceLock: s.handle === 'h-fern' ? undefined : (s.handle === 'h-gran' ? 'missing' : 'confirmed'),
+            sessionLimit: s.handle === 'h-fern' ? undefined : (s.handle === 'h-gran' || opt.sessionLimit === 'notSet' ? 'notSet' : 'ok'),
+            accountNotes: s.handle === 'h-fern' ? undefined : ['passwordSelfChange', 'unusedOptions'],
+            pairingSession: session && session.peerHandle === s.handle && !session.error ? 'ps-1' : undefined,
+            libraries: clone(mappings.filter((x) => x.serverHandle === s.handle)),
+            users: clone(users),
+            alerts: alertsFor(s),
+            usage: { diskBytes: 0.8e9, quotaBytes: 2e9, stubs: s.titleCount, people: 4120, genres: 38, studios: 210 },
+            settings: { maxConcurrentStreams: 4, priority: 100, proxyUrl: s.proxy ? 'socks5://127.0.0.1:1055' : '', tlsPinned: false },
+            rotation: rotationOf(s),
+            link: (() => {
+                const pair = linkedPairs.find((p) => p[1] === s.handle && shares.has(p[0]));
+                return pair ? friendLinks().find((l) => l.watch && l.watch.peerHandle === s.handle) : undefined;
+            })(),
+            streams: s.activeStreams.n ? [{ person: X('Sam'), title: X('Tears of Steel'), method: 'Direct', startedUtc: iso(t0 - 22 * MIN), mbps: 14 }] : [],
+            updatedUtc: iso(t0 - 5 * MIN)
+        });
+    }
+
+    function speedFor(s, range) {
+        const spanMs = { '24h': DAY, '7d': 7 * DAY, '30d': 30 * DAY }[range] || DAY;
+        const r = rng(s.handle.length * 977 + (range === '24h' ? 1 : range === '7d' ? 2 : 3));
+        const samples = [];
+        const online = !['Offline', 'AuthFailed', 'IdentityMismatch', 'TlsKeyChanged', 'Disabled', 'Pairing', 'PairingAborted'].includes(s.status);
+        const base = s.mbps || 12;
+        const stepMs = range === '24h' ? 6 * HOUR : range === '7d' ? 6 * HOUR : 12 * HOUR;
+        if (opt.scenario === 'nothingShared' || s.status === 'Pairing' || s.status === 'PairingAborted') {
+            return { samples: [], offline: [], routeChanges: [], kpis: {}, ladder: [], bottleneck: { kind: 'none' }, localApiAvailable: true, cooldowns: {}, route: { kind: 'unknown' }, hints: [] };
+        }
+
+        for (let ms = t0 - spanMs + stepMs / 2; ms < t0; ms += stepMs) {
+            const v = Math.max(2, base * (0.55 + r() * 0.75));
+            samples.push({ t: iso(ms), kind: 'scheduled', mbps: Math.round(v * 10) / 10, rttMedianMs: Math.round((s.rttMs || 60) * (0.9 + r() * 0.3)), rttP90Ms: Math.round((s.rttMs || 60) * 1.4), jitterMs: Math.round(r() * 12), lossPct: 0, path: s.path === 'derp' ? 'derp' : 'direct' });
+        }
+
+        if (online) {
+            samples.push({ t: iso(t0 - 18 * MIN), kind: 'manual', mbps: s.mbps, rttMedianMs: s.rttMs, rttP90Ms: Math.round(s.rttMs * 1.3), jitterMs: s.jitterMs, lossPct: s.lossPct, path: s.path === 'derp' ? 'derp' : 'direct' });
+            samples.push({ t: iso(t0 - 40 * MIN), kind: 'playback', mbps: Math.round(base * 0.9 * 10) / 10, path: 'direct', who: X('Sam'), method: 'direct', segmentWaitMs: 180, pauses: 0 });
+            samples.push({ t: iso(t0 - 3 * HOUR), kind: 'deep', mbps: Math.round(base * 1.1 * 10) / 10, rttMedianMs: s.rttMs, rttP90Ms: s.rttMs + 30, jitterMs: 3, lossPct: 0, path: 'direct' });
+        } else {
+            samples.push({ t: iso(t0 - 2 * HOUR - 30 * MIN), kind: 'scheduled', mbps: null, path: 'unknown', error: 'timeout' });
+        }
+
+        samples.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+        const mbpsList = samples.filter((x) => typeof x.mbps === 'number').map((x) => x.mbps);
+        const offline = [];
+        if (s.status === 'Offline') {
+            offline.push({ fromUtc: iso(t0 - 2 * HOUR - 20 * MIN), toUtc: iso(t0) });
+        } else if (online) {
+            offline.push({ fromUtc: iso(t0 - spanMs * 0.62), toUtc: iso(t0 - spanMs * 0.62 + 90 * MIN) });
+        }
+
+        const bottleneckKind = s.path === 'derp' ? 'relay' : s.status === 'Degraded' ? 'perConnection' : s.handle === 'h-hops' ? 'peerUpload' : 'none';
+        return {
+            samples, offline, routeChanges: online ? [{ t: iso(t0 - spanMs * 0.3), from: 'direct', to: s.path === 'derp' ? 'derp' : 'direct' }].filter((x) => x.from !== x.to) : [],
+            kpis: { nowMbps: online ? s.mbps : null, latencyMs: s.rttMs, jitterMs: s.jitterMs, lossPct: s.lossPct, lowestMbps: mbpsList.length ? Math.min(...mbpsList) : null },
+            ladder: online ? ladderFor(s.mbps, true) : [],
+            bottleneck: { kind: bottleneckKind, region: s.derpRegion || undefined },
+            localApiAvailable: s.network === 'Tailnet',
+            cooldowns: {},
+            route: s.path === 'derp' ? { kind: 'derp', region: s.derpRegion } : s.path === 'derp?' ? { kind: 'maybe' } : s.path === 'direct' ? { kind: 'direct' } : { kind: 'unknown' },
+            hints: s.hints || []
+        };
+    }
+
+    function overlapFor(s) {
+        if (!s || opt.scenario === 'nothingShared' || s.titleCount === 0) {
+            return { computedUtc: null };
+        }
+
+        return {
+            computedUtc: iso(t0 - 4 * HOUR), both: { count: 342, localBytes: 1.8e12 }, gain: { count: Math.max(0, s.titleCount - 342), peerBytes: 4.1e12 },
+            byQuality: [
+                { q: '4k', bothCount: 40, localBytes: 0.9e12, gainCount: 120, peerBytes: 2.4e12 },
+                { q: '1080p', bothCount: 210, localBytes: 0.8e12, gainCount: 560, peerBytes: 1.5e12 },
+                { q: '720p', bothCount: 80, localBytes: 0.1e12, gainCount: 150, peerBytes: 0.2e12 },
+                { q: 'sd', bothCount: 12, localBytes: 0.02e12, gainCount: 32, peerBytes: 0.0e12 }
+            ],
+            betterCopyCount: s.handle === 'h-hops' ? 14 : undefined
+        };
+    }
+
+    /* ---------------- pairing (ui-spec 8.2, DESIGN 4.2a) ---------------- */
+    let probeSeq = 0;
+    const probes = new Map();
+    let session = null;
+    const addedPeers = new Set();
+    const SAFETY = ['requestReplaced', 'codesDidNotMatch', 'serverChanged', 'adminAccount', 'badPeerResponse'];
+    const SCENARIO_KIND = { replaced: 'requestReplaced', denied: 'denied' };
+
+    function newCode() {
+        return String(100000 + Math.floor(Math.random() * 899999));
+    }
+
+    /** The server's own record of a stopped pairing (what the Overview card and the stored view read). */
+    function storeStop(s, kind, phase) {
+        const stoppedUtc = iso(now());
+        let rec = s.peerHandle ? servers.get(s.peerHandle) : null;
+        if (!rec) {
+            s.peerHandle = 'h-new-' + (++probeSeq);
+            rec = addServer({
+                handle: s.peerHandle, displayName: s.displayName, url: s.url, network: s.network || 'Tailnet', status: 'PairingAborted', path: 'unknown', rttMs: null, mbps: null, titleCount: 0,
+                paired: false
+            });
+        } else {
+            s.prevStatus = s.prevStatus || rec.status;
+            rec.status = 'PairingAborted';
+        }
+
+        Object.assign(rec, { pairingError: kind, pairingPhase: phase || undefined, pairingMethod: s.method, pairingStoppedUtc: stoppedUtc });
+        detail.set(s.peerHandle, Object.assign(detail.get(s.peerHandle) || {}, { serverIdPrefix: s.serverIdPrefix, prevStatus: s.prevStatus }));
+    }
+
+    function failSession(s, kind, phase) {
+        s.error = kind;
+        s.state = 'failed';
+        s.phase = phase;
+        storeStop(s, kind, phase);
+    }
+
+    function pairingView() {
+        if (!session) {
+            return null;
+        }
+
+        const s = session;
+        const age = now() - s.createdAt;
+        if (!s.error && s.state !== 'done') {
+            const wanted = SCENARIO_KIND[opt.pairing] || opt.pairing;
+            if (s.state === 'waiting' && age > s.lifetimeMs) {
+                failSession(s, 'expired', 'beforeApproval');
+            } else if (s.method === 'qc' && s.state === 'gettingCode' && age > 600) {
+                s.state = 'waiting';
+                s.code = newCode();
+            } else if (s.method === 'qc' && s.state === 'waiting') {
+                s.peerSilent = opt.pairing === 'silent' && age > 3000 && age < 6000;
+                if (age > 5000 && !['ok', 'silent', 'slow'].includes(opt.pairing)) {
+                    failSession(s, wanted, wanted === 'interrupted' ? 'beforeApproval' : undefined);
+                } else if (age > (opt.pairing === 'silent' ? 7000 : 5000) && opt.pairing !== 'slow') {
+                    s.state = 'awaitingConfirm';
+                    s.confirmDeadline = now() + 15 * MIN;
+                }
+            } else if (s.method === 'invite' && s.state === 'waiting' && age > 6000 && opt.pairing !== 'slow') {
+                if (opt.pairing === 'ok' || opt.pairing === 'silent') {
+                    s.state = 'done';
+                    finishPairing();
+                } else {
+                    failSession(s, wanted, wanted === 'interrupted' ? 'beforeApproval' : undefined);
+                }
+            } else if (s.state === 'awaitingConfirm' && now() > s.confirmDeadline) {
+                failSession(s, 'expired', 'awaitingConfirm');
+            }
+        }
+
+        // The shape of PairingSessionInfo (K5): step and state are the server's words; the page maps them (REAL_STEPS in shoal.js).
+        const step = s.error ? (s.phase === 'awaitingConfirm' ? 'awaitingConfirm' : 'awaitingApproval') : ({ gettingCode: 'gettingCode', waiting: 'awaitingApproval', awaitingConfirm: 'awaitingConfirm', done: 'confirmed' }[s.state] || 'awaitingApproval');
+        return {
+            direction: 'watch', method: s.method, peerHandle: s.peerHandle || '', step, state: s.error ? 'aborted' : s.state === 'done' ? 'confirmed' : 'running',
+            code: s.method === 'qc' && s.state !== 'gettingCode' ? s.code : null,
+            safetyCode: s.method === 'qc' && s.state === 'gettingCode' ? null : s.safetyCode,
+            expiresUtc: iso(s.state === 'awaitingConfirm' ? s.confirmDeadline : s.createdAt + s.lifetimeMs),
+            error: s.error || null, phase: s.phase || null, peerSilent: !!s.peerSilent, paired: !!s.rePair, accountWarnings: [], accountNotes: [], startedUtc: iso(s.createdAt)
+        };
+    }
+
+    function finishPairing() {
+        if (!session) {
+            return;
+        }
+
+        let rec = session.peerHandle ? servers.get(session.peerHandle) : null;
+        if (!rec) {
+            session.peerHandle = 'h-new-' + (++probeSeq);
+            rec = addServer({ handle: session.peerHandle, displayName: session.displayName, url: session.url, network: session.network || 'Tailnet', status: 'Online', path: 'direct', rttMs: 41, mbps: 38, titleCount: 0, syncing: true, latest: null });
+        } else {
+            Object.assign(rec, { status: 'Online', pairingError: null, path: 'direct', rttMs: 41, mbps: 38, syncing: true });
+        }
+
+        addedPeers.add(session.peerHandle);
+        rec.syncProgress = { done: 0, total: 1204 };
+        detail.set(session.peerHandle, Object.assign(detail.get(session.peerHandle) || {}, { serverIdPrefix: session.serverIdPrefix }));
+    }
+
+    /* ---------------- router ---------------- */
+    const routes = [];
+    const route = (method, re, fn) => routes.push({ method, re: new RegExp('^' + re + '$'), fn });
+
+    route('GET', 'Status', () => {
+        const list = Array.from(servers.values()).map((s) => {
+            const copy = clone(s);
+            copy.alertCount = alertsFor(s).length;
+            return copy;
+        });
+        return ok({
+            servers: list,
+            recentlyShared: clone(recentlyShared),
+            friends: Array.from(shares.values()).map((f) => ({
+                handle: f.handle, name: f.friendName, status: f.status, libraryCount: f.libraryIds.length, deviceCount: f.devices.length,
+                unexpectedDeviceCount: f.unexpectedDeviceCount, lastSeenUtc: f.lastSeenUtc, playingNow: f.playingNow, transcodingNow: f.transcodingNow
+            })),
+            cooldowns: cooldownUntil.has('sync') && cooldownUntil.get('sync') > now() ? { syncAllUntilUtc: iso(cooldownUntil.get('sync')) } : {},
+            state: clone(banner),
+            secretsUnreadable,
+            keySource: opt.keySource || settings.keySource,
+            secretsReason: secretsUnreadable ? (opt.secretsReason || 'decryptFailed') : undefined,
+            homeName: self.homeName,
+            inviteFailures: clone(hardening.inviteFailures),
+            friendLinks: friendLinks(),
+            imageSandbox: clone(settings.imageSandbox),
+            intercept: {
+                sinceUtc: iso(t0 - 3 * HOUR),
+                counters: [
+                    { name: 'nonstatic-stream', count: opt.interceptHits || 0 }, { name: 'audio-route', count: 0 }, { name: 'trickplay-m3u8', count: 2 }, { name: 'no-credentials', count: 0 },
+                    { name: 'core-hls-route', count: 0 }, { name: 'forbidden-route', count: 1 }, { name: 'long-query', count: 0 }
+                ]
+            },
+            orphanAccounts: Array.from(orphans.values()).map(clone),
+            currentUserId: self.currentUserId,
+            imageCredit: opt.scenario === 'default' ? 'Demo art: Blender Foundation open movies (CC BY).' : undefined
+        });
+    });
+
+    route('DELETE', 'OrphanAccounts/([^/]+)', (m) => {
+        const id = decodeURIComponent(m[1]);
+        if (!orphans.has(id)) {
+            return fail(404, 'notFound');
+        }
+
+        orphans.delete(id);
+        return ok({});
+    });
+
+    route('POST', 'Peers/([^/]+)/Rotate', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (!s) {
+            return fail(404, 'notFound');
+        }
+
+        const key = 'rotate:' + s.handle;
+        if (cooldownUntil.has(key) && cooldownUntil.get(key) > now()) {
+            return fail(429, 'rateLimited', { 'Retry-After': String(Math.ceil((cooldownUntil.get(key) - now()) / 1000)) });
+        }
+
+        if (!rotationOf(s).supported) {
+            return fail(409, 'notSupported');
+        }
+
+        if (opt.rotateRefusal) {
+            return fail(409, opt.rotateRefusal);
+        }
+
+        if (opt.rotateFailure) {
+            return fail(502, opt.rotateFailure);
+        }
+
+        const r = rotationState.get(s.handle) || { days: 0, error: null, overdue: false };
+        r.lastRotatedUtc = iso(now());
+        r.error = null;
+        r.overdue = false;
+        rotationState.set(s.handle, r);
+        cooldownUntil.set(key, now() + 10 * MIN);
+        return ok({ rotatedUtc: r.lastRotatedUtc });
+    });
+    route('GET', 'Peers/([^/]+)/Rotation', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        return s ? ok(rotationOf(s)) : fail(404, 'notFound');
+    });
+    route('PUT', 'Peers/([^/]+)/Rotation', (m, body) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (!s) {
+            return fail(404, 'notFound');
+        }
+
+        if (![0, 30, 60, 90].includes(body && body.days)) {
+            return fail(400, 'invalidDays');
+        }
+
+        if (body.days > 0 && !rotationOf(s).supported) {
+            return fail(409, 'notSupported');
+        }
+
+        const r = rotationState.get(s.handle) || { days: 0, lastRotatedUtc: null, error: null, overdue: false };
+        r.days = body.days;
+        rotationState.set(s.handle, r);
+        return ok(rotationOf(s));
+    });
+
+    route('POST', 'Sync', () => {
+        if (cooldownUntil.has('sync') && cooldownUntil.get('sync') > now()) {
+            return fail(429, 'rateLimited', { 'Retry-After': '240' });
+        }
+
+        cooldownUntil.set('sync', now() + 5 * MIN);
+        servers.forEach((s) => {
+            if (s.status === 'Online') {
+                s.syncing = true;
+            }
+        });
+        setTimeout(() => servers.forEach((s) => { s.syncing = false; s.lastSync = { atUtc: iso(now()), result: 'ok', added: 2, removed: 1 }; }), 4000);
+        return ok({}, 202);
+    });
+
+    route('GET', 'Peers/([^/]+)', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        return s ? ok(serverDetail(s)) : fail(404);
+    });
+    route('PUT', 'Peers/([^/]+)', (m, body) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (!s) {
+            return fail(404);
+        }
+
+        if (session && session.peerHandle === s.handle && !session.error && (body.url !== s.url || body.proxyUrl)) {
+            return fail(409, 'pairingInProgress');
+        }
+
+        const hostOf = (u) => { try { return new URL(u).hostname; } catch { return ''; } };
+        if (body.url && hostOf(body.url) !== hostOf(s.url)) {
+            if (body.confirmName !== s.displayName) {
+                return fail(400, 'confirmName');
+            }
+
+            s.url = body.url;
+            s.status = 'AuthFailed';
+        } else if (body.url) {
+            s.url = body.url;
+        }
+
+        return ok({});
+    });
+    route('DELETE', 'Peers/([^/]+)', (m, body) => {
+        const h = decodeURIComponent(m[1]);
+        const target = servers.get(h);
+        if (!target) {
+            return fail(404);
+        }
+
+        if (!body || body.confirmName !== target.displayName) {
+            return fail(400, 'confirmName');
+        }
+
+        servers.delete(h);
+        for (let i = mappings.length - 1; i >= 0; i -= 1) {
+            if (mappings[i].serverHandle === h) {
+                mappings.splice(i, 1);
+            }
+        }
+
+        return ok({});
+    });
+    route('POST', 'Peers/([^/]+)/Sync', (m) => {
+        const key = 'peersync:' + m[1];
+        if (cooldownUntil.has(key) && cooldownUntil.get(key) > now()) {
+            return fail(429, 'rateLimited', { 'Retry-After': '240' });
+        }
+
+        cooldownUntil.set(key, now() + 5 * MIN);
+        return ok({}, 202);
+    });
+    route('POST', 'Peers/([^/]+)/Pause', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (s) {
+            s.status = 'Disabled';
+        }
+
+        return ok({});
+    });
+    route('POST', 'Peers/([^/]+)/Resume', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (s) {
+            s.status = 'Online';
+        }
+
+        return ok({});
+    });
+    route('POST', 'Peers/([^/]+)/TrustCertificate', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (s) {
+            s.status = 'Online';
+            s.path = 'direct';
+            s.rttMs = 52;
+            s.mbps = 31;
+        }
+
+        return ok({});
+    });
+    route('POST', 'Peers/([^/]+)/Holds/([^/]+)/(Release|Keep)', (m) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        if (s) {
+            if (m[2] === 'removals') {
+                s.heldRemovals = 0;
+            } else {
+                s.heldAdditions = 0;
+            }
+
+            mappings.filter((x) => x.serverHandle === s.handle).forEach((x) => {
+                x.heldRemovals = m[2] === 'removals' ? 0 : x.heldRemovals;
+                x.heldAdditions = m[2] === 'additions' ? 0 : x.heldAdditions;
+            });
+        }
+
+        return ok({});
+    });
+    route('GET', 'Peers/([^/]+)/RemoteLibraries', () => ok([
+        { mappingKey: 'rl-movies', name: X('Movies'), type: 'movies', count: 1204, selectable: true },
+        { mappingKey: 'rl-big', name: 'Everything', type: 'movies', count: 8400, selectable: true },
+        { mappingKey: 'rl-tv', name: 'TV shows', type: 'tvshows', count: 90, selectable: false }
+    ]));
+    route('POST', 'Peers/([^/]+)/Libraries', (m, body) => {
+        const h = decodeURIComponent(m[1]);
+        const s = servers.get(h);
+        const hidden = [];
+        for (const lib of (body && body.libraries) || []) {
+            mappings.push({
+                mappingKey: 'm-' + h + '-' + lib.mappingKey, localLibraryName: lib.localLibraryName, remoteName: lib.localLibraryName, serverHandle: h, serverName: s ? s.displayName : '', count: 0,
+                lastSync: null, heldRemovals: 0, heldAdditions: 0, access: { mode: 'Selected', selectedUserIds: lib.selectedUserIds || [], includeRestricted: false }, drift: []
+            });
+            if (!(lib.selectedUserIds || []).length) {
+                hidden.push(lib.localLibraryName);
+            }
+        }
+
+        return ok({ hiddenLibraries: hidden });
+    });
+    route('DELETE', 'Peers/([^/]+)/Libraries/([^/]+)', (m) => {
+        const i = mappings.findIndex((x) => x.mappingKey === decodeURIComponent(m[2]));
+        if (i >= 0) {
+            mappings.splice(i, 1);
+        }
+
+        return ok({});
+    });
+    route('GET', 'Peers/([^/]+)/Overlap', (m) => ok(overlapFor(servers.get(decodeURIComponent(m[1])))));
+    route('GET', 'Peers/([^/]+)/Speed', (m, body, query) => {
+        const s = servers.get(decodeURIComponent(m[1]));
+        return s ? ok(speedFor(s, query.range || '24h')) : fail(404);
+    });
+    route('POST', 'Peers/([^/]+)/SpeedTest', (m, body) => {
+        const key = (body && body.deep ? 'deep:' : 'test:') + m[1];
+        if (cooldownUntil.has(key) && cooldownUntil.get(key) > now()) {
+            return fail(429, 'rateLimited', { 'Retry-After': '45' });
+        }
+
+        cooldownUntil.set(key, now() + (body && body.deep ? 10 * MIN : MIN));
+        return ok({}, 202);
+    });
+
+    route('POST', 'Peers/Probe', (m, body) => {
+        if (opt.probeError === 'rateLimited') {
+            return fail(429, 'rateLimited', { 'Retry-After': '300' });
+        }
+
+        if (opt.probeError && ['inviteWrongServer', 'inviteLanHttp'].includes(opt.probeError)) {
+            return fail(400, opt.probeError);
+        }
+
+        // The real probe answers 200 with ok:false and a fixed word (ProbeResult, K5).
+        if (opt.probeError) {
+            const problem = { blocked: 'Blocked', wrongNetwork: 'WrongNetwork', proxyNotAllowed: 'ProxyNotAllowed' }[opt.probeError];
+            return ok({ ok: false, addressProblem: problem || 'None', failure: problem ? null : opt.probeError, probeHandle: null, serverName: null, version: null, serverIdPrefix: null, latencyMs: 0, address: null });
+        }
+
+        // An invite never goes to a home network address over plain http (DESIGN 4.2 step 1).
+        if (body.invite && body.network === 'LAN' && /^http:/i.test(body.url || '')) {
+            return fail(400, 'inviteLanHttp');
+        }
+
+        const handle = 'probe-' + (++probeSeq);
+        const host = (() => { try { return new URL(body.url).hostname; } catch { return 'server'; } })();
+        const p = { ok: true, addressProblem: 'None', failure: null, probeHandle: handle, serverName: hostile ? XSS : host.split('.')[0].replace(/^./, (c) => c.toUpperCase()) + ' Jellyfin', version: '12.1.0', versionTested: !/untested/.test(body.url || ''), latencyMs: 41, serverIdPrefix: '3fa91c7e', address: body.url, alsoWatchesYou: /sam|hops/i.test(host) };
+        const known = Array.from(servers.values()).find((x) => x.url === body.url);
+        probes.set(handle, Object.assign({ url: body.url, network: body.network, createdAt: now(), peerHandle: known ? known.handle : null, invite: !!body.invite }, p));
+        return ok(p);
+    });
+    route('POST', 'Pairing', (m, body) => {
+        const probe = probes.get(body.probeHandle);
+        if (!probe || probe.used || now() - probe.createdAt > 10 * MIN) {
+            return fail(409, 'probeExpired');
+        }
+
+        if (session && !session.error && session.state !== 'done') {
+            return fail(409, 'sessionActive');
+        }
+
+        if (opt.startError === 'rateLimited') {
+            return fail(429, 'rateLimited', { 'Retry-After': '300' });
+        }
+
+        probe.used = true;
+        const rec = probe.peerHandle ? servers.get(probe.peerHandle) : null;
+        session = {
+            createdAt: now(), method: body.method, state: body.method === 'qc' ? 'gettingCode' : 'waiting', error: null, displayName: body.displayName, url: probe.url, network: probe.network,
+            serverIdPrefix: probe.serverIdPrefix, lifetimeMs: (opt.pairing === 'expired' ? 12000 : body.method === 'invite' ? 15 : 10) * (opt.pairing === 'expired' ? 1 : MIN),
+            code: null, safetyCode: body.method === 'invite' ? 'K7QM2XA4' : 'K7QM', peerHandle: rec ? rec.handle : null, rePair: !!rec && rec.paired !== false
+        };
+        if (rec) {
+            rec.pairingError = null;
+            rec.status = 'Pairing';
+        } else {
+            session.peerHandle = 'h-new-' + (++probeSeq);
+            addServer({ handle: session.peerHandle, displayName: body.displayName, url: probe.url, network: probe.network || 'Tailnet', status: 'Pairing', path: 'unknown', rttMs: null, mbps: null, titleCount: 0, paired: false });
+        }
+
+        return ok(pairingView(), 201);
+    });
+    route('GET', 'Pairing', () => (session ? ok(pairingView()) : fail(404)));
+    route('POST', 'Pairing/Confirm', (m, body) => {
+        if (!session) {
+            return fail(404);
+        }
+
+        pairingView();
+        if (session.state !== 'awaitingConfirm') {
+            return fail(409, 'notWaiting');
+        }
+
+        if (!body.match) {
+            failSession(session, 'codesDidNotMatch');
+            return ok(pairingView());
+        }
+
+        session.state = 'done';
+        finishPairing();
+        return ok(pairingView());
+    });
+    route('DELETE', 'Pairing', () => {
+        if (session && session.peerHandle) {
+            const rec = servers.get(session.peerHandle);
+            if (rec && rec.paired === false && rec.status === 'Pairing') {
+                servers.delete(session.peerHandle);
+            } else if (rec && rec.status === 'Pairing') {
+                rec.status = session.prevStatus || 'Online';
+            }
+        }
+
+        session = null;
+        return ok(undefined, 204);
+    });
+    route('POST', 'Peers/([^/]+)/DismissPairing', (m) => {
+        const h = decodeURIComponent(m[1]);
+        const rec = servers.get(h);
+        if (!rec || !rec.pairingError || (session && session.peerHandle === h && !session.error)) {
+            return fail(409, 'nothingToDismiss');
+        }
+
+        if (rec.paired === false) {
+            servers.delete(h);
+            return ok({ removed: true });
+        }
+
+        const prev = (detail.get(h) || {}).prevStatus || 'Online';
+        Object.assign(rec, { pairingError: null, status: prev, pairingPhase: undefined, pairingStoppedUtc: undefined });
+        return ok({ restored: true, status: prev });
+    });
+
+    route('GET', 'Libraries', () => ok({ mappings: clone(mappings), users: clone(users), currentUserId: self.currentUserId }));
+    route('PUT', 'Libraries/([^/]+)/Access', (m, body) => {
+        const map = mappings.find((x) => x.mappingKey === decodeURIComponent(m[1]));
+        if (!map) {
+            return fail(404);
+        }
+
+        if (opt.accessFail) {
+            return fail(500, 'server');
+        }
+
+        map.access = { mode: body.mode, selectedUserIds: body.selectedUserIds || [], includeRestricted: !!body.includeRestricted };
+        map.drift = (map.drift || []).filter((d) => d.kind === 'managed');
+        return ok({ access: clone(map.access) });
+    });
+    route('POST', 'Libraries/([^/]+)/Reconcile', (m) => {
+        const map = mappings.find((x) => x.mappingKey === decodeURIComponent(m[1]));
+        if (map) {
+            map.drift = [];
+        }
+
+        return ok({});
+    });
+
+    route('GET', 'Settings', () => ok(clone(settings)));
+    route('PUT', 'Settings', (m, body) => {
+        // The folder check of the real endpoint: inside a library and unwritable are refused, a network share needs the acknowledgement.
+        const root = String(body.stubRoot || '');
+        if (root !== settings.stubRoot) {
+            const check = /\/media\//.test(root) ? 'insideLibrary' : /^\/mnt/.test(root) ? 'network' : /readonly/.test(root) ? 'notWritable' : 'ok';
+            if (check !== 'ok' && !(check === 'network' && body.stubRootNetworkAck)) {
+                return { status: 400, body: { error: 'stubRoot', detail: check }, headers: {} };
+            }
+
+            settings.stubRootCheck = check;
+        }
+
+        if (body.trickplayCacheGb !== undefined && !(Number.isInteger(body.trickplayCacheGb) && body.trickplayCacheGb >= 1 && body.trickplayCacheGb <= 20)) {
+            return fail(400, 'invalid');
+        }
+
+        const { stubRootNetworkAck, ...rest } = body;
+        const turnedOn = rest.reencodeImages === true && settings.reencodeImages === false;
+        Object.assign(settings, rest);
+        if (settings.reencodeImages === false) {
+            settings.imageSandbox = { state: 'off', limits: settings.imageSandbox.limits, reason: null, rejected: settings.imageSandbox.rejected };
+        } else if (turnedOn) {
+            settings.imageSandbox = { state: opt.sandbox === 'unavailable' ? 'unavailable' : 'active', limits: opt.sandbox === 'partial' || opt.sandbox === 'unavailable' ? 'partial' : 'full', reason: opt.sandbox === 'unavailable' ? (opt.sandboxReason || 'ffmpegMissing') : null, rejected: settings.imageSandbox.rejected };
+        }
+
+        return ok(clone(settings));
+    });
+    route('DELETE', 'TrickplayCache', () => {
+        const freed = settings.trickplayCacheBytes;
+        settings.trickplayCacheBytes = 0;
+        return ok({ freedBytes: freed });
+    });
+    route('GET', 'Hardening', () => ok(clone(hardening)));
+    route('PUT', 'Hardening', (m, body) => {
+        hardening.mode = body.mode;
+        hardening.sinceUtc = iso(now());
+        return ok(clone(hardening));
+    });
+    route('GET', 'State', () => ok(clone(stateInfo)));
+    route('POST', 'State/Restore', () => {
+        banner.mode = 'Normal';
+        banner.reason = null;
+        stateInfo.mode = 'Normal';
+        banner.restoredFrom = { file: 'state.json.bak', atUtc: iso(now() - HOUR), needsConfirm: true };
+        return ok({});
+    });
+    route('POST', 'State/ConfirmRestore', () => {
+        if (!banner.restoredFrom || !banner.restoredFrom.needsConfirm) {
+            return fail(409, 'nothingToConfirm');
+        }
+
+        banner.restoredFrom = null;
+        return ok(undefined, 204);
+    });
+    route('POST', 'State/StartOver', (m, body) => {
+        if (banner.mode !== 'Recovery') {
+            return fail(409, 'notInRecovery');
+        }
+
+        if (!body || body.confirmName !== 'start over') {
+            return fail(400, 'confirmName');
+        }
+
+        banner.mode = 'Normal';
+        banner.reason = null;
+        stateInfo.mode = 'Normal';
+        servers.clear();
+        mappings.length = 0;
+        shares.clear();
+        return ok({});
+    });
+    route('DELETE', 'All', (m, body) => {
+        if (!body || body.confirmName !== 'delete everything') {
+            return fail(400, 'confirmName');
+        }
+
+        servers.clear();
+        mappings.length = 0;
+        shares.clear();
+        recentlyShared.length = 0;
+        return ok({});
+    });
+
+    route('GET', 'Shares', () => ok({
+        shares: Array.from(shares.values()).map((f) => ({
+            handle: f.handle, friendName: f.friendName, status: f.status, libraryIds: f.libraryIds,
+            libraryNames: f.libraryIds.map((id) => (ownLibraries.find((l) => l.id === id) || { name: id }).name),
+            maxBitrateMbps: f.maxBitrateMbps, maxConcurrentTranscodes: f.maxConcurrentTranscodes, unexpectedDeviceCount: f.unexpectedDeviceCount
+        })),
+        availableLibraries: clone(ownLibraries)
+    }));
+    route('POST', 'Shares', (m, body) => {
+        const handle = 'f-new-' + (++probeSeq);
+        addShare({ handle, friendName: body.friendName, libraryIds: body.libraryIds, maxBitrateMbps: body.maxBitrateMbps, maxConcurrentTranscodes: body.maxConcurrentTranscodes || 4, devices: [], lastSeenUtc: null, status: 'Active' });
+        return ok({ handle, friendName: body.friendName, libraryIds: body.libraryIds }, 201);
+    });
+    route('GET', 'Shares/([^/]+)', (m) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (!f) {
+            return fail(404);
+        }
+
+        const approval = f.approval && f.approval.state === 'pending' ? f.approval : null;
+        return ok({
+            id: f.handle, handle: f.handle, friendName: f.friendName, status: f.status, shareUserName: f.shareUserName, sinceUtc: f.sinceUtc, libraryIds: f.libraryIds,
+            maxBitrateMbps: f.maxBitrateMbps, maxConcurrentTranscodes: f.maxConcurrentTranscodes, invite: clone(f.invite), approval: clone(approval), deviceCount: f.devices.length,
+            devices: clone(f.devices), availableLibraries: clone(ownLibraries), hardeningMode: hardening.mode, reach: f.reach || 'tailnet',
+            lastRotatedUtc: f.lastRotatedUtc, rotationCount: f.rotationCount, rotationFailed: !!f.rotationFailed
+        });
+    });
+    route('PUT', 'Shares/([^/]+)', (m, body) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (f) {
+            Object.assign(f, { libraryIds: body.libraryIds, maxBitrateMbps: body.maxBitrateMbps, maxConcurrentTranscodes: body.maxConcurrentTranscodes });
+        }
+
+        return ok({});
+    });
+    route('DELETE', 'Shares/([^/]+)', (m, body) => {
+        const target = shares.get(decodeURIComponent(m[1]));
+        if (!target) {
+            return fail(404);
+        }
+
+        if (!body || body.confirmName !== target.friendName) {
+            return fail(400, 'confirmName');
+        }
+
+        shares.delete(decodeURIComponent(m[1]));
+        const f = { disabled: true, signedOut: 2, remaining: opt.revokeLeftover ? 1 : 0, deleted: !opt.revokeLeftover };
+        return ok(f);
+    });
+    route('POST', 'Shares/([^/]+)/(Pause|Resume)', (m) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (f) {
+            f.status = m[2] === 'Pause' ? 'Paused' : 'Active';
+        }
+
+        return ok({});
+    });
+    route('POST', 'Shares/([^/]+)/Invites', (m) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (!f) {
+            return fail(404);
+        }
+
+        f.invite = { state: 'active', expiresUtc: iso(now() + 15 * MIN), createdAt: now() };
+        f.approval = { state: 'none' };
+        return ok({ invite: 'shoal1-3fa91c7e-K7QM-2XA4-9FZD-R3TB-W8NE-HC5J-6P', expiresUtc: f.invite.expiresUtc }, 201);
+    });
+    route('DELETE', 'Shares/([^/]+)/Invites/current', (m) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (f) {
+            f.invite = { state: 'none' };
+        }
+
+        return ok({});
+    });
+    route('GET', 'Shares/([^/]+)/Approval', (m) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (!f) {
+            return fail(404);
+        }
+
+        // A friend's server redeems the invite 7 s after it was created (harness only).
+        if (f.invite && f.invite.state === 'active' && f.invite.createdAt && now() - f.invite.createdAt > 7000 && f.approval.state === 'none' && opt.shareFlow !== 'wait') {
+            f.approval = { state: 'pending', homeName: hostile ? XSS : 'Sam’s Jellyfin', homeServerIdPrefix: '3fa91c7e', addressClass: 'tailnet', triesLeft: 3 };
+        }
+
+        return ok(clone(f.approval));
+    });
+    route('POST', 'Shares/([^/]+)/Approval', (m, body) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (!f) {
+            return fail(404);
+        }
+
+        if (f.approval.state !== 'pending') {
+            return fail(409, 'nothingPending');
+        }
+
+        if (!body.approve) {
+            f.approval = { state: 'denied' };
+            return ok({ state: 'denied' });
+        }
+
+        // The friend's server judges the code; the page never has it (DESIGN 4.1b step 3).
+        const typed = String(body.sas || '').toUpperCase().replace(/[\s-]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0');
+        if (typed !== 'K7QM2XA4') {
+            const triesLeft = f.approval.triesLeft - 1;
+            if (triesLeft <= 0) {
+                f.approval = { state: 'cancelledWrongCode' };
+                f.invite = { state: 'none' };
+                return ok({ match: false, triesLeft: 0, state: 'cancelledWrongCode' });
+            }
+
+            f.approval = Object.assign({}, f.approval, { triesLeft });
+            return ok({ match: false, triesLeft });
+        }
+
+        f.approval = Object.assign({}, f.approval, { state: 'approved' });
+        const home = f.approval.homeName;
+        setTimeout(() => {
+            if (opt.shareFlow === 'uncollected') {
+                f.approval = { state: 'uncollected', homeName: home };
+                return;
+            }
+
+            f.approval = Object.assign({}, f.approval, { state: 'collected' });
+            f.invite = { state: 'none' };
+            f.devices = [{ deviceHandle: 'd-n', name: 'Shoal: ' + home + ' (K7QM)', app: 'Shoal', version: '0.1.0', firstSeenUtc: iso(now()), lastSeenUtc: iso(now()), expected: true, signedOut: false }];
+        }, opt.collectMs === undefined ? 2500 : opt.collectMs);
+        return ok({ match: true, state: 'approved' });
+    });
+    route('DELETE', 'Shares/([^/]+)/Devices/([^/]+)', (m) => {
+        const f = shares.get(decodeURIComponent(m[1]));
+        if (f) {
+            f.devices = f.devices.filter((d) => d.deviceHandle !== decodeURIComponent(m[2]));
+            f.unexpectedDeviceCount = f.devices.filter((d) => !d.expected).length;
+        }
+
+        return ok({});
+    });
+
+    /* ---------------- entry point ---------------- */
+    async function handle(method, rawPath, body) {
+        calls.push({ method, path: rawPath, body: body === undefined ? undefined : clone(body) });
+        if (opt.delayMs || opt.scenario === 'slow') {
+            await new Promise((r) => setTimeout(r, opt.scenario === 'slow' ? 1500 : opt.delayMs));
+        }
+
+        const [path, qs] = rawPath.split('?');
+        const query = Object.fromEntries(new URLSearchParams(qs || ''));
+        if (opt.scenario === 'error' && !/^Pairing/.test(path)) {
+            return fail(500, 'server');
+        }
+
+        if (opt.failPaths && opt.failPaths.some((re) => re.test(method + ' ' + path))) {
+            return fail(500, 'server');
+        }
+
+        for (const r of routes) {
+            if (r.method !== method) {
+                continue;
+            }
+
+            const m = r.re.exec(path);
+            if (m) {
+                return r.fn(m, body, query);
+            }
+        }
+
+        return fail(404);
+    }
+
+    return {
+        handle,
+        calls,
+        options: opt,
+        set(patch) {
+            Object.assign(opt, patch);
+        },
+        getSession: () => session,
+        stores: { servers, mappings, shares, settings, hardening, users }
+    };
+}

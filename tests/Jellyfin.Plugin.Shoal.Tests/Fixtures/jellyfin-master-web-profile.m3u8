@@ -1,0 +1,3 @@
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=5753484,AVERAGE-BANDWIDTH=5753484,VIDEO-RANGE=SDR,CODECS="avc1.640028,mp4a.40.2",RESOLUTION=1280x544,FRAME-RATE=24
+main.m3u8?DeviceId=kiro-capture2&MediaSourceId=d6b690200fc1c631334425f6f7db7d2e&VideoCodec=h264&AudioCodec=aac&AudioStreamIndex=1&VideoBitrate=7616000&AudioBitrate=384000&MaxFramerate=24&SegmentContainer=ts&MinSegments=1&PlaySessionId=45df6abbd47444f09ba4897b87ef8848&ApiKey=0123456789abcdef0123456789abcdef&TranscodingMaxAudioChannels=2&EnableSubtitlesInManifest=True&RequireAvc=false&EnableAudioVbrEncoding=true&Tag=aa20ffbb063fa04109f7afd3402900d8&h264-level=40&h264-videobitdepth=8&h264-profile=high&h264-rangetype=SDR&h264-deinterlace=true&TranscodeReasons=ContainerNotSupported,AudioCodecNotSupported

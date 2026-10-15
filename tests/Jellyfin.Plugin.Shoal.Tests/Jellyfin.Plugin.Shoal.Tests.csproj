@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.Shoal.Tests</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The plugin uses ASP.NET Core types (IHeaderDictionary, ...) that the server normally provides. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The plugin references these with ExcludeAssets=runtime (the server provides them); the tests that touch their types need the DLLs. -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0" />
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Jellyfin.Plugin.Shoal\Jellyfin.Plugin.Shoal.csproj" />
+    <!-- The stand-in for ffmpeg in the image sandbox tests (K32); its types are never used, it is only launched. -->
+    <ProjectReference Include="..\Jellyfin.Plugin.Shoal.ChildStub\Jellyfin.Plugin.Shoal.ChildStub.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Real Jellyfin 12.1 playlists / PlaybackInfo captured from the lab, with every token replaced by a dummy. -->
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

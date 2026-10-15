@@ -1,0 +1,443 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+#pragma warning disable SA1600 // internal plumbing; the public surface is documented
+
+namespace Jellyfin.Plugin.Shoal.Playback;
+
+/// <summary>
+/// Why a stream slot or connection was refused.
+/// </summary>
+public enum SlotDenial
+{
+    /// <summary>Nothing is wrong.</summary>
+    None,
+
+    /// <summary>The user already runs the most streams (<c>MaxStreamsPerUser</c>).</summary>
+    User,
+
+    /// <summary>The peer already carries the most streams (<c>MaxConcurrentStreams</c>), or this user would hold more than half of them.</summary>
+    Peer,
+
+    /// <summary>The peer already runs the most conversions (<c>MaxConcurrentTranscodes</c>).</summary>
+    Conversions,
+
+    /// <summary>The user has the most open static connections (6).</summary>
+    Connections,
+}
+
+/// <summary>
+/// A running static stream's claim on a slot. Dispose it when the connection ends; call <see cref="Touch"/> while bytes flow.
+/// </summary>
+public sealed class StaticLease : IDisposable
+{
+    private readonly StreamSlots _owner;
+    private readonly (Guid User, Guid Item) _key;
+    private readonly bool _created;
+    private int _disposed;
+
+    internal StaticLease(StreamSlots owner, (Guid User, Guid Item) key, bool created)
+    {
+        _owner = owner;
+        _key = key;
+        _created = created;
+    }
+
+    /// <summary>
+    /// Records that bytes were served (extends the slot).
+    /// </summary>
+    public void Touch() => _owner.TouchStatic(_key);
+
+    /// <summary>
+    /// Gives the slot back at once if this request created it and served nothing (the request failed before any byte).
+    /// </summary>
+    public void Abandon() => _owner.AbandonStatic(_key, _created);
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            _owner.CloseStatic(_key);
+        }
+    }
+}
+
+/// <summary>
+/// The key of a stream slot for a version set (DESIGN v2.6.4): a deterministic id made from the set id, so every version of a title shares the same slot.
+/// </summary>
+public static class SlotKey
+{
+    /// <summary>
+    /// Makes the slot key of a version set.
+    /// </summary>
+    /// <param name="setId">The set id (the primary's stub key).</param>
+    /// <returns>A stable id.</returns>
+    public static Guid Of(string setId) => new(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("shoal-set|" + setId)).AsSpan(0, 16));
+}
+
+/// <summary>
+/// The stream slots (DESIGN 3.5, 6.9): slots, not grants, are the scarce resource. A static slot is keyed by (user, item), taken at the first
+/// request, shared by that stream's Range requests and by every live grant of that user and item, and released 2 minutes after the last byte or on
+/// <c>PlaybackStopped</c>. It is <b>never</b> released by <c>ActiveEncodings</c> (W4-4). An HLS slot belongs to one grant, is taken at its first
+/// segment request and released by the scoped delete, after 2 minutes without a request, or on <c>PlaybackStopped</c>.
+/// </summary>
+public sealed class StreamSlots : ISlotLedger
+{
+    /// <summary>The most open static connections per user.</summary>
+    public const int MaxConnectionsPerUser = 6;
+
+    /// <summary>How long a slot outlives its last byte or request.</summary>
+    public static readonly TimeSpan Grace = TimeSpan.FromMinutes(2);
+
+    private readonly object _gate = new();
+    private readonly Dictionary<(Guid User, Guid Item), StaticSlot> _static = [];
+    private readonly Dictionary<string, HlsSlot> _hls = new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, int> _connections = [];
+    private readonly TimeProvider _time;
+    private readonly Func<int> _maxPerUser;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StreamSlots"/> class.
+    /// </summary>
+    /// <param name="time">The clock.</param>
+    /// <param name="maxPerUser">The streams one user may run at once (<c>MaxStreamsPerUser</c>, 1 to 4).</param>
+    public StreamSlots(TimeProvider time, Func<int> maxPerUser)
+    {
+        _time = time;
+        _maxPerUser = maxPerUser;
+    }
+
+    /// <summary>
+    /// Takes (or shares) the static slot of a user and item and opens a connection on it.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="itemId">The local item id.</param>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="peerMax">The peer's <c>MaxConcurrentStreams</c>.</param>
+    /// <param name="denial">Why it was refused.</param>
+    /// <returns>The lease, or null when refused.</returns>
+    public StaticLease? TryOpenStatic(Guid userId, Guid itemId, string peerKey, int peerMax, out SlotDenial denial)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            if (_connections.GetValueOrDefault(userId) >= MaxConnectionsPerUser)
+            {
+                denial = SlotDenial.Connections;
+                return null;
+            }
+
+            var key = (userId, itemId);
+            var created = false;
+            if (!_static.TryGetValue(key, out var slot))
+            {
+                denial = CheckLimits(userId, peerKey, peerMax);
+                if (denial != SlotDenial.None)
+                {
+                    return null;
+                }
+
+                slot = new StaticSlot { PeerKey = peerKey };
+                _static[key] = slot;
+                created = true;
+            }
+
+            slot.Connections++;
+            slot.LastActivity = _time.GetUtcNow();
+            _connections[userId] = _connections.GetValueOrDefault(userId) + 1;
+            denial = SlotDenial.None;
+            return new StaticLease(this, key, created);
+        }
+    }
+
+    /// <summary>
+    /// Takes the HLS slot of a grant (idempotent for a grant that holds one).
+    /// </summary>
+    /// <param name="grant">The grant.</param>
+    /// <param name="peerMax">The peer's <c>MaxConcurrentStreams</c>.</param>
+    /// <param name="peerMaxConversions">The peer's <c>MaxConcurrentTranscodes</c>: an HLS stream holds a conversion slot with its stream slot (6.9).</param>
+    /// <param name="denial">Why it was refused.</param>
+    /// <returns>True when the grant holds the slot.</returns>
+    public bool TryTakeHls(Grant grant, int peerMax, int peerMaxConversions, out SlotDenial denial)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        lock (_gate)
+        {
+            PruneLocked();
+            if (_hls.TryGetValue(grant.GrantId, out var existing))
+            {
+                existing.LastActivity = _time.GetUtcNow();
+                denial = SlotDenial.None;
+                return true;
+            }
+
+            // A static slot of the same user and item is the same stream, so the FIRST HLS slot of that pair needs no second stream slot; any further
+            // HLS slot of the pair (another DeviceId) is a stream of its own and meets every limit (Warden 07 M-1).
+            var sameStream = _static.ContainsKey((grant.LocalUserId, grant.SlotItem)) && !_hls.Values.Any(h => h.User == grant.LocalUserId && h.Item == grant.SlotItem);
+            if (!sameStream)
+            {
+                denial = CheckLimits(grant.LocalUserId, grant.PeerKey, peerMax);
+                if (denial != SlotDenial.None)
+                {
+                    return false;
+                }
+            }
+
+            // Every HLS stream is a conversion (6.9): one more than the peer allows is refused, whatever the stream slots say.
+            if (_hls.Values.Count(h => h.PeerKey == grant.PeerKey) >= peerMaxConversions)
+            {
+                denial = SlotDenial.Conversions;
+                return false;
+            }
+
+            _hls[grant.GrantId] = new HlsSlot { User = grant.LocalUserId, Item = grant.SlotItem, PeerKey = grant.PeerKey, LastActivity = _time.GetUtcNow() };
+            denial = SlotDenial.None;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Records a request on a grant's HLS slot.
+    /// </summary>
+    /// <param name="grantId">The grant id.</param>
+    public void TouchHls(string grantId)
+    {
+        lock (_gate)
+        {
+            if (_hls.TryGetValue(grantId, out var slot))
+            {
+                slot.LastActivity = _time.GetUtcNow();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Releases a grant's HLS slot (the scoped <c>ActiveEncodings</c> delete was sent, or <c>PlaybackStopped</c>).
+    /// </summary>
+    /// <param name="grantId">The grant id.</param>
+    /// <returns>True when a slot was held.</returns>
+    public bool ReleaseHls(string grantId)
+    {
+        lock (_gate)
+        {
+            return _hls.Remove(grantId);
+        }
+    }
+
+    /// <summary>
+    /// Releases the static slot of a user and item (<c>PlaybackStopped</c>). Never called for <c>ActiveEncodings</c>.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="itemId">The local item id.</param>
+    /// <returns>True when a slot was held.</returns>
+    public bool ReleaseStatic(Guid userId, Guid itemId)
+    {
+        lock (_gate)
+        {
+            if (_static.TryGetValue((userId, itemId), out var slot) && slot.Connections > 0)
+            {
+                slot.ReleaseOnClose = true; // the body is still streaming: the slot goes when its last connection ends (Warden 07 M-2)
+                return false;
+            }
+
+            return _static.Remove((userId, itemId));
+        }
+    }
+
+    /// <summary>
+    /// Counts the open static connections of a user.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <returns>The number of connections.</returns>
+    public int OpenConnections(Guid userId)
+    {
+        lock (_gate)
+        {
+            return _connections.GetValueOrDefault(userId);
+        }
+    }
+
+    /// <summary>
+    /// Counts the live slots of a user.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <returns>The number of live static and HLS slots.</returns>
+    public int ActiveSlots(Guid userId)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            return _static.Keys.Count(k => k.User == userId) + _hls.Values.Count(h => h.User == userId);
+        }
+    }
+
+    /// <summary>
+    /// Counts the live slots on a peer.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>The number of live slots.</returns>
+    public int ActiveSlotsOnPeer(string peerKey)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            return _static.Values.Count(s => s.PeerKey == peerKey) + _hls.Values.Count(h => h.PeerKey == peerKey);
+        }
+    }
+
+    /// <summary>
+    /// Counts the conversions (HLS streams) Home holds on a peer.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>The number of live conversion slots.</returns>
+    public int ConversionsOnPeer(string peerKey)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            return _hls.Values.Count(h => h.PeerKey == peerKey);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            return _static.ContainsKey((userId, itemId)) || CheckLimits(userId, peerKey, peerMax) == SlotDenial.None;
+        }
+    }
+
+    /// <inheritdoc />
+    public bool ConversionsFull(string peerKey, int peerMaxConversions)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            return _hls.Values.Count(h => h.PeerKey == peerKey) >= peerMaxConversions;
+        }
+    }
+
+    /// <inheritdoc />
+    public bool HoldsSlot(Grant grant)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        lock (_gate)
+        {
+            PruneLocked();
+            return _hls.ContainsKey(grant.GrantId) || _static.ContainsKey((grant.LocalUserId, grant.SlotItem));
+        }
+    }
+
+    /// <inheritdoc />
+    public bool HoldsOwnSlot(Grant grant)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        lock (_gate)
+        {
+            PruneLocked();
+            return _hls.ContainsKey(grant.GrantId);
+        }
+    }
+
+    internal void TouchStatic((Guid User, Guid Item) key)
+    {
+        lock (_gate)
+        {
+            if (_static.TryGetValue(key, out var slot))
+            {
+                slot.LastActivity = _time.GetUtcNow();
+            }
+        }
+    }
+
+    internal void AbandonStatic((Guid User, Guid Item) key, bool created)
+    {
+        lock (_gate)
+        {
+            if (created && _static.TryGetValue(key, out var slot) && slot.Connections <= 1)
+            {
+                _static.Remove(key);
+            }
+        }
+    }
+
+    internal void CloseStatic((Guid User, Guid Item) key)
+    {
+        lock (_gate)
+        {
+            if (_static.TryGetValue(key, out var slot))
+            {
+                slot.Connections = Math.Max(0, slot.Connections - 1);
+                slot.LastActivity = _time.GetUtcNow();
+                if (slot.Connections == 0 && slot.ReleaseOnClose)
+                {
+                    _static.Remove(key);
+                }
+            }
+
+            var open = _connections.GetValueOrDefault(key.User) - 1;
+            if (open <= 0)
+            {
+                _connections.Remove(key.User);
+            }
+            else
+            {
+                _connections[key.User] = open;
+            }
+        }
+    }
+
+    private SlotDenial CheckLimits(Guid userId, string peerKey, int peerMax)
+    {
+        var userSlots = _static.Keys.Count(k => k.User == userId) + _hls.Values.Count(h => h.User == userId);
+        if (userSlots >= Math.Clamp(_maxPerUser(), 1, 4))
+        {
+            return SlotDenial.User;
+        }
+
+        var onPeer = _static.Values.Count(s => s.PeerKey == peerKey) + _hls.Values.Count(h => h.PeerKey == peerKey);
+        var mineOnPeer = _static.Where(p => p.Key.User == userId && p.Value.PeerKey == peerKey).Count() + _hls.Values.Count(h => h.User == userId && h.PeerKey == peerKey);
+        var half = (peerMax + 1) / 2;
+        return onPeer >= peerMax || mineOnPeer >= half ? SlotDenial.Peer : SlotDenial.None;
+    }
+
+    private void PruneLocked()
+    {
+        var now = _time.GetUtcNow();
+        foreach (var pair in _static.Where(p => p.Value.Connections == 0 && now - p.Value.LastActivity >= Grace).ToList())
+        {
+            _static.Remove(pair.Key);
+        }
+
+        foreach (var pair in _hls.Where(p => now - p.Value.LastActivity >= Grace).ToList())
+        {
+            _hls.Remove(pair.Key);
+        }
+    }
+
+    private sealed class StaticSlot
+    {
+        public string PeerKey { get; init; } = string.Empty;
+
+        public int Connections { get; set; }
+
+        public bool ReleaseOnClose { get; set; }
+
+        public DateTimeOffset LastActivity { get; set; }
+    }
+
+    private sealed class HlsSlot
+    {
+        public Guid User { get; init; }
+
+        public Guid Item { get; init; }
+
+        public string PeerKey { get; init; } = string.Empty;
+
+        public DateTimeOffset LastActivity { get; set; }
+    }
+}

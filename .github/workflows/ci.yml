@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Jellyfin.Shoal.sln
+
+      - name: Build (Release, warnings are errors)
+        run: dotnet build Jellyfin.Shoal.sln -c Release --no-restore -warnaserror
+
+      - name: Test (the whole suite)
+        run: dotnet test Jellyfin.Shoal.sln -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      # The route-table diff and the reflection tests, named so that a failure here says which guard tripped.
+      # Core's route table: a new item-id route must be classified, and a route that can reach a stub is never pass-through.
+      - name: Route-table diff (core routes and admin routes)
+        run: >
+          dotnet test Jellyfin.Shoal.sln -c Release --no-build
+          --filter "FullyQualifiedName~CoreRouteSnapshotTests|FullyQualifiedName~AdminRouteTests|FullyQualifiedName~AdminF5Tests"
+
+      # Every controller action is authorized, anonymous is pinned to the invite action, and the filter's route table reads stubs as recorded.
+      - name: Reflection tests (authorization of every action, intercept table)
+        run: >
+          dotnet test Jellyfin.Shoal.sln -c Release --no-build
+          --filter "FullyQualifiedName~T_SEC_15_Reflection|FullyQualifiedName~InterceptFilterTests|FullyQualifiedName~BannedApiProbeTests"
+
+      - name: Shell scripts parse
+        run: |
+          for f in lab/*.sh tools/*.sh; do bash -n "$f"; done
+
+      - name: Package (smoke test of build/build.ps1 and build/manifest.ps1)
+        shell: pwsh
+        run: |
+          ./build/build.ps1 -Version 0.0.0.1 -SkipTests
+          ./build/manifest.ps1
+
+      - name: Upload the plugin zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: shoal-plugin
+          path: |
+            build/out/shoal_*.zip
+            build/out/manifest.json
+            docs/brand/shoal-plugin.png
+          if-no-files-found: error

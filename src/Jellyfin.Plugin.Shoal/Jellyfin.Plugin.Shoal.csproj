@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.Shoal</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.Shoal</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Required by the LibraryImport source generator (directory fsync on Linux, see Storage/NativeFsync.cs). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Plugins use the ASP.NET Core types (controllers, filters) that the server already ships. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ExcludeAssets=runtime is mandatory: otherwise the plugin ships copies of server assemblies. -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="All" />
+    <PackageReference Include="SmartAnalyzers.MultithreadingAnalyzer" Version="1.1.31" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jellyfin.Plugin.Shoal.Tests" />
+    <!-- DESIGN 8.8: banned APIs (BannedSymbols.txt). -->
+    <AdditionalFiles Include="BannedSymbols.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The admin page: markup, controller and stylesheet, served as configurationpage?name=Shoal[.js|.css] (docs/ui-spec.md 1). -->
+    <None Remove="Configuration\shoal.html" />
+    <None Remove="Configuration\shoal.js" />
+    <None Remove="Configuration\shoal.css" />
+    <EmbeddedResource Include="Configuration\shoal.html" />
+    <EmbeddedResource Include="Configuration\shoal.js" />
+    <EmbeddedResource Include="Configuration\shoal.css" />
+  </ItemGroup>
+
+</Project>

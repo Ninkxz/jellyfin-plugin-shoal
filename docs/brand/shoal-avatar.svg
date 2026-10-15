@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-labelledby="t">
+<title id="t">Shoal</title>
+<rect width="64" height="64" fill="#0f1a24"/>
+<g transform="translate(32 32) scale(.66) translate(-32 -32)"><g transform="translate(32 32) scale(.77)"><path transform="rotate(0)" fill="#0f9bd0" fill-rule="evenodd" stroke="#0f9bd0" stroke-width="1.2" stroke-linejoin="round" d="M-33.55 -17.84A38 38 0 0 1 28.24 -25.43A33 33 0 0 1 -19.78 -19.1L-18.54 -9.86L-23.64 -18.47ZM11.95 -29.21a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0-4.6 0Z"/><path transform="rotate(120)" fill="#4a7fe0" fill-rule="evenodd" stroke="#4a7fe0" stroke-width="1.2" stroke-linejoin="round" d="M-33.55 -17.84A38 38 0 0 1 28.24 -25.43A33 33 0 0 1 -19.78 -19.1L-18.54 -9.86L-23.64 -18.47ZM11.95 -29.21a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0-4.6 0Z"/><path transform="rotate(240)" fill="#8b5fd6" fill-rule="evenodd" stroke="#8b5fd6" stroke-width="1.2" stroke-linejoin="round" d="M-33.55 -17.84A38 38 0 0 1 28.24 -25.43A33 33 0 0 1 -19.78 -19.1L-18.54 -9.86L-23.64 -18.47ZM11.95 -29.21a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0-4.6 0Z"/></g></g>
+</svg>

@@ -1,0 +1,13 @@
+#EXTM3U
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:3
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-MAP:URI="hls1/main/-1.mp4?DeviceId=kiro-capture&MediaSourceId=d6b690200fc1c631334425f6f7db7d2e&VideoCodec=h264&AudioCodec=aac&AudioStreamIndex=1&VideoBitrate=1116000&AudioBitrate=384000&MaxFramerate=24&SegmentContainer=mp4&MinSegments=1&PlaySessionId=eb978ef02d8e411792e49ba28d5f975d&ApiKey=0123456789abcdef0123456789abcdef&TranscodingMaxAudioChannels=2&RequireAvc=false&EnableAudioVbrEncoding=true&Tag=aa20ffbb063fa04109f7afd3402900d8&h264-level=40&h264-videobitdepth=8&h264-profile=high&TranscodeReasons=AudioCodecNotSupported,ContainerBitrateExceedsLimit&runtimeTicks=0&actualSegmentLengthTicks=0"
+#EXTINF:3.000000, nodesc
+hls1/main/0.mp4?DeviceId=kiro-capture&MediaSourceId=d6b690200fc1c631334425f6f7db7d2e&VideoCodec=h264&AudioCodec=aac&AudioStreamIndex=1&VideoBitrate=1116000&AudioBitrate=384000&MaxFramerate=24&SegmentContainer=mp4&MinSegments=1&PlaySessionId=eb978ef02d8e411792e49ba28d5f975d&ApiKey=0123456789abcdef0123456789abcdef&TranscodingMaxAudioChannels=2&RequireAvc=false&EnableAudioVbrEncoding=true&Tag=aa20ffbb063fa04109f7afd3402900d8&h264-level=40&h264-videobitdepth=8&h264-profile=high&TranscodeReasons=AudioCodecNotSupported,ContainerBitrateExceedsLimit&runtimeTicks=0&actualSegmentLengthTicks=30000000
+#EXTINF:3.000000, nodesc
+hls1/main/1.mp4?DeviceId=kiro-capture&MediaSourceId=d6b690200fc1c631334425f6f7db7d2e&VideoCodec=h264&AudioCodec=aac&AudioStreamIndex=1&VideoBitrate=1116000&AudioBitrate=384000&MaxFramerate=24&SegmentContainer=mp4&MinSegments=1&PlaySessionId=eb978ef02d8e411792e49ba28d5f975d&ApiKey=0123456789abcdef0123456789abcdef&TranscodingMaxAudioChannels=2&RequireAvc=false&EnableAudioVbrEncoding=true&Tag=aa20ffbb063fa04109f7afd3402900d8&h264-level=40&h264-videobitdepth=8&h264-profile=high&TranscodeReasons=AudioCodecNotSupported,ContainerBitrateExceedsLimit&runtimeTicks=30000000&actualSegmentLengthTicks=30000000
+#EXTINF:3.000000, nodesc
+hls1/main/2.mp4?DeviceId=kiro-capture&MediaSourceId=d6b690200fc1c631334425f6f7db7d2e&VideoCodec=h264&AudioCodec=aac&AudioStreamIndex=1&VideoBitrate=1116000&AudioBitrate=384000&MaxFramerate=24&SegmentContainer=mp4&MinSegments=1&PlaySessionId=eb978ef02d8e411792e49ba28d5f975d&ApiKey=0123456789abcdef0123456789abcdef&TranscodingMaxAudioChannels=2&RequireAvc=false&EnableAudioVbrEncoding=true&Tag=aa20ffbb063fa04109f7afd3402900d8&h264-level=40&h264-videobitdepth=8&h264-profile=high&TranscodeReasons=AudioCodecNotSupported,ContainerBitrateExceedsLimit&runtimeTicks=60000000&actualSegmentLengthTicks=30000000
+#EXT-X-ENDLIST

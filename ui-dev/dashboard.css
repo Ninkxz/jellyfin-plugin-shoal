@@ -1,0 +1,28 @@
+/* A minimal Jellyfin dashboard shell, plus the theme-level class colors the Shoal page reuses (ui-spec 1, 5.3). */
+*, *::before, *::after { box-sizing: border-box; }
+html { color-scheme: dark; }
+html[data-theme="light"], html[data-theme="appletv"] { color-scheme: light; }
+body { margin: 0; font-family: "Noto Sans", "Segoe UI", system-ui, sans-serif; font-size: 15px; background: var(--jf-palette-background-default); color: var(--jf-palette-text-primary); }
+.dash-bar { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--jf-palette-background-paper); border-bottom: 1px solid var(--jf-palette-divider); }
+.dash-bar strong { font-size: 18px; }
+.dash-ctl { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.dash-ctl select, .dash-ctl input, .dash-ctl button { font: inherit; font-size: 12px; background: var(--jf-palette-Button-inheritContainedBg); color: var(--jf-palette-text-primary); border: 0; border-radius: 4px; padding: 4px 6px; }
+.dash-layout { display: flex; min-height: calc(100vh - 56px); }
+.dash-drawer { width: 240px; flex: none; padding: 16px; border-right: 1px solid var(--jf-palette-divider); color: var(--jf-palette-text-secondary); }
+.dash-drawer a { display: block; padding: 8px 0; color: inherit; text-decoration: none; }
+.dash-drawer a.is-active { color: var(--jf-palette-text-primary); font-weight: 700; }
+@media (max-width: 1000px) { .dash-drawer { display: none; } }
+.mainAnimatedPages { flex: 1; min-width: 0; }
+.content-primary { padding: 0 16px; }
+.pluginConfigurationPage { padding-top: 16px; }
+
+/* Jellyfin's own theme classes (web:themes/_base/_theme.scss), including the focus quirks Shoal must neutralize. */
+.raised { background: var(--jf-palette-Button-inheritContainedBg); color: var(--jf-palette-text-primary); border: 0; border-radius: 4px; cursor: pointer; font-family: inherit; }
+.raised:hover { background: var(--jf-palette-Button-inheritContainedHoverBg); }
+.raised:focus { background: var(--jf-palette-secondary-main); color: rgba(255,255,255,.7); }
+.button-submit { background: #00a4dc; color: rgba(0,0,0,.87); }
+.button-submit:hover { background: #33b6e3; }
+.button-submit:focus { background: #00a4dc; color: #000; }
+.button-delete { background: #c62828; color: #fff; }
+.emby-input, .emby-select { color: var(--jf-palette-text-primary); background: var(--jf-palette-FilledInput-bg); border: 0; border-bottom: 1px solid var(--jf-palette-text-secondary); font: inherit; }
+.button-link { background: none; border: 0; color: var(--jf-palette-primary-light); font: inherit; cursor: pointer; }

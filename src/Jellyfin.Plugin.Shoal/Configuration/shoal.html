@@ -1,0 +1,357 @@
+<div id="ShoalPage" data-role="page" class="page type-interior pluginConfigurationPage shoalPage" data-title="Shoal" data-controller="__plugin/Shoal.js">
+  <link rel="stylesheet" href="configurationpage?name=Shoal.css" data-shoal-css>
+  <div data-role="content">
+    <div class="content-primary">
+      <div class="shoal-root" data-view="overview" data-state="booting">
+        <div class="shoal-frame">
+
+          <nav class="shoal-localnav" aria-label="Shoal" data-slot="localnav" hidden>
+            <a class="shoal-localnav__link" href="#" data-nav="overview" data-t="navOverview"></a>
+            <a class="shoal-localnav__link" href="#" data-nav="libraries" data-t="navLibraries"></a>
+            <a class="shoal-localnav__link" href="#" data-nav="settings" data-t="navSettings"></a>
+          </nav>
+
+          <nav class="shoal-backbar" aria-label="Back" data-slot="backbar" hidden>
+            <a class="shoal-back shoal-link" href="#" data-slot="back">
+              <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-left"/></svg>
+              <span data-slot="backlabel"></span>
+            </a>
+          </nav>
+
+          <!-- Page banners (ui-spec 1.2, 6.16, 8.8): between the nav and the views; empty when none -->
+          <div class="shoal-banners" data-slot="banner"></div>
+
+          <p class="shoal-notice" role="status" data-slot="notice" hidden>
+            <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-info"/></svg>
+            <span data-slot="noticetext"></span>
+          </p>
+
+          <!-- ============================ Overview ============================ -->
+          <section class="shoal-view" data-shoal-view="overview" aria-labelledby="shoal-h-overview" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-overview" tabindex="-1" data-t="appName"></h1>
+                <p class="shoal-status" data-slot="statusline"></p>
+              </div>
+              <div class="shoal-pagehead__actions">
+                <span class="shoal-action">
+                  <button is="emby-button" type="button" class="raised emby-button shoal-btn" data-action="sync-all">
+                    <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-sync"/></svg>
+                    <span class="shoal-btn__label" data-t="syncNow"></span>
+                  </button>
+                  <span class="shoal-action__note shoal-meta" data-slot="syncnote" hidden></span>
+                </span>
+                <button is="emby-button" type="button" class="raised button-submit emby-button shoal-btn shoal-btn--primary" data-action="pair">
+                  <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-plus"/></svg>
+                  <span class="shoal-btn__label" data-t="pairServer"></span>
+                </button>
+              </div>
+            </header>
+            <p class="shoal-actionerror" role="alert" data-slot="actionerror" hidden>
+              <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-x"/></svg>
+              <span data-slot="actionerrortext"></span>
+            </p>
+
+            <div class="shoal-skel" data-state-block="loading" aria-busy="true" hidden>
+              <span class="shoal-sr" data-t="loadingShoal"></span>
+              <div class="shoal-skel__cards">
+                <div class="shoal-skel__card"></div>
+                <div class="shoal-skel__card"></div>
+                <div class="shoal-skel__card"></div>
+              </div>
+              <div class="shoal-skel__panel"></div>
+              <div class="shoal-skel__panel shoal-skel__panel--short"></div>
+            </div>
+
+            <div class="shoal-hint shoal-hint--bad shoal-loaderror" role="alert" data-state-block="error" hidden>
+              <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-warn"/></svg>
+              <p class="shoal-loaderror__text" data-t="loadFailed"></p>
+              <button is="emby-button" type="button" class="raised emby-button shoal-btn shoal-btn--small" data-action="retry-load">
+                <span class="shoal-btn__label" data-t="tryAgain"></span>
+              </button>
+            </div>
+
+            <section class="shoal-empty" data-state-block="empty" aria-labelledby="shoal-h-empty" hidden>
+              <svg class="shoal-mark" viewBox="0 0 120 48" aria-hidden="true" focusable="false">
+                <g fill="currentColor">
+                  <use href="#shoal-fish" transform="translate(6 6)"/>
+                  <use href="#shoal-fish" transform="translate(54 22) scale(.8)" opacity=".7"/>
+                  <use href="#shoal-fish" transform="translate(86 6) scale(.62)" opacity=".45"/>
+                </g>
+                <g class="shoal-mark__eyes">
+                  <circle cx="39" cy="14.5" r="1.6"/><circle cx="80.4" cy="28.8" r="1.3"/><circle cx="106.5" cy="11.3" r="1"/>
+                </g>
+              </svg>
+              <h2 class="shoal-h2" id="shoal-h-empty" data-t="emptyTitle"></h2>
+              <p class="shoal-lead" data-t="emptyBody"></p>
+              <ol class="shoal-emptysteps">
+                <li><span class="shoal-emptysteps__n" aria-hidden="true">1</span><span data-t="emptyStep1"></span></li>
+                <li><span class="shoal-emptysteps__n" aria-hidden="true">2</span><span data-t="emptyStep2"></span></li>
+                <li><span class="shoal-emptysteps__n" aria-hidden="true">3</span><span data-t="emptyStep3"></span></li>
+              </ol>
+              <div class="shoal-empty__actions">
+                <button is="emby-button" type="button" class="raised button-submit emby-button shoal-btn shoal-btn--primary" data-action="pair">
+                  <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-plus"/></svg>
+                  <span class="shoal-btn__label" data-t="pairServer"></span>
+                </button>
+                <button is="emby-button" type="button" class="raised emby-button shoal-btn" data-action="share">
+                  <span class="shoal-btn__label" data-t="shareWithFriend"></span>
+                </button>
+              </div>
+            </section>
+
+            <div data-state-block="content" hidden>
+              <section class="shoal-section" data-section="servers" aria-labelledby="shoal-h-servers">
+                <div class="shoal-section__head">
+                  <h2 class="shoal-h2" id="shoal-h-servers" data-t="friendsServers"></h2>
+                  <p class="shoal-section__note" data-slot="serversnote" data-t="selectServerNote"></p>
+                </div>
+                <div class="shoal-cards" data-slot="cards"></div>
+                <div class="shoal-nonehere" data-slot="noservers" hidden>
+                  <p class="shoal-lead" data-t="noServersYet"></p>
+                  <button is="emby-button" type="button" class="raised button-submit emby-button shoal-btn shoal-btn--primary" data-action="pair">
+                    <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-plus"/></svg>
+                    <span class="shoal-btn__label" data-t="pairServer"></span>
+                  </button>
+                </div>
+              </section>
+
+              <div data-slot="speedhost" hidden></div>
+
+              <section class="shoal-panel shoal-overlap" data-section="overlap" aria-labelledby="shoal-h-overlap" hidden>
+                <div class="shoal-panel__head">
+                  <div class="shoal-panel__titles">
+                    <h2 class="shoal-h2" id="shoal-h-overlap" data-slot="overlaptitle"></h2>
+                  </div>
+                </div>
+                <div class="shoal-panel__body" data-slot="overlapbody"></div>
+              </section>
+
+              <section class="shoal-section" data-section="posters" aria-labelledby="shoal-h-posters" hidden>
+                <div class="shoal-section__head">
+                  <h2 class="shoal-h2" id="shoal-h-posters" data-t="recentlyShared"></h2>
+                  <a class="shoal-link" href="#" data-slot="seeall" data-t="seeAll"></a>
+                </div>
+                <ul class="shoal-posters" data-slot="posters"></ul>
+                <p class="shoal-meta shoal-emptyline" data-slot="postersempty" hidden></p>
+              </section>
+
+              <section class="shoal-section" data-section="friends" aria-labelledby="shoal-h-friends">
+                <div class="shoal-section__head">
+                  <h2 class="shoal-h2" id="shoal-h-friends" data-t="friendsWatching"></h2>
+                  <button is="emby-button" type="button" class="raised emby-button shoal-btn shoal-btn--small" data-action="share">
+                    <span class="shoal-btn__label" data-t="shareWithFriend"></span>
+                  </button>
+                </div>
+                <ul class="shoal-list" data-slot="friends"></ul>
+                <p class="shoal-meta shoal-emptyline" data-slot="friendsempty" data-t="friendsEmpty" hidden></p>
+              </section>
+
+              <p class="shoal-credit shoal-meta" data-slot="credit" hidden></p>
+            </div>
+          </section>
+
+          <!-- ============================ Libraries & access ============================ -->
+          <section class="shoal-view" data-shoal-view="libraries" aria-labelledby="shoal-h-libraries" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-libraries" tabindex="-1" data-t="navLibraries"></h1>
+              </div>
+            </header>
+            <div class="shoal-body" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Settings ============================ -->
+          <section class="shoal-view" data-shoal-view="settings" aria-labelledby="shoal-h-settings" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-settings" tabindex="-1" data-t="navSettings"></h1>
+              </div>
+            </header>
+            <div class="shoal-body shoal-body--narrow" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Pair a server ============================ -->
+          <section class="shoal-view" data-shoal-view="pair" aria-labelledby="shoal-h-pair" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-pair" tabindex="-1" data-t="pairServer"></h1>
+              </div>
+            </header>
+            <div class="shoal-body shoal-body--wizard" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Server detail ============================ -->
+          <section class="shoal-view" data-shoal-view="server" aria-labelledby="shoal-h-server" hidden>
+            <div class="shoal-body" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Overlap report ============================ -->
+          <section class="shoal-view" data-shoal-view="overlap" aria-labelledby="shoal-h-overlapreport" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-overlapreport" tabindex="-1" data-t="overlapReport"></h1>
+              </div>
+              <div class="shoal-pagehead__actions">
+                <span class="selectContainer shoal-field shoal-field--inline" data-slot="overlapselectwrap">
+                  <select class="emby-select-withcolor emby-select shoal-select" data-slot="overlapselect" data-t-aria="serverLabel"></select>
+                  <svg class="shoal-icon shoal-select__chev" aria-hidden="true" focusable="false"><use href="#shoal-i-down"/></svg>
+                </span>
+              </div>
+            </header>
+            <div class="shoal-body" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Friend detail ============================ -->
+          <section class="shoal-view" data-shoal-view="friend" aria-labelledby="shoal-h-friend" hidden>
+            <div class="shoal-body" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Recovery mode (ui-spec 8.8): the banner, this h1 and one line ============================ -->
+          <section class="shoal-view" data-shoal-view="recovery" aria-labelledby="shoal-h-recovery" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-recovery" tabindex="-1" data-t="appName"></h1>
+                <p class="shoal-meta shoal-recovery-line" data-t="pausedUntilFixed"></p>
+              </div>
+            </header>
+          </section>
+
+          <div class="shoal-sr" role="status" aria-live="polite" aria-atomic="true" data-slot="live"></div>
+          <div class="shoal-sr" role="alert" data-slot="alert"></div>
+        </div>
+
+        <svg class="shoal-sprite" aria-hidden="true" focusable="false" width="0" height="0">
+          <defs>
+            <symbol id="shoal-i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></symbol>
+            <symbol id="shoal-i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+            <symbol id="shoal-i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+            <symbol id="shoal-i-warn" viewBox="0 0 24 24"><path d="M12 3.8L2.8 19.6h18.4z"/><path d="M12 10v4.2M12 16.9v.2"/></symbol>
+            <symbol id="shoal-i-relay" viewBox="0 0 24 24"><path d="M3 12h4.5M16.5 12H21"/><path d="M12 7.5l4.5 4.5-4.5 4.5-4.5-4.5z"/></symbol>
+            <symbol id="shoal-i-direct" viewBox="0 0 24 24"><path d="M3 12h17M15 7l5 5-5 5"/></symbol>
+            <symbol id="shoal-i-offline" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.7 5.7l12.6 12.6"/></symbol>
+            <symbol id="shoal-i-pause" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7M14 8.5v7"/></symbol>
+            <symbol id="shoal-i-keyoff" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3M10 13.5l4 4M14 13.5l-4 4"/></symbol>
+            <symbol id="shoal-i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.2-7.5 9.5-4.3-1.3-7.5-5-7.5-9.5V6z"/><path d="M12 8.5v4.5M12 16v.2"/></symbol>
+            <symbol id="shoal-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+            <symbol id="shoal-i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5M4 13a8 8 0 0 0 14.6 4.5"/><path d="M5 3v4h4M19 21v-4h-4"/></symbol>
+            <symbol id="shoal-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+            <symbol id="shoal-i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></symbol>
+            <symbol id="shoal-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+            <symbol id="shoal-i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5M6 9.5V20h12V9.5"/></symbol>
+            <symbol id="shoal-i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+            <symbol id="shoal-i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+            <symbol id="shoal-i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+            <symbol id="shoal-i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+            <symbol id="shoal-i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+            <symbol id="shoal-i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.3 11l7.4-3.8M8.3 13l7.4 3.8"/></symbol>
+            <symbol id="shoal-i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+            <symbol id="shoal-i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+            <symbol id="shoal-i-eyeoff" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5c2 0 3.7.7 5.1 1.7M21.5 12S18 18.5 12 18.5c-2 0-3.7-.7-5.1-1.7"/><path d="M4 20L20 4"/></symbol>
+            <symbol id="shoal-i-film" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 3.5v17M16 3.5v17M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4"/></symbol>
+            <symbol id="shoal-i-server" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="7" rx="1.5"/><rect x="4" y="13" width="16" height="7" rx="1.5"/><path d="M7.5 7.5h.1M7.5 16.5h.1"/></symbol>
+            <symbol id="shoal-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
+            <path id="shoal-fish" d="M40 10C34 2 24 0 17 2 13 3 10 6 8 8L1 3l2 7-2 7 7-5c2 2 5 5 9 6 7 2 17 0 23-8z"/>
+          </defs>
+        </svg>
+
+        <!-- ============================ Templates (cloned by shoal.js) ============================ -->
+
+        <template id="shoal-t-card">
+          <article class="shoal-card">
+            <div class="shoal-card__art">
+              <img class="shoal-card__img" alt="" loading="lazy" decoding="async" width="400" height="118" hidden data-slot="img">
+              <div class="shoal-card__ph" data-slot="ph" hidden>
+                <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-server"/></svg>
+                <span class="shoal-meta" data-slot="phtext"></span>
+              </div>
+              <span class="shoal-pill" data-slot="pill" hidden>
+                <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-offline"/></svg>
+                <span class="shoal-pill__text" data-slot="pilltext"></span>
+              </span>
+            </div>
+            <div class="shoal-card__body">
+              <div class="shoal-card__namerow">
+                <h3 class="shoal-card__title">
+                  <a class="shoal-card__name" href="#" data-slot="name">
+                    <span class="shoal-card__nametext" data-slot="nametext"></span>
+                    <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-right"/></svg>
+                  </a>
+                </h3>
+                <span class="shoal-card__chip" data-slot="chip"></span>
+              </div>
+              <p class="shoal-card__via shoal-meta" data-slot="via"></p>
+              <dl class="shoal-metrics" data-slot="metrics">
+                <div class="shoal-metrics__cell"><dt data-t="metricConnection"></dt><dd data-slot="mconn"></dd></div>
+                <div class="shoal-metrics__cell"><dt data-t="metricLatency"></dt><dd data-slot="mrtt"></dd></div>
+                <div class="shoal-metrics__cell"><dt data-t="metricSpeed"></dt><dd data-slot="mspeed"></dd></div>
+              </dl>
+              <p class="shoal-card__verdict" data-slot="verdict">
+                <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-play"/></svg>
+                <span data-slot="verdicttext"></span>
+              </p>
+              <div class="shoal-card__hint" data-slot="hint"></div>
+              <p class="shoal-card__hold" data-slot="hold" hidden></p>
+              <div class="shoal-card__foot">
+                <span class="shoal-card__titles shoal-meta" data-slot="titles"></span>
+                <span class="shoal-card__action" data-slot="action"></span>
+              </div>
+            </div>
+          </article>
+        </template>
+
+        <template id="shoal-t-poster">
+          <li class="shoal-posters__item">
+            <a class="shoal-poster" href="#">
+              <figure class="shoal-poster__fig">
+                <div class="shoal-poster__box">
+                  <img class="shoal-poster__img" alt="" loading="lazy" decoding="async" width="180" height="270" hidden data-slot="img">
+                  <div class="shoal-poster__ph" data-slot="ph" hidden>
+                    <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-film"/></svg>
+                    <span class="shoal-meta" data-slot="phtitle"></span>
+                  </div>
+                  <span class="shoal-pill shoal-pill--src" data-slot="source">
+                    <svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-share"/></svg>
+                    <span class="shoal-pill__text" data-slot="sourcetext"></span>
+                  </span>
+                </div>
+                <figcaption class="shoal-poster__cap">
+                  <span class="shoal-poster__title" data-slot="title"></span>
+                  <span class="shoal-poster__meta shoal-meta" data-slot="meta"></span>
+                </figcaption>
+              </figure>
+            </a>
+          </li>
+        </template>
+
+        <template id="shoal-t-friend-row">
+          <li class="shoal-list__item">
+            <a class="shoal-row shoal-row--link" href="#">
+              <span class="shoal-row__main">
+                <span class="shoal-row__title" data-slot="name"></span>
+                <span class="shoal-row__meta shoal-meta" data-slot="meta"></span>
+              </span>
+              <span class="shoal-row__aside">
+                <span data-slot="chip"></span>
+                <span class="shoal-meta shoal-row__now" data-slot="now" hidden></span>
+                <svg class="shoal-icon shoal-icon--s shoal-row__chev" aria-hidden="true" focusable="false"><use href="#shoal-i-right"/></svg>
+              </span>
+            </a>
+          </li>
+        </template>
+
+        <template id="shoal-t-dialog">
+          <dialog class="shoal-dialog" aria-labelledby="shoal-dlg-title">
+            <div class="shoal-dialog__panel">
+              <h2 class="shoal-dialog__title" id="shoal-dlg-title" data-slot="title"></h2>
+              <div class="shoal-dialog__body" data-slot="body"></div>
+              <p class="shoal-dialog__error" role="alert" data-slot="error" hidden></p>
+              <div class="shoal-dialog__foot" data-slot="foot"></div>
+            </div>
+          </dialog>
+        </template>
+
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shoal page harness</title>
+  <link rel="stylesheet" href="/ui-dev/themes.css">
+  <link rel="stylesheet" href="/ui-dev/dashboard.css">
+</head>
+<body>
+  <header class="dash-bar">
+    <strong>Jellyfin Dashboard (harness)</strong>
+    <form class="dash-ctl" id="ctl" method="get">
+      <label>Theme <select name="theme">
+        <option>dark</option><option>light</option><option>appletv</option><option>blueradiance</option><option>purplehaze</option><option>wmc</option>
+      </select></label>
+      <label>Scenario <select name="scenario"></select></label>
+      <label>View <select name="view">
+        <option>overview</option><option>libraries</option><option>settings</option><option>pair</option><option>server</option><option>overlap</option><option>friend</option>
+      </select></label>
+      <label>id <input name="id" size="9"></label>
+      <label>dir <select name="dir"><option value="">-</option><option>watch</option><option>share</option></select></label>
+      <label>pairing <select name="pairing">
+        <option>ok</option><option>silent</option><option>slow</option><option>denied</option><option>replaced</option><option>codesDidNotMatch</option><option>codeMismatch</option><option>expired</option><option>adminAccount</option><option>serverChanged</option><option>badPeerResponse</option><option>quickConnectOff</option><option>sessionLimitBlocked</option><option>quickConnectUnreachable</option><option>interrupted</option><option>network</option><option>inviteInvalid</option><option>server</option>
+      </select></label>
+      <label>probe <select name="probe">
+        <option value="">ok</option><option>blocked</option><option>wrongNetwork</option><option>proxyNotAllowed</option><option>unreachable</option><option>certificate</option><option>notJellyfin</option><option>inviteWrongServer</option><option>rateLimited</option>
+      </select></label>
+      <button type="submit">Load</button>
+    </form>
+  </header>
+  <div class="dash-layout">
+    <nav class="dash-drawer" aria-label="Dashboard"><a href="#">Dashboard</a><a href="#">Plugins</a><a class="is-active" href="#">Shoal</a></nav>
+    <div class="mainAnimatedPages" id="main"></div>
+  </div>
+  <script type="module" src="/ui-dev/harness.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{yaml,yml,json,csproj,props}]
+indent_size = 2
+
+[*.cs]
+# ----------------------------------------------------------------------------------------------
+# ANALYZER POLICY (the single place where the template's strict analyzer setup is relaxed).
+#
+# The csproj keeps the official template's settings: AnalysisMode=AllEnabledByDefault plus
+# TreatWarningsAsErrors. With only the template's three analyzers and no .editorconfig that setup
+# produces hundreds of style errors that contradict Jellyfin's own code style (the Jellyfin server
+# repo disables the same rules in its own .editorconfig/ruleset). Everything below is therefore
+# either "matches Jellyfin conventions" or a reviewed false positive. Real bugs stay errors.
+# ----------------------------------------------------------------------------------------------
+
+# --- Style rules that contradict Jellyfin conventions ---
+dotnet_diagnostic.SA1101.severity = none  # "prefix local calls with this": Jellyfin uses _field and no this.
+dotnet_diagnostic.SA1200.severity = none  # using placement: Jellyfin puts usings above the file-scoped namespace
+dotnet_diagnostic.SA1309.severity = none  # field names must not begin with underscore: Jellyfin uses _field
+dotnet_diagnostic.SA1633.severity = none  # file header: Jellyfin files carry no license header
+dotnet_diagnostic.SA1413.severity = none  # trailing commas in multi-line initializers
+dotnet_diagnostic.SA1649.severity = none  # file name must match first type (several small records per file)
+dotnet_diagnostic.SA1402.severity = none  # one type per file (small records next to their service)
+dotnet_diagnostic.SA1204.severity = none  # static members before instance members
+
+# --- Reviewed analyzer findings that are not defects here ---
+dotnet_diagnostic.CA1062.severity = none  # null checks on public params: nullable reference types are enforced instead
+dotnet_diagnostic.CA1848.severity = none  # LoggerMessage delegates: not worth the boilerplate for a few log lines
+dotnet_diagnostic.CA1873.severity = none  # same family (expensive log arguments)
+dotnet_diagnostic.CA1724.severity = none  # type name 'Plugin' vs namespace Jellyfin.Plugin: dictated by the plugin template
+dotnet_diagnostic.CA2227.severity = none  # settable collection property: XML/JSON config POCO needs the setter
+dotnet_diagnostic.CA1002.severity = none  # List<T> in public API: config POCO serialized by XmlSerializer
+dotnet_diagnostic.CA1054.severity = none  # URL parameters as string: URLs here are opaque, validated, relative strings
+dotnet_diagnostic.CA1055.severity = none  # URL return values as string (same)
+dotnet_diagnostic.CA1056.severity = none  # URL properties as string (the peer URL is user-entered config text)
+dotnet_diagnostic.CA2000.severity = none  # false positive: HttpClient takes ownership of the handler (disposeHandler: true)
+dotnet_diagnostic.CA1308.severity = none  # ToLowerInvariant: used to normalise ASCII media types / extensions for output, never for security comparisons
+dotnet_diagnostic.CA3003.severity = none  # false positive: the path comes from the library DB (BaseItem.Path), not from request data

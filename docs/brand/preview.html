@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shoal brand assets</title>
+<style>
+  :root { --font: system-ui, "Segoe UI", "Helvetica Neue", Helvetica, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #101010; color: #f2f2f2; line-height: 1.45; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h2 { font-size: 18px; margin: 36px 0 10px; }
+  .lede { margin: 0 0 28px; color: #b8b8b8; max-width: 66ch; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.14); }
+  .surface { padding: 20px; display: grid; gap: 18px; align-content: start; }
+  .surface.paper { background: #202020; color: #f2f2f2; }
+  .surface.white { background: #ffffff; color: #1a1a1a; }
+  .tag { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 0; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 22px; }
+  .item { display: grid; gap: 6px; justify-items: start; }
+  .item small { font-size: 12px; }
+  .nav { display: flex; align-items: center; gap: 12px; padding: 0 14px; height: 48px; border-radius: 8px; font-size: 14px; width: 190px; }
+  .paper .nav { background: rgba(255,255,255,.08); }
+  .white .nav { background: rgba(0,0,0,.07); }
+  img { display: block; }
+  img.lock { border-radius: 14px; }
+  .exports { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; }
+  .exports figure { margin: 0; display: grid; gap: 6px; font-size: 12px; color: #b8b8b8; }
+  .exports img { border: 1px solid rgba(255,255,255,.14); background: #333; }
+  @media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Shoal brand assets</h1>
+  <p class="lede">The Converge mark: three fish, one circle. The mark is transparent and uses mid-tone colors that hold at least 3:1 on both white and Jellyfin's dark background, so one file serves both themes. The lockup carries its own navy tile.</p>
+
+  <div class="pair">
+    <div class="surface paper"><p class="tag">Dark theme</p>
+      <div class="row">
+        <div class="item"><img src="shoal-mark.svg" width="16" height="16" alt="Shoal mark at 16 pixels"><small>16 px</small></div>
+        <div class="item"><img src="shoal-mark.svg" width="24" height="24" alt="Shoal mark at 24 pixels"><small>24 px</small></div>
+        <div class="item"><img src="shoal-mark.svg" width="64" height="64" alt="Shoal mark at 64 pixels"><small>64 px</small></div>
+        <div class="item"><div class="nav"><img src="shoal-mark.svg" width="24" height="24" alt=""><span>Shoal</span></div><small>As a dashboard menu item</small></div>
+      </div>
+      <div class="item"><img class="lock" src="shoal-lockup.svg" width="300" height="150" alt="Shoal for Jellyfin lockup"><small>300 x 150 lockup</small></div>
+    </div>
+    <div class="surface white"><p class="tag">Light theme</p>
+      <div class="row">
+        <div class="item"><img src="shoal-mark.svg" width="16" height="16" alt="Shoal mark at 16 pixels"><small>16 px</small></div>
+        <div class="item"><img src="shoal-mark.svg" width="24" height="24" alt="Shoal mark at 24 pixels"><small>24 px</small></div>
+        <div class="item"><img src="shoal-mark.svg" width="64" height="64" alt="Shoal mark at 64 pixels"><small>64 px</small></div>
+        <div class="item"><div class="nav"><img src="shoal-mark.svg" width="24" height="24" alt=""><span>Shoal</span></div><small>As a dashboard menu item</small></div>
+      </div>
+      <div class="item"><img class="lock" src="shoal-lockup.svg" width="300" height="150" alt="Shoal for Jellyfin lockup"><small>300 x 150 lockup</small></div>
+    </div>
+  </div>
+
+  <h2>PNG exports</h2>
+  <div class="exports">
+    <figure><img src="shoal-plugin.png" width="300" height="150" alt="Plugin catalog image"><figcaption>shoal-plugin.png (600 x 300, shown at 300 x 150)</figcaption></figure>
+    <figure><img src="shoal-avatar-512.png" width="128" height="128" alt="GitHub avatar"><figcaption>shoal-avatar-512.png (512 x 512)</figcaption></figure>
+    <figure><img src="shoal-social-1280x640.png" width="320" height="160" alt="GitHub social preview"><figcaption>shoal-social-1280x640.png</figcaption></figure>
+    <figure><img src="shoal-favicon-32.png" width="32" height="32" alt="Favicon 32"><figcaption>favicon 32</figcaption></figure>
+    <figure><img src="shoal-favicon-16.png" width="16" height="16" alt="Favicon 16"><figcaption>favicon 16</figcaption></figure>
+  </div>
+</div>
+</body>
+</html>

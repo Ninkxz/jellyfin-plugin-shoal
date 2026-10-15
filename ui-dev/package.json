@@ -1,0 +1,15 @@
+{
+  "name": "shoal-ui-dev",
+  "private": true,
+  "type": "module",
+  "description": "Development harness for the Shoal admin page: fake dashboard, fake ApiClient, mock data, render tests. Not shipped in the plugin.",
+  "scripts": {
+    "serve": "node server.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "shots": "node tools/shots.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "playwright-core": "^1.52.0"
+  }
+}

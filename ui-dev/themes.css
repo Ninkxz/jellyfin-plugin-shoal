@@ -1,0 +1,53 @@
+/*
+ * Jellyfin's built-in themes as CSS variables (prefix "jf"), enough for the Shoal page.
+ * Dark and Light are Jellyfin's own values. The others are close approximations written from the
+ * contrast table in docs/ui-spec.md 12.1, because the jellyfin-web sources are not in this repo.
+ */
+html[data-theme="dark"] {
+  --jf-palette-background-default: #101010; --jf-palette-background-paper: #202020;
+  --jf-palette-text-primary: #ffffff; --jf-palette-text-secondary: rgba(255,255,255,.70);
+  --jf-palette-divider: rgba(255,255,255,.12); --jf-palette-action-hover: rgba(255,255,255,.08);
+  --jf-palette-primary-main: #00a4dc; --jf-palette-primary-light: #33b6e3; --jf-palette-primary-dark: #00729a; --jf-palette-primary-contrastText: rgba(0,0,0,.87);
+  --jf-palette-Button-inheritContainedBg: #424242; --jf-palette-Button-inheritContainedHoverBg: #616161;
+  --jf-palette-error-main: #c62828; --jf-palette-FilledInput-bg: rgba(255,255,255,.09); --jf-palette-secondary-main: #aa5cc3;
+}
+html[data-theme="light"] {
+  --jf-palette-background-default: #f2f2f2; --jf-palette-background-paper: #e8e8e8;
+  --jf-palette-text-primary: #000000; --jf-palette-text-secondary: rgba(0,0,0,.87);
+  --jf-palette-divider: rgba(0,0,0,.14); --jf-palette-action-hover: rgba(0,0,0,.06);
+  --jf-palette-primary-main: #00a4dc; --jf-palette-primary-light: #33b6e3; --jf-palette-primary-dark: #00729a; --jf-palette-primary-contrastText: rgba(0,0,0,.87);
+  --jf-palette-Button-inheritContainedBg: #d8d8d8; --jf-palette-Button-inheritContainedHoverBg: #cccccc;
+  --jf-palette-error-main: #c62828; --jf-palette-FilledInput-bg: rgba(0,0,0,.06); --jf-palette-secondary-main: #aa5cc3;
+}
+html[data-theme="appletv"] {
+  --jf-palette-background-default: #f5f5f7; --jf-palette-background-paper: #dcdce2;
+  --jf-palette-text-primary: rgba(0,0,0,.87); --jf-palette-text-secondary: rgba(0,0,0,.6);
+  --jf-palette-divider: rgba(0,0,0,.14); --jf-palette-action-hover: rgba(0,0,0,.06);
+  --jf-palette-primary-main: #00a4dc; --jf-palette-primary-light: #33b6e3; --jf-palette-primary-dark: #00729a; --jf-palette-primary-contrastText: rgba(0,0,0,.87);
+  --jf-palette-Button-inheritContainedBg: #c9c9d1; --jf-palette-Button-inheritContainedHoverBg: #bdbdc6;
+  --jf-palette-error-main: #c62828; --jf-palette-FilledInput-bg: rgba(0,0,0,.06); --jf-palette-secondary-main: #aa5cc3;
+}
+html[data-theme="blueradiance"] {
+  --jf-palette-background-default: #14233f; --jf-palette-background-paper: #1d3560;
+  --jf-palette-text-primary: #ffffff; --jf-palette-text-secondary: rgba(255,255,255,.87);
+  --jf-palette-divider: rgba(255,255,255,.14); --jf-palette-action-hover: rgba(255,255,255,.08);
+  --jf-palette-primary-main: #00a4dc; --jf-palette-primary-light: #33b6e3; --jf-palette-primary-dark: #00729a; --jf-palette-primary-contrastText: rgba(0,0,0,.87);
+  --jf-palette-Button-inheritContainedBg: #3a4f7a; --jf-palette-Button-inheritContainedHoverBg: #4c6396;
+  --jf-palette-error-main: #c62828; --jf-palette-FilledInput-bg: rgba(255,255,255,.09); --jf-palette-secondary-main: #aa5cc3;
+}
+html[data-theme="purplehaze"] {
+  --jf-palette-background-default: #12091f; --jf-palette-background-paper: #231338;
+  --jf-palette-text-primary: #ffffff; --jf-palette-text-secondary: rgba(255,255,255,.87);
+  --jf-palette-divider: rgba(255,255,255,.14); --jf-palette-action-hover: rgba(255,255,255,.08);
+  --jf-palette-primary-main: #48c3c8; --jf-palette-primary-light: #7bd8dc; --jf-palette-primary-dark: #2f9ea3; --jf-palette-primary-contrastText: rgba(0,0,0,.87);
+  --jf-palette-Button-inheritContainedBg: #4a3a66; --jf-palette-Button-inheritContainedHoverBg: #5d4a80;
+  --jf-palette-error-main: #c62828; --jf-palette-FilledInput-bg: rgba(255,255,255,.09); --jf-palette-secondary-main: #aa5cc3;
+}
+html[data-theme="wmc"] {
+  --jf-palette-background-default: #1d2d50; --jf-palette-background-paper: #0f1c36;
+  --jf-palette-text-primary: #ffffff; --jf-palette-text-secondary: rgba(255,255,255,.85);
+  --jf-palette-divider: rgba(255,255,255,.14); --jf-palette-action-hover: rgba(255,255,255,.08);
+  --jf-palette-primary-main: #00a4dc; --jf-palette-primary-light: #33b6e3; --jf-palette-primary-dark: #00729a; --jf-palette-primary-contrastText: rgba(0,0,0,.87);
+  --jf-palette-Button-inheritContainedBg: #34466e; --jf-palette-Button-inheritContainedHoverBg: #465a88;
+  --jf-palette-error-main: #c62828; --jf-palette-FilledInput-bg: rgba(255,255,255,.09); --jf-palette-secondary-main: #aa5cc3;
+}

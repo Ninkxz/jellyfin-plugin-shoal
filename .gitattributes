@@ -1,0 +1,7 @@
+* text=auto
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Test fixtures are compared byte for byte; keep LF on every platform.
+tests/**/Fixtures/* text eol=lf
