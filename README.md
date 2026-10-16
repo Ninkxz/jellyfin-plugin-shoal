@@ -1,10 +1,17 @@
 # Shoal
 
-A Jellyfin plugin that lets friends' servers share libraries. See `docs/DESIGN.md`.
+Watch your friends' Jellyfin libraries from your own server, without copying anything. Their titles show up in your Jellyfin like any other, play in Moonfin and jellyfin-web, and your friend's server does the heavy lifting.
+
+## Install
+
+1. In Jellyfin, open **Dashboard**, **Plugins**, **Repositories**, click **+**, and add this address:
+   `https://raw.githubusercontent.com/Ninkxz/jellyfin-plugin-shoal/main/manifest.json`
+2. Open the **Catalog**, find **Shoal**, click **Install**, and restart Jellyfin.
+3. Open **Dashboard**, **Shoal** and follow the steps. Design notes are in `docs/DESIGN.md`.
 
 ## Both servers need Shoal
 
-Shoal has to be installed on **both** servers: yours, and your friend's. Install it from https://github.com/Ninkxz/jellyfin-plugin-shoal (Dashboard, Plugins), then restart Jellyfin.
+Shoal has to be installed on **both** servers: yours, and your friend's. Install it as described above, then restart Jellyfin.
 
 Pairing is by invite only. The server that shares makes an invite in Shoal ("Share with a friend") and sends it over a private channel. The server that watches pastes it, reads out a short safety code, and the friend types that code to approve. Nobody has to make an account or turn on anything else in Jellyfin. If you try to pair with a server that has no Shoal, the wizard says so and offers a message you can copy to your friend.
 
