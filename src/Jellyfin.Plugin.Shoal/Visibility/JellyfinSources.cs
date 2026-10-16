@@ -47,7 +47,7 @@ public sealed class JellyfinLibrarySource : ILibrarySource
         {
             if (Guid.TryParse(folder.ItemId, out var id))
             {
-                result.Add(new LibraryInfo(id, folder.Name ?? string.Empty, folder.Locations ?? []));
+                result.Add(new LibraryInfo(id, folder.Name ?? string.Empty, folder.Locations ?? [], folder.CollectionType?.ToString().ToLowerInvariant() ?? string.Empty));
             }
         }
 
@@ -55,24 +55,31 @@ public sealed class JellyfinLibrarySource : ILibrarySource
     }
 
     /// <inheritdoc />
-    public Task CreateAsync(string name, string path, CancellationToken cancellationToken)
+    public Task CreateAsync(string name, string path, CancellationToken cancellationToken) => CreateAsync(name, path, "movies", cancellationToken);
+
+    /// <inheritdoc />
+    public Task CreateAsync(string name, string path, string collectionType, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var tv = string.Equals(collectionType, "tvshows", StringComparison.Ordinal);
         var providers = _subtitles.GetSupportedProviders(new Movie()).Select(static p => p.Name);
         var segmentProviders = _segments.GetSupportedProviders(new Movie()).SelectMany(static p => new[] { p.Name, p.Id });
-        var options = LibraryOptionsFactory.Create(path, providers, segmentProviders);
-        return _libraries.AddVirtualFolder(name, CollectionTypeOptions.movies, options, refreshLibrary: false);
+        var options = LibraryOptionsFactory.Create(path, providers, segmentProviders, tv);
+        return _libraries.AddVirtualFolder(name, tv ? CollectionTypeOptions.tvshows : CollectionTypeOptions.movies, options, refreshLibrary: false);
     }
 
     /// <inheritdoc />
     public async Task PurgeItemsAsync(Guid libraryId, CancellationToken cancellationToken)
     {
         // Removing a virtual folder leaves its items in the database until a scan (Pilot round 6, finding 1): delete them here, files untouched.
-        var items = _libraries.GetItemList(new InternalItemsQuery { ParentId = libraryId, Recursive = true, IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Video] });
-        foreach (var item in items)
+        // A TV library: the leaves go first, so no series or season is deleted under items that are still to be listed.
+        foreach (var types in new[] { new[] { BaseItemKind.Movie, BaseItemKind.Video, BaseItemKind.Episode }, [BaseItemKind.Season], [BaseItemKind.Series] })
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _libraries.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false });
+            foreach (var item in _libraries.GetItemList(new InternalItemsQuery { ParentId = libraryId, Recursive = true, IncludeItemTypes = types }))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _libraries.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false });
+            }
         }
 
         await Task.CompletedTask.ConfigureAwait(false);

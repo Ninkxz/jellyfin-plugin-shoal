@@ -321,9 +321,12 @@ public sealed class MetadataSanitizer
 
     private static bool IsAsciiHex(char c) => c is (>= '0' and <= '9') or (>= 'a' and <= 'f') or (>= 'A' and <= 'F');
 
-    private static long? Ticks(long? ticks) => ticks is >= 0 and <= MaxRuntimeTicks ? ticks : null;
+#pragma warning disable SA1202, SA1611, SA1615 // Shared with TvSanitizer (DESIGN v2.7.4): the same rules for the same fields.
+    /// <summary>Keeps a duration only when it is 0 to 48 hours.</summary>
+    internal static long? Ticks(long? ticks) => ticks is >= 0 and <= MaxRuntimeTicks ? ticks : null;
 
-    private static string[] Distinct(IEnumerable<string?>? values, int maxCount, int maxLength)
+    /// <summary>Cleans a list of names: distinct, non empty, at most a count and a length.</summary>
+    internal static string[] Distinct(IEnumerable<string?>? values, int maxCount, int maxLength)
     {
         if (values is null)
         {
@@ -348,7 +351,8 @@ public sealed class MetadataSanitizer
         return [.. result];
     }
 
-    private static SanitizedActor[] Actors(IReadOnlyList<BaseItemPerson>? people)
+    /// <summary>Keeps up to five actors with cleaned names and roles.</summary>
+    internal static SanitizedActor[] Actors(IReadOnlyList<BaseItemPerson>? people)
     {
         if (people is null)
         {
@@ -392,7 +396,8 @@ public sealed class MetadataSanitizer
 
     private static int? Dimension(int? value) => value is >= 0 and <= MaxDimension ? value : null;
 
-    private static SanitizedSource[] Sources(BaseItemDto dto, int max)
+    /// <summary>Validates the media sources of an item (at most <paramref name="max"/>).</summary>
+    internal static SanitizedSource[] Sources(BaseItemDto dto, int max)
     {
         if (dto.MediaSources is null)
         {

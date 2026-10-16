@@ -22,11 +22,11 @@ async function server(id, extra) {
 
 const section = (p) => [...p.page.querySelectorAll('section')].find((s) => s.querySelector('h2')?.textContent === 'Server key');
 
-test('a Quick Connect pairing cannot rotate: the panel says to pair again and offers nothing else', async () => {
-    const p = await server('h-hops');
+test('a server paired the old way cannot rotate: the panel says to re-pair by invite and offers nothing else', async () => {
+    const p = await server('h-legacy', { legacy: true });
     try {
         const s = section(p);
-        assert.match(s.textContent, /paired with Quick Connect, so Shoal cannot change its key/);
+        assert.match(s.textContent, /was paired the old way, so Shoal cannot change its key\. Re-pair it with an invite/);
         assert.equal(s.querySelectorAll('button, select').length, 0);
     } finally {
         p.close();

@@ -44,6 +44,12 @@ public enum SyncAlert
 
     /// <summary>Stubs could not be written.</summary>
     WriteFailures,
+
+    /// <summary>A TV cap was reached (series, seasons, episodes): the extra items were dropped and counted.</summary>
+    TvCaps,
+
+    /// <summary>Episodes were skipped: no usable number, a virtual episode, an overlap, or a series that was not listed.</summary>
+    TvSkipped,
 }
 
 /// <summary>
@@ -177,6 +183,9 @@ public sealed class SyncReport
 
     /// <summary>Gets or sets how many images were stored.</summary>
     public int ImagesStored { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether images of a TV library are still to be fetched after this run (<c>imagesPending</c>, DESIGN v2.7.3); the scheduler then follows up in 10 minutes.</summary>
+    public bool ImagesPending { get; set; }
 
     /// <summary>Gets or sets how many movie folders changed (for the library refresh).</summary>
     public int ChangedFolders { get; set; }

@@ -69,7 +69,7 @@ public sealed record GuardSnapshot(IReadOnlySet<Guid> ShareUserIds, IReadOnlySet
 public sealed class GuardShares
 {
     private static readonly JsonSerializerOptions Options = new() { MaxDepth = 8 };
-    private static readonly Built Empty = new(null, new GuardSnapshot(new HashSet<Guid>(), new HashSet<Guid>(), new Dictionary<Guid, int>()), HardeningMode.LogOnly);
+    private static readonly Built Empty = new(null, new GuardSnapshot(new HashSet<Guid>(), new HashSet<Guid>(), new Dictionary<Guid, int>()), HardeningMode.Enforce); // D18: the same default as a fresh state (an empty snapshot shares nothing, so it refuses nothing)
 
     private readonly IStateStore _state;
     private readonly string _file;
@@ -234,7 +234,7 @@ public sealed class GuardShares
             }
 
             var limits = doc.Limits.Where(l => Guid.TryParseExact(l.Key, "N", out _)).ToDictionary(l => Guid.ParseExact(l.Key, "N"), l => l.Value);
-            var mode = Enum.TryParse<HardeningMode>(doc.Mode, out var m) ? m : HardeningMode.LogOnly;
+            var mode = Enum.TryParse<HardeningMode>(doc.Mode, out var m) ? m : HardeningMode.Enforce;
             return new Built(null, new GuardSnapshot(doc.Users.ToHashSet(), doc.Libraries.ToHashSet(), limits), mode);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -277,7 +277,6 @@ public sealed class GuardCounters : IGuardCounters
     private readonly TimeProvider _time;
     private readonly InviteBook? _invites;
     private int _errors;
-    private int _shield;
     private int _transcodeCap;
     private int _requests;
     private DateTimeOffset _pruned;
@@ -317,9 +316,6 @@ public sealed class GuardCounters : IGuardCounters
 
     /// <inheritdoc />
     public int GuardErrors => Volatile(ref _errors);
-
-    /// <inheritdoc />
-    public int ShieldHits => Volatile(ref _shield);
 
     /// <inheritdoc />
     public int TranscodeCapHits => Volatile(ref _transcodeCap);
@@ -402,9 +398,6 @@ public sealed class GuardCounters : IGuardCounters
 
     /// <summary>Counts a failure the guard let through (fail open).</summary>
     public void Error() => Interlocked.Increment(ref _errors);
-
-    /// <summary>Counts a Quick Connect request the shield slowed down.</summary>
-    public void Shield() => Interlocked.Increment(ref _shield);
 
     /// <summary>Counts a transcode refused over a friend's limit.</summary>
     public void TranscodeCap() => Interlocked.Increment(ref _transcodeCap);
@@ -587,39 +580,6 @@ public static class GuardRoutes
             {
                 yield return name.ToLowerInvariant();
             }
-        }
-    }
-}
-
-/// <summary>The sliding windows of the Quick Connect shield (DESIGN 8.4 job b): 10 per minute per address, 300 per 10 minutes overall.</summary>
-public sealed class InitiateShield
-{
-    private readonly TimeProvider _time;
-    private readonly object _lock = new();
-    private readonly List<(DateTimeOffset At, string Ip)> _hits = [];
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="InitiateShield"/> class.
-    /// </summary>
-    /// <param name="time">The clock.</param>
-    public InitiateShield(TimeProvider time) => _time = time;
-
-    /// <summary>Records a request and says whether it may go on.</summary>
-    /// <param name="ip">The caller's address.</param>
-    /// <returns>True when allowed; false for a 429.</returns>
-    public bool TryAllow(string ip)
-    {
-        lock (_lock)
-        {
-            var now = _time.GetUtcNow();
-            _hits.RemoveAll(h => h.At < now - TimeSpan.FromMinutes(10));
-            if (_hits.Count >= 300 || _hits.Count(h => h.Ip == ip && h.At >= now - TimeSpan.FromMinutes(1)) >= 10)
-            {
-                return false;
-            }
-
-            _hits.Add((now, ip));
-            return true;
         }
     }
 }

@@ -15,6 +15,18 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Shoal.Authorization;
 
 /// <summary>
+/// What a federated item is to the playback routes (DESIGN v2.7.5). Movies are always <see cref="Playable"/>.
+/// </summary>
+public enum IndexKind
+{
+    /// <summary>A movie or an episode: it has a <c>.strm</c> stub and can be played.</summary>
+    Playable,
+
+    /// <summary>A series or a season of a TV library: a folder only. PlaybackInfo answers 404 and every byte route answers as for a federated id with no stub.</summary>
+    Container,
+}
+
+/// <summary>
 /// Where the index learns the local items and their paths. The production class talks to <c>ILibraryManager</c>; tests use a fake.
 /// </summary>
 public interface IItemPaths
@@ -68,9 +80,10 @@ public sealed class ItemPathEventArgs : EventArgs
 /// </summary>
 /// <param name="PeerKey">The peer.</param>
 /// <param name="MappingKey">The library mapping.</param>
-/// <param name="FolderName">The stub's folder name below the library folder.</param>
+/// <param name="FolderName">The stub's folder name below the library folder; for an episode of a TV library its path below the library folder (<c>Show/Season 01/S01E01.strm</c>), which is what <c>StubCatalog.Find</c> keys episodes by.</param>
 /// <param name="FileName">The file name of the item's <c>.strm</c> (a title with several versions has one per version), or empty when the path names only the folder.</param>
-public sealed record IndexedStub(string PeerKey, string MappingKey, string FolderName, string FileName = "");
+/// <param name="Kind">Whether the item is something to play (a movie or an episode) or only holds items (a series or a season of a TV library, DESIGN v2.7.5).</param>
+public sealed record IndexedStub(string PeerKey, string MappingKey, string FolderName, string FileName = "", IndexKind Kind = IndexKind.Playable);
 
 /// <summary>
 /// The set of federated local items (DESIGN 3.5): <c>Contains</c> is an O(1) hit. The authoritative rule is the item's path: canonicalized, it starts
@@ -167,7 +180,23 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var peer = state.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, parts[0], StringComparison.Ordinal));
         var mapping = peer?.Libraries.FirstOrDefault(l => string.Equals(l.Subfolder, parts[1], comparison));
-        return peer is null || mapping is null ? null : new IndexedStub(peer.PeerKey, mapping.MappingKey, parts[2], parts.Length > 3 ? parts[3] : string.Empty);
+        if (peer is null || mapping is null)
+        {
+            return null;
+        }
+
+        // Only a TV library has items that are not a stub file; a movie library is Playable whatever the path names (v1 behavior).
+        var tv = string.Equals(mapping.CollectionType, "tvshows", StringComparison.Ordinal);
+        var playable = itemPath.EndsWith(".strm", StringComparison.OrdinalIgnoreCase);
+        if (tv && playable && parts.Length >= 5)
+        {
+            // An episode (series folder / season folder / SnnEnn.strm): its name for the catalog is its path below the library, because all the episodes of
+            // a series share the first segment (DESIGN v2.7.1). Every lookup of the catalog by FolderName therefore finds the episode itself.
+            return new IndexedStub(peer.PeerKey, mapping.MappingKey, string.Join('/', parts[2..]), parts[^1], IndexKind.Playable);
+        }
+
+        var kind = tv && !playable ? IndexKind.Container : IndexKind.Playable;
+        return new IndexedStub(peer.PeerKey, mapping.MappingKey, parts[2], parts.Length > 3 ? parts[3] : string.Empty, kind);
     }
 
     /// <summary>
@@ -212,6 +241,20 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
 
         return stub;
     }
+
+    /// <summary>
+    /// Whether a federated item can be played, or only holds items.
+    /// </summary>
+    /// <param name="localItemId">The local item id.</param>
+    /// <returns>The kind, or null when the item is not federated.</returns>
+    public IndexKind? KindOf(Guid localItemId) => Get(localItemId)?.Kind;
+
+    /// <summary>
+    /// Whether an item is a federated series or season (a container): not playable, and every byte route answers as for a federated id with no stub.
+    /// </summary>
+    /// <param name="localItemId">The local item id.</param>
+    /// <returns>True for a container; false for a playable item or an id that is not federated.</returns>
+    public bool IsContainer(Guid localItemId) => KindOf(localItemId) == IndexKind.Container;
 
     /// <inheritdoc />
     public FederatedItem? Find(Guid localItemId) => Get(localItemId) is { } stub ? new FederatedItem(stub.PeerKey, stub.MappingKey) : null;
@@ -350,7 +393,7 @@ public sealed class JellyfinItemPaths : IItemPaths
                 continue;
             }
 
-            foreach (var item in _library.GetItemList(new InternalItemsQuery { ParentId = folderId, Recursive = true, IncludeItemTypes = [Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Video] }))
+            foreach (var item in _library.GetItemList(new InternalItemsQuery { ParentId = folderId, Recursive = true, IncludeItemTypes = [Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Video, Jellyfin.Data.Enums.BaseItemKind.Series, Jellyfin.Data.Enums.BaseItemKind.Season, Jellyfin.Data.Enums.BaseItemKind.Episode] }))
             {
                 result.Add(new ItemPathEventArgs(item.Id, item.Path));
             }

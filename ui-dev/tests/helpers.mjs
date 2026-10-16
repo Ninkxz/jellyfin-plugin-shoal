@@ -97,9 +97,9 @@ export async function mountPage(opts) {
     const o = Object.assign({ scenario: 'default', params: {}, now: () => Date.now() }, opts || {});
     const mod = await loadShoal();
     const d = ensureDom();
-    const { scenario, params, now, settleMs, features, nulls, ...mockOptions } = o;
+    const { scenario, params, now, settleMs, features, nulls, emptyBodies, garbage, installed, latest, noCatalog, ...mockOptions } = o;
     const mock = createMock({ scenario, now, pairing: 'ok', probeError: '', delayMs: 0, ...mockOptions });
-    const client = createMockClient(mock, { nulls });
+    const client = createMockClient(mock, { nulls, emptyBodies, garbage, installed, latest, noCatalog });
     const holder = d.window.document.createElement('div');
     holder.innerHTML = html;
     const page = holder.firstElementChild;

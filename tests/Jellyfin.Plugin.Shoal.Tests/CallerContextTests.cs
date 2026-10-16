@@ -349,7 +349,7 @@ public sealed class CallerContextTests
         Assert.NotEmpty(controllers);
         // W6 L-7: a controller is a routable door. Only the admin API and the planned peer-facing controllers may exist; a leftover spike
         // would bypass CallerContext. A new one needs a deliberate edit here and a Warden look.
-        Assert.All(controllers, c => Assert.True(c.Name.StartsWith("Admin", StringComparison.Ordinal) || c.Name is "PairController" or "ShoalHlsController" or "ShoalSubtitlesController" or "ShareRotateController", c.Name + " is not an expected controller"));
+        Assert.All(controllers, c => Assert.True(c.Name.StartsWith("Admin", StringComparison.Ordinal) || c.Name is "PairController" or "ShoalPingController" or "ShoalHlsController" or "ShoalSubtitlesController" or "ShareRotateController", c.Name + " is not an expected controller"));
         var anonymous = new List<string>();
         foreach (var controller in controllers)
         {
@@ -372,9 +372,9 @@ public sealed class CallerContextTests
             }
         }
 
-        // DESIGN 4.1b / 8.4: the one anonymous action in Shoal is PairController.Pair (K22). Nothing else may be.
-        Assert.All(anonymous, name => Assert.Equal("PairController.Pair", name));
-        Assert.True(anonymous.Count <= 1);
+        // DESIGN 4.1b / 8.4: the anonymous actions in Shoal are PairController.Pair (K22) and ShoalPingController.Ping (pairing v2). Nothing else may be.
+        Assert.All(anonymous, name => Assert.Contains(name, new[] { "PairController.Pair", "ShoalPingController.Ping" }));
+        Assert.True(anonymous.Count <= 2);
     }
 
     [Fact]

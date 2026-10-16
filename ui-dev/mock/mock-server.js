@@ -146,9 +146,22 @@ export function createMock(options) {
         addServer({ handle: 'h-cedar', displayName: 'Cedar', url: 'https://cedar.example.net', network: 'Public', status: 'TlsKeyChanged', path: 'unknown', rttMs: null, mbps: null, titleCount: 210, alertCount: 1, latest: mkLatest('cedar-1', 'Agent 327', 2017) });
         addServer({ handle: 'h-maple', displayName: 'Maple', url: 'http://maple.tail1234.ts.net:8096', network: 'Tailnet', status: 'Disabled', path: 'unknown', rttMs: null, mbps: null, titleCount: 77, latest: mkLatest('maple-1', 'Hero', 2018) });
         addServer({ handle: 'h-new', displayName: 'Willow', url: 'http://willow.tail1234.ts.net:8096', network: 'Tailnet', status: 'Pairing', path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
-        addServer({ handle: 'h-stop', displayName: 'Birch', url: 'https://birch.example.net', network: 'Public', status: 'PairingAborted', pairingError: 'codesDidNotMatch', pairingMethod: 'qc', pairingStoppedUtc: iso(t0 - 20 * MIN), paired: false, path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
-        addServer({ handle: 'h-alder', displayName: 'Alder', url: 'http://alder.tail1234.ts.net:8096', network: 'Tailnet', status: 'PairingAborted', pairingError: 'network', pairingMethod: 'qc', pairingStoppedUtc: iso(t0 - 3 * HOUR), paired: true, path: 'unknown', rttMs: null, mbps: null, titleCount: 340 });
-        addServer({ handle: 'h-elm', displayName: 'Elm', url: 'https://elm.example.net', network: 'Public', status: 'PairingAborted', pairingError: 'interrupted', pairingPhase: 'awaitingConfirm', pairingMethod: 'qc', pairingStoppedUtc: iso(t0 - 50 * MIN), paired: false, path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
+        addServer({ handle: 'h-stop', displayName: 'Birch', url: 'https://birch.example.net', network: 'Public', status: 'PairingAborted', pairingError: 'badPeerResponse', pairingMethod: 'invite', pairingStoppedUtc: iso(t0 - 20 * MIN), paired: false, path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
+        addServer({ handle: 'h-alder', displayName: 'Alder', url: 'http://alder.tail1234.ts.net:8096', network: 'Tailnet', status: 'PairingAborted', pairingError: 'network', pairingMethod: 'invite', pairingStoppedUtc: iso(t0 - 3 * HOUR), paired: true, path: 'unknown', rttMs: null, mbps: null, titleCount: 340 });
+        addServer({ handle: 'h-elm', displayName: 'Elm', url: 'https://elm.example.net', network: 'Public', status: 'PairingAborted', pairingError: 'interrupted', pairingMethod: 'invite', pairingStoppedUtc: iso(t0 - 50 * MIN), paired: false, path: 'unknown', rttMs: null, mbps: null, titleCount: 0 });
+    }
+
+    // A server paired the old way (D17, opt.legacy): paused, it needs a re-pair by invite.
+    if (opt.dedup && servers.get('h-fern')) {
+        Object.assign(servers.get('h-fern'), { hiddenByDedup: 41, dedupWinner: 'Hops' });
+    }
+
+    if (opt.legacyHttp) {
+        addServer({ handle: 'h-legacyhttp', displayName: 'Plain Friend', url: 'http://plainfriend.example.net:8096', network: 'Public', status: 'Disabled', pairingMethod: 'qc', needsRepair: true, repairBlockedByHttp: true, path: 'unknown', rttMs: null, mbps: null, titleCount: 20 });
+    }
+
+    if (opt.legacy) {
+        addServer({ handle: 'h-legacy', displayName: 'Old Friend', url: 'http://oldfriend.tail1234.ts.net:8096', network: 'Tailnet', status: 'Disabled', pairingMethod: 'qc', needsRepair: true, path: 'unknown', rttMs: null, mbps: null, titleCount: 50 });
     }
 
     const recentlyShared = [];
@@ -177,7 +190,7 @@ export function createMock(options) {
 
         if (servers.has('h-fern')) {
             mappings.push(mk('m-fern-movies', 'Fernwood Movies', 'h-fern', 'Fernwood', 386, { mode: 'Everyone', selectedUserIds: ['u-rich', 'u-sam'], includeRestricted: false },
-                { heldAdditions: opt.scenario === 'problems' ? 600 : 0 }));
+                Object.assign({ heldAdditions: opt.scenario === 'problems' ? 600 : 0 }, opt.splitCounts ? { remoteCount: 390, localCount: 386 } : {})));
         }
 
         if (servers.has('h-gran')) {
@@ -289,7 +302,7 @@ export function createMock(options) {
     }
 
     function rotationOf(s) {
-        const supported = (s.pairingMethod || (s.handle === 'h-fern' ? 'invite' : 'qc')) === 'invite';
+        const supported = (s.pairingMethod || 'invite') === 'invite';
         const r = rotationState.get(s.handle) || { days: 0, lastRotatedUtc: null, error: null, overdue: false };
         const base = r.lastRotatedUtc ? Date.parse(r.lastRotatedUtc) : t0 - 9 * DAY;
         return {
@@ -310,9 +323,9 @@ export function createMock(options) {
         stubRoot: '/var/lib/jellyfin/shoal/library', stubRootCheck: 'ok', syncIntervalHours: 6,
         massDeletionMinCount: 25, massDeletionPercent: 10, newItemsMinCount: 500, newItemsPercent: 20,
         diskQuotaGbPerPeer: 2, artQuality: 'Standard', autoFitQualityToLink: true, maxStreamsPerUser: 4, hlsSubtitlesEnabled: true,
-        speedTestIntervalHours: 6, notifyClientsWhenOffline: true, parkOfflinePeers: false, parkAfterHours: 72,
+        speedTestIntervalHours: 6, notifyClientsWhenOffline: true, parkOfflinePeers: false, parkAfterHours: 0.5,
         tailscaleSocket: 'auto', tailscaleDetected: true, keySource: 'file', secretsVolumeUnsafe: false,
-        alternateVersionsEnabled: false, trickplayEnabled: true, trickplayCacheGb: 1, trickplayCacheBytes: opt.trickplayBytes ?? 312 * 1024 * 1024, attachmentsEnabled: true, reencodeImages: true,
+        hlsBufferAhead: 6, offlineCardEnabled: true, requestServiceName: 'Seerr', requestServiceUrl: '', alternateVersionsEnabled: false, tvShowsEnabled: opt.tvShows === true, tvEpisodeThumbs: true, trickplayEnabled: true, trickplayCacheGb: 1, trickplayCacheBytes: opt.trickplayBytes ?? 312 * 1024 * 1024, attachmentsEnabled: true, reencodeImages: true,
         imageSandbox: opt.sandbox === 'unavailable' ? { state: 'unavailable', limits: 'partial', reason: opt.sandboxReason || 'ffmpegMissing', rejected: 0 }
             : opt.sandbox === 'partial' ? { state: 'active', limits: 'partial', reason: null, rejected: 4 } : { state: 'active', limits: 'full', reason: null, rejected: 0 }
     };
@@ -341,6 +354,10 @@ export function createMock(options) {
         ],
         lastBackupUtc: iso(t0 - 2 * HOUR), findings: [], backupByCopy: !!opt.backupByCopy
     };
+    if (opt.orphanFolders) {
+        stateInfo.findings = Array.from({ length: opt.orphanFolders }, (_, i) => ({ kind: 'orphanFolder', library: ('0123456789abcdef0123456789abcd' + String(10 + i)) }));
+    }
+
     if (opt.scenario === 'problems') {
         stateInfo.findings = [
             { kind: 'missingKey', peerHandle: 'h-pine', serverName: 'Pinecone' },
@@ -410,10 +427,7 @@ export function createMock(options) {
         const d = detail.get(s.handle) || {};
         return Object.assign(clone(s), {
             serverIdPrefix: d.serverIdPrefix || (s.handle.length * 1234567).toString(16).padStart(8, '0').slice(0, 8),
-            pairedUtc: s.paired === false ? undefined : iso(t0 - 9 * DAY), pairingMethod: s.pairingMethod || (s.handle === 'h-fern' ? 'invite' : 'qc'),
-            deviceLock: s.handle === 'h-fern' ? undefined : (s.handle === 'h-gran' ? 'missing' : 'confirmed'),
-            sessionLimit: s.handle === 'h-fern' ? undefined : (s.handle === 'h-gran' || opt.sessionLimit === 'notSet' ? 'notSet' : 'ok'),
-            accountNotes: s.handle === 'h-fern' ? undefined : ['passwordSelfChange', 'unusedOptions'],
+            pairedUtc: s.paired === false ? undefined : iso(t0 - 9 * DAY), pairingMethod: s.pairingMethod || 'invite',
             pairingSession: session && session.peerHandle === s.handle && !session.error ? 'ps-1' : undefined,
             libraries: clone(mappings.filter((x) => x.serverHandle === s.handle)),
             users: clone(users),
@@ -489,14 +503,16 @@ export function createMock(options) {
                 { q: '720p', bothCount: 80, localBytes: 0.1e12, gainCount: 150, peerBytes: 0.2e12 },
                 { q: 'sd', bothCount: 12, localBytes: 0.02e12, gainCount: 32, peerBytes: 0.0e12 }
             ],
-            betterCopyCount: s.handle === 'h-hops' ? 14 : undefined
+            betterCopyCount: s.handle === 'h-hops' ? 14 : undefined,
+            tv: opt.tvShows === true ? { sharedSeries: 12, sharedSeriesEpisodes: 310, gainSeries: 8, gainEpisodes: 150 } : undefined
         };
     }
 
     /* ---------------- pairing (ui-spec 8.2, DESIGN 4.2a) ---------------- */
     let probeSeq = 0;
     const probes = new Map();
-    let session = null;
+    // opt.ghost: a finished pairing whose server is no longer there (Pilot 08 N5).
+    let session = opt.ghost ? { createdAt: now(), method: 'qc', state: 'done', error: null, displayName: 'Ghost', url: 'http://ghost.tail1234.ts.net:8096', network: 'Tailnet', serverIdPrefix: '3fa91c7e', lifetimeMs: 600000, code: null, safetyCode: 'K7QM', peerHandle: 'h-ghost', rePair: false } : null;
     const addedPeers = new Set();
     const SAFETY = ['requestReplaced', 'codesDidNotMatch', 'serverChanged', 'adminAccount', 'badPeerResponse'];
     const SCENARIO_KIND = { replaced: 'requestReplaced', denied: 'denied' };
@@ -571,7 +587,7 @@ export function createMock(options) {
             direction: 'watch', method: s.method, peerHandle: s.peerHandle || '', step, state: s.error ? 'aborted' : s.state === 'done' ? 'confirmed' : 'running',
             code: s.method === 'qc' && s.state !== 'gettingCode' ? s.code : null,
             safetyCode: s.method === 'qc' && s.state === 'gettingCode' ? null : s.safetyCode,
-            expiresUtc: iso(s.state === 'awaitingConfirm' ? s.confirmDeadline : s.createdAt + s.lifetimeMs),
+            expiresUtc: opt.noExpiry ? null : iso(s.state === 'awaitingConfirm' ? s.confirmDeadline : s.createdAt + s.lifetimeMs),
             error: s.error || null, phase: s.phase || null, peerSilent: !!s.peerSilent, paired: !!s.rePair, accountWarnings: [], accountNotes: [], startedUtc: iso(s.createdAt)
         };
     }
@@ -758,6 +774,10 @@ export function createMock(options) {
         return ok({});
     });
     route('DELETE', 'Peers/([^/]+)', (m, body) => {
+        if (opt.removeError) {
+            return fail(409, opt.removeError);
+        }
+
         const h = decodeURIComponent(m[1]);
         const target = servers.get(h);
         if (!target) {
@@ -787,6 +807,10 @@ export function createMock(options) {
         return ok({}, 202);
     });
     route('POST', 'Peers/([^/]+)/Pause', (m) => {
+        if (opt.actionFails) {
+            return fail(500, 'server');
+        }
+
         const s = servers.get(decodeURIComponent(m[1]));
         if (s) {
             s.status = 'Disabled';
@@ -850,8 +874,27 @@ export function createMock(options) {
 
         return ok({});
     });
-    route('POST', 'Peers/([^/]+)/Holds/([^/]+)/(Release|Keep)', (m) => {
+    // Held episodes grouped by series (K40). opt.heldSeries: the number of series on hold (default 0).
+    const heldSeries = { removals: [], additions: [] };
+    if (opt.heldSeries) {
+        heldSeries.removals = [{ series: 'sk-1', title: 'Andor', year: 2022, episodes: 12 }, { series: 'sk-2', title: 'Severance', year: 2022, episodes: 9 }];
+        heldSeries.additions = [{ series: 'sk-3', title: 'Silo', year: 2023, episodes: 20 }];
+    }
+
+    route('GET', 'Peers/([^/]+)/Holds', (m) => (servers.get(decodeURIComponent(m[1])) ? ok(clone(heldSeries)) : fail(404)));
+    route('POST', 'Peers/([^/]+)/Holds/([^/]+)/(Release|Keep)', (m, body, query) => {
         const s = servers.get(decodeURIComponent(m[1]));
+        if (query && query.series && m[3] === 'Release') {
+            const list = heldSeries[m[2]] || [];
+            const at = list.findIndex((r) => r.series === query.series);
+            if (at < 0) {
+                return fail(404, 'notFound');
+            }
+
+            list.splice(at, 1);
+            return ok({}, 202);
+        }
+
         if (s) {
             if (m[2] === 'removals') {
                 s.heldRemovals = 0;
@@ -867,14 +910,14 @@ export function createMock(options) {
 
         return ok({});
     });
-    route('GET', 'Peers/([^/]+)/RemoteLibraries', () => ok([
-        { mappingKey: 'rl-movies', name: X('Movies'), type: 'movies', count: 1204, selectable: true },
+    route('GET', 'Peers/([^/]+)/RemoteLibraries', (m) => (opt.ghost && decodeURIComponent(m[1]) === 'h-ghost' ? fail(404, 'notFound') : ok([
+        { mappingKey: 'rl-movies', name: X('Movies'), type: 'movies', count: 1204, remoteCount: 1204, selectable: true },
         { mappingKey: 'rl-big', name: 'Everything', type: 'movies', count: 8400, selectable: true },
-        { mappingKey: 'rl-tv', name: 'TV shows', type: 'tvshows', count: 90, selectable: false }
-    ]));
+        { mappingKey: 'rl-tv', name: 'TV shows', type: 'tvshows', count: 90, seriesCount: 12, episodeCount: 90, selectable: opt.tvShows === true }
+    ])));
     route('POST', 'Peers/([^/]+)/Libraries', (m, body) => {
         if (opt.addLibraryError) {
-            return fail(409, opt.addLibraryError);
+            return fail(opt.addLibraryError === 'server' ? 500 : 409, opt.addLibraryError);
         }
 
         const h = decodeURIComponent(m[1]);
@@ -920,14 +963,25 @@ export function createMock(options) {
             return fail(429, 'rateLimited', { 'Retry-After': '300' });
         }
 
-        if (opt.probeError && ['inviteWrongServer', 'inviteLanHttp'].includes(opt.probeError)) {
+        const inviteOnly = ['inviteWrongServer', 'inviteLanHttp', 'inviteInvalid'].includes(opt.probeError);
+        if (inviteOnly && body.invite) {
+            // These come from the invite check: the answer is a 200 with ok:false and the fixed word, like the real probe.
+            if (opt.probeError === 'inviteInvalid') {
+                return ok({ ok: false, addressProblem: 'None', failure: 'inviteInvalid', probeHandle: null, serverName: null, version: null, serverIdPrefix: null, latencyMs: 0, address: null });
+            }
+
             return fail(400, opt.probeError);
         }
 
         // The real probe answers 200 with ok:false and a fixed word (ProbeResult, K5).
-        if (opt.probeError) {
+        if (opt.probeError && !inviteOnly) {
             const problem = { blocked: 'Blocked', wrongNetwork: 'WrongNetwork', proxyNotAllowed: 'ProxyNotAllowed' }[opt.probeError];
             return ok({ ok: false, addressProblem: problem || 'None', failure: problem ? null : opt.probeError, probeHandle: null, serverName: null, version: null, serverIdPrefix: null, latencyMs: 0, address: null });
+        }
+
+        // Plain http to a home network address needs the acknowledgement on every check, like the real address policy.
+        if (body.network === 'LAN' && /^http:/i.test(body.url || '') && !body.lanAck) {
+            return ok({ ok: false, addressProblem: 'CleartextNotAcknowledged', failure: null, probeHandle: null, serverName: null, version: null, serverIdPrefix: null, latencyMs: 0, address: null });
         }
 
         // An invite never goes to a home network address over plain http (DESIGN 4.2 step 1).
@@ -938,6 +992,19 @@ export function createMock(options) {
         const handle = 'probe-' + (++probeSeq);
         const host = (() => { try { return new URL(body.url).hostname; } catch { return 'server'; } })();
         const p = { ok: true, addressProblem: 'None', failure: null, probeHandle: handle, serverName: hostile ? XSS : host.split('.')[0].replace(/^./, (c) => c.toUpperCase()) + ' Jellyfin', version: '12.1.0', versionTested: !/untested/.test(body.url || ''), latencyMs: 41, serverIdPrefix: '3fa91c7e', address: body.url, alsoWatchesYou: /sam|hops/i.test(host) };
+        if (opt.pingThrottled) {
+            p.shoalPingThrottled = true;
+        }
+
+        // hasShoal and inviteExpiresUtc are optional on the real probe (pairing v2 section 11): opt.hasShoal 'absent' leaves the field out.
+        if (opt.hasShoal !== 'absent') {
+            p.hasShoal = typeof opt.hasShoal === 'boolean' ? opt.hasShoal : true;
+        }
+
+        if (body.invite && opt.inviteLeftMin) {
+            p.inviteExpiresUtc = iso(now() + opt.inviteLeftMin * MIN);
+        }
+
         const known = Array.from(servers.values()).find((x) => x.url === body.url);
         probes.set(handle, Object.assign({ url: body.url, network: body.network, createdAt: now(), peerHandle: known ? known.handle : null, invite: !!body.invite }, p));
         return ok(p);
@@ -973,7 +1040,7 @@ export function createMock(options) {
 
         return ok(pairingView(), 201);
     });
-    route('GET', 'Pairing', () => (session ? ok(pairingView()) : fail(404)));
+    route('GET', 'Pairing', () => (session ? ok(pairingView()) : ok(null, 204)));
     route('POST', 'Pairing/Confirm', (m, body) => {
         if (!session) {
             return fail(404);
@@ -1131,6 +1198,8 @@ export function createMock(options) {
         return ok({});
     });
 
+    // Shoal's guess for the address to send (pairing v2 section 11). opt.reach 'none' answers 404 like a server without the route.
+    route('GET', 'Shares/Reach', () => (opt.reach === 'none' ? fail(404) : ok({ tailscale: { dnsName: 'rich-jellyfin.tail1234.ts.net', ip: '100.101.102.103' }, https: { url: 'https://movies.example.com' }, lan: [{ url: 'http://192.168.1.20:8096' }] })));
     route('GET', 'Shares', () => ok({
         shares: Array.from(shares.values()).map((f) => ({
             handle: f.handle, friendName: f.friendName, status: f.status, libraryIds: f.libraryIds,
@@ -1214,7 +1283,7 @@ export function createMock(options) {
 
         // A friend's server redeems the invite 7 s after it was created (harness only).
         if (f.invite && f.invite.state === 'active' && f.invite.createdAt && now() - f.invite.createdAt > 7000 && f.approval.state === 'none' && opt.shareFlow !== 'wait') {
-            f.approval = { state: 'pending', homeName: hostile ? XSS : 'Sam’s Jellyfin', homeServerIdPrefix: '3fa91c7e', addressClass: 'tailnet', triesLeft: 3 };
+            f.approval = { state: 'pending', homeName: hostile ? XSS : 'Sam’s Jellyfin', homeServerIdPrefix: '3fa91c7e', addressClass: 'tailnet', triesLeft: 3, restarted: opt.restarted === true };
         }
 
         return ok(clone(f.approval));

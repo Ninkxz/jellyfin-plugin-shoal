@@ -1,3 +1,4 @@
+using System;
 using Jellyfin.Plugin.Shoal.Playback;
 using Jellyfin.Plugin.Shoal.Sync;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,8 @@ public static class Foundation
     /// <returns>The same collection.</returns>
     public static IServiceCollection AddShoalFoundation(this IServiceCollection services)
     {
+        services.TryAddSingleton(sp => new Jellyfin.Plugin.Shoal.Api.PingLimiter(sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        services.TryAddSingleton<Jellyfin.Plugin.Shoal.Api.Admin.IReachNetwork>(sp => new Jellyfin.Plugin.Shoal.Api.Admin.HostReachNetwork(sp.GetRequiredService<MediaBrowser.Controller.IServerApplicationHost>()));
         services.TryAddSingleton<NotServedHandlers>();
         services.TryAddSingleton<ITrickplayHandler>(sp => sp.GetRequiredService<NotServedHandlers>());
         services.TryAddSingleton<IAttachmentHandler>(sp => sp.GetRequiredService<NotServedHandlers>());

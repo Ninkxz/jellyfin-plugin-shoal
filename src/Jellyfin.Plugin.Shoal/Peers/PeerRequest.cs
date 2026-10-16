@@ -64,7 +64,7 @@ public sealed partial class PeerRequest
     /// <returns>The request.</returns>
     public static PeerRequest Get(string pathAndQuery) => new(HttpMethod.Get, pathAndQuery, authenticated: true, acceptJson: true, null, null, isProbe: false);
 
-    /// <summary>Creates a JSON GET without a token (<c>System/Info/Public</c>, <c>QuickConnect/*</c> before the token exists).</summary>
+    /// <summary>Creates a JSON GET without a token (<c>System/Info/Public</c>, before the token exists).</summary>
     /// <param name="pathAndQuery">The path and query, built from validated values.</param>
     /// <returns>The request.</returns>
     public static PeerRequest GetAnonymous(string pathAndQuery) => new(HttpMethod.Get, pathAndQuery, authenticated: false, acceptJson: true, null, null, isProbe: false);

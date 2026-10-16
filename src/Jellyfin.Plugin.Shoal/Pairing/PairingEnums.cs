@@ -7,17 +7,17 @@ using Jellyfin.Plugin.Shoal.State;
 namespace Jellyfin.Plugin.Shoal.Pairing;
 
 /// <summary>
-/// Why a pairing stopped (DESIGN 4.2a, 9.5). The first five are <b>safety</b> kinds: something may have been wrong or hostile, the
+/// Why a pairing stopped (DESIGN 4.2a, 9.5). The first ones that say "Safety" are <b>safety</b> kinds: something may have been wrong or hostile, the
 /// Overview says "Pairing stopped for your safety" and every admin gets a pop-up. All others are <b>stopped</b> kinds, ordinary
 /// outcomes ("Pairing didn't finish"), with no pop-up.
 /// </summary>
 public enum PairingErrorKind
 {
-    /// <summary>Safety: another request took Home's code (or the Peer restarted) and the friend may have approved the wrong one.</summary>
+    /// <summary>Legacy (D17): never produced any more; kept so an old health.json with this value still loads.</summary>
     [JsonStringEnumMemberName("requestReplaced")]
     RequestReplaced,
 
-    /// <summary>Safety: the admin said the check in the friend's Devices list does not match.</summary>
+    /// <summary>Legacy (D17): never produced any more; kept so an old health.json with this value still loads.</summary>
     [JsonStringEnumMemberName("codesDidNotMatch")]
     CodesDidNotMatch,
 
@@ -49,15 +49,27 @@ public enum PairingErrorKind
     [JsonStringEnumMemberName("inviteInvalid")]
     InviteInvalid,
 
+    /// <summary>The friend made a newer invite, which replaced this one before it was approved (invite path).</summary>
+    [JsonStringEnumMemberName("inviteReplaced")]
+    InviteReplaced,
+
+    /// <summary>The friend cancelled the invite, or stopped sharing, before it was approved (invite path).</summary>
+    [JsonStringEnumMemberName("inviteCancelled")]
+    InviteCancelled,
+
+    /// <summary>The friend approved, but Home did not collect the key within two minutes, so the friend's server signed it out again (invite path).</summary>
+    [JsonStringEnumMemberName("tokenNotCollected")]
+    TokenNotCollected,
+
     /// <summary>The Peer could not be reached for 30 seconds.</summary>
     [JsonStringEnumMemberName("network")]
     Network,
 
-    /// <summary>Quick Connect is off on the Peer ("enable it in Dashboard > General").</summary>
+    /// <summary>Legacy (D17): never produced any more; kept so an old health.json with this value still loads.</summary>
     [JsonStringEnumMemberName("quickConnectOff")]
     QuickConnectOff,
 
-    /// <summary>Quick Connect could not be reached on that address (wrong base path, a proxy page, unreachable).</summary>
+    /// <summary>Legacy (D17): never produced any more; kept so an old health.json with this value still loads.</summary>
     [JsonStringEnumMemberName("quickConnectUnreachable")]
     QuickConnectUnreachable,
 
@@ -73,11 +85,7 @@ public enum PairingErrorKind
     [JsonStringEnumMemberName("server")]
     Server,
 
-    /// <summary>
-    /// The friend's server refused the final step of an approved-looking pairing with a bare 403 or 404. On Jellyfin 12.1 that is what a
-    /// <b>session limit</b> of 1 looks like from outside: the reason is only in the Peer's own log, and the answer never names it. The UI
-    /// explains it ("set the limit to 0 until you are done"); no code ever parses message text to decide this.
-    /// </summary>
+    /// <summary>Legacy (D17): never produced any more; kept so an old health.json with this value still loads.</summary>
     [JsonStringEnumMemberName("likelySessionLimit")]
     LikelySessionLimit
 }
@@ -87,33 +95,21 @@ public enum PairingErrorKind
 /// </summary>
 public enum PairingStep
 {
-    /// <summary>Asking whether Quick Connect is on.</summary>
+    /// <summary>Checking that the server is the one that was probed.</summary>
     [JsonStringEnumMemberName("preflight")]
     Preflight,
 
-    /// <summary>Asking for a code.</summary>
+    /// <summary>Redeeming the invite.</summary>
     [JsonStringEnumMemberName("initiating")]
     Initiating,
 
-    /// <summary>"Getting a code": waiting for the baseline poll to confirm the request. No code is shown yet.</summary>
-    [JsonStringEnumMemberName("gettingCode")]
-    GettingCode,
-
-    /// <summary>The code and the check are shown; waiting for the friend to approve.</summary>
+    /// <summary>The safety code is shown; waiting for the friend to type it and approve.</summary>
     [JsonStringEnumMemberName("awaitingApproval")]
     AwaitingApproval,
-
-    /// <summary>Collecting the token.</summary>
-    [JsonStringEnumMemberName("redeeming")]
-    Redeeming,
 
     /// <summary>Checking the token, the account and the server.</summary>
     [JsonStringEnumMemberName("validating")]
     Validating,
-
-    /// <summary>The token is held in memory; the admin compares the check in the friend's Devices list.</summary>
-    [JsonStringEnumMemberName("awaitingConfirm")]
-    AwaitingConfirm,
 
     /// <summary>Done: the credential is stored.</summary>
     [JsonStringEnumMemberName("confirmed")]
@@ -214,19 +210,4 @@ public enum PairingConflict
 
     /// <summary>Too many pairings were started for one server (<c>429</c> with <c>Retry-After</c>).</summary>
     RateLimited
-}
-
-/// <summary>
-/// How an authentication result read.
-/// </summary>
-internal enum AuthRead
-{
-    /// <summary>Token, user id and server id are well formed and the server id is the pinned one.</summary>
-    Ok,
-
-    /// <summary>Something has the wrong shape.</summary>
-    Malformed,
-
-    /// <summary>Well formed, but the server id is not the pinned one.</summary>
-    ServerChanged
 }

@@ -38,7 +38,7 @@ public sealed class PendingPairingStateTests
         using var document = JsonDocument.Parse(text);
         var pending = document.RootElement.GetProperty("home").GetProperty("peers")[0].GetProperty("pendingPairing");
         Assert.Equal("awaitingConfirm", pending.GetProperty("phase").GetString());
-        Assert.Equal("qc", pending.GetProperty("method").GetString());
+        Assert.Equal("invite", pending.GetProperty("method").GetString());
         Assert.False(pending.TryGetProperty("token", out _));
         Assert.False(pending.TryGetProperty("secret", out _));
 
@@ -48,21 +48,17 @@ public sealed class PendingPairingStateTests
     }
 
     [Theory]
-    [InlineData(PairingPhase.BeforeApproval)]
-    [InlineData(PairingPhase.AwaitingConfirm)]
+    [InlineData(PairingPhase.BeforeApproval)] // the confirm phase is gone with the compare step (D17): a pairing is only ever before its approval while it waits
     public async Task AfterARealRestart_TheRecordOnDiskBecomesInterrupted_WithItsPhase(PairingPhase phase)
     {
         await using var peer = await FakeJellyfinPeer.StartAsync();
-        if (phase == PairingPhase.AwaitingConfirm)
-        {
-            peer.ApproveFromPoll = 2;
-        }
+        using var side = new InviteHomeTests.PeerSide(peer);
 
         string peerKey;
-        using (var first = new PairingRig())
+        using (var first = InviteHomeTests.NewRig())
         {
-            peerKey = (await first.BeginAsync(peer)).PeerHandle;
-            await first.UntilStepAsync(phase == PairingPhase.BeforeApproval ? PairingStep.AwaitingApproval : PairingStep.AwaitingConfirm);
+            var (waiting, _) = await InviteHomeTests.BeginPendingAsync(first, peer, side);
+            peerKey = waiting.PeerHandle;
             await first.Service.StopAsync(CancellationToken.None);
             await Task.Delay(100);
             File.Copy(first.Paths.StateFile, Path.Combine(Path.GetTempPath(), "shoal-state-" + peerKey + ".json"), overwrite: true);

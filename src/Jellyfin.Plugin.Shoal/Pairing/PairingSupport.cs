@@ -54,6 +54,14 @@ public interface IPairingGate
     /// <param name="peerKey">The peer key.</param>
     /// <returns>True while the session lives.</returns>
     bool IsLive(string peerKey);
+
+    /// <summary>
+    /// Cancels the live pairing session of this peer, if there is one (removing the server ends its pairing).
+    /// </summary>
+    /// <param name="peerKey">The peer key.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>True when a session was cancelled.</returns>
+    Task<bool> CancelAsync(string peerKey, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 /// <summary>

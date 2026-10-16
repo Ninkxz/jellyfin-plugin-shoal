@@ -182,8 +182,6 @@ test('the share wizard offers the servers you already watch as a prefill for the
 test('the watch wizard says when the friend already watches you', async () => {
     const p = await page({ view: 'pair', dir: 'watch' });
     try {
-        p.page.querySelector('input[type="radio"][value="qc"]').click();
-        await p.wait(30);
         setValue([...p.page.querySelectorAll('.shoal-field')].find((f) => f.querySelector('label')?.textContent.trim() === 'Name for this server').querySelector('input'), 'Sam');
         setValue([...p.page.querySelectorAll('.shoal-field')].find((f) => f.querySelector('label')?.textContent.trim() === 'Server address').querySelector('input'), 'http://sam.tail1234.ts.net:8096');
         p.page.querySelector('form.shoal-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
@@ -195,8 +193,6 @@ test('the watch wizard says when the friend already watches you', async () => {
 
     const other = await page({ view: 'pair', dir: 'watch' });
     try {
-        other.page.querySelector('input[type="radio"][value="qc"]').click();
-        await other.wait(30);
         setValue([...other.page.querySelectorAll('.shoal-field')].find((f) => f.querySelector('label')?.textContent.trim() === 'Name for this server').querySelector('input'), 'Willow');
         setValue([...other.page.querySelectorAll('.shoal-field')].find((f) => f.querySelector('label')?.textContent.trim() === 'Server address').querySelector('input'), 'http://willow.tail1234.ts.net:8096');
         other.page.querySelector('form.shoal-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));

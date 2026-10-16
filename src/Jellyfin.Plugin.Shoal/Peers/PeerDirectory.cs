@@ -52,7 +52,7 @@ public sealed class PeerEndpoint
     /// <param name="baseUri">The base URL.</param>
     /// <param name="deviceId">The device id Home presents.</param>
     /// <param name="token">The peer token (empty for a call before the pairing has produced one).</param>
-    /// <param name="check">The 4-character check that is part of the device name (Quick Connect pairing), or null.</param>
+    /// <param name="check">The 4-character check that is part of the device name (only a server paired the old way has one), or null.</param>
     internal PeerEndpoint(string peerKey, string displayName, Uri baseUri, string deviceId, string token, string? check = null)
     {
         PeerKey = peerKey;
@@ -198,7 +198,7 @@ public sealed class PeerDirectory : IActiveTokenSource
             }
         }
 
-        return new PeerEndpoint(peer.PeerKey, peer.DisplayName, check.Address!.BaseUri, credential.DeviceId, token, peer.Pairing?.CheckString)
+        return new PeerEndpoint(peer.PeerKey, peer.DisplayName, check.Address!.BaseUri, credential.DeviceId, token)
         {
             Network = peer.Network,
             ProxyUrl = peer.ProxyUrl,

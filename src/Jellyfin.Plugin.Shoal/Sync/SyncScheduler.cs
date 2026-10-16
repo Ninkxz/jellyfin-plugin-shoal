@@ -36,6 +36,7 @@ public sealed class SyncScheduler : BackgroundService
         try
         {
             await Task.Delay(FirstDelay, stoppingToken).ConfigureAwait(false);
+            var followUps = 0;
             while (!stoppingToken.IsCancellationRequested)
             {
                 var delay = TimeSpan.FromHours(Math.Clamp(Plugin.Instance?.Configuration.SyncIntervalHours ?? 6, 1, 168));
@@ -45,6 +46,11 @@ public sealed class SyncScheduler : BackgroundService
                     if (reports.Any(static r => r.Error == "scanRunning"))
                     {
                         delay = ScanRetry;
+                    }
+                    else
+                    {
+                        // Images of a TV library that did not fit in the run's image budget: look again in 10 minutes, at most 12 times in a row (DESIGN v2.7.3).
+                        (delay, followUps) = SyncFollowUp.Next(reports, delay, followUps);
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

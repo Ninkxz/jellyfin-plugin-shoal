@@ -86,7 +86,7 @@ public sealed class PeerGuardFilterTests
 
             Counters = new GuardCounters(Time);
             Cache = new SharedItemCache(Time);
-            Filter = new PeerGuardFilter(new GuardShares(State, Dir.Combine("guard-lastgood.json"), NullLogger.Instance), State, Items, Transcodes, Counters, new InitiateShield(Time), Cache, Time, NullLogger.Instance);
+            Filter = new PeerGuardFilter(new GuardShares(State, Dir.Combine("guard-lastgood.json"), NullLogger.Instance), State, Items, Transcodes, Counters, Cache, Time, NullLogger.Instance);
         }
 
         public TempDirectory Dir { get; }
@@ -253,33 +253,13 @@ public sealed class PeerGuardFilterTests
     }
 
     [Fact]
-    public async Task T_PAIR_11_TheInitiateShield_TenPerMinutePerAddress_ThreeHundredInTotal()
+    public async Task D17_B8_QuickConnectInitiate_IsNoLongerShielded_ItIsJustAnotherRoute()
     {
         using var rig = new Rig();
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < 400; i++)
         {
             Assert.Equal((0, true), await rig.RunAsync("QuickConnect/Initiate", "POST", ip: "198.51.100.1"));
         }
-
-        Assert.Equal((429, false), await rig.RunAsync("QuickConnect/Initiate", "POST", ip: "198.51.100.1"));
-        Assert.Equal((0, true), await rig.RunAsync("QuickConnect/Initiate", "POST", ip: "198.51.100.2"));
-        Assert.Equal(1, rig.Counters.ShieldHits);
-        rig.Time.Advance(TimeSpan.FromMinutes(1.1));
-        Assert.Equal((0, true), await rig.RunAsync("QuickConnect/Initiate", "POST", ip: "198.51.100.1"));
-
-        using var flood = new Rig();
-        var blocked = 0;
-        for (var i = 0; i < 320; i++)
-        {
-            if ((await flood.RunAsync("QuickConnect/Initiate", "POST", ip: "198.51.100." + ((i % 40) + 1))).Status == 429)
-            {
-                blocked++;
-            }
-
-            flood.Time.Advance(TimeSpan.FromSeconds(1));
-        }
-
-        Assert.True(blocked > 0, "the overall bucket stops a flood from many addresses");
     }
 
     [Fact]

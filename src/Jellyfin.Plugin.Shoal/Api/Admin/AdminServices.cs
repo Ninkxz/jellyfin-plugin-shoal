@@ -73,9 +73,6 @@ public interface IGuardCounters
     /// <summary>Gets how many times the guard failed open.</summary>
     int GuardErrors { get; }
 
-    /// <summary>Gets how many pairing requests the shield slowed down.</summary>
-    int ShieldHits { get; }
-
     /// <summary>Gets how many transcodes were refused over a friend's limit.</summary>
     int TranscodeCapHits { get; }
 
@@ -123,6 +120,7 @@ public sealed class PluginSettingsAccessor : ISettingsAccessor
         SchemaVersion = source.SchemaVersion,
         AutoFitQualityToLink = source.AutoFitQualityToLink,
         MaxStreamsPerUser = source.MaxStreamsPerUser,
+        HlsBufferAhead = source.HlsBufferAhead,
         SyncIntervalHours = source.SyncIntervalHours,
         SpeedTestIntervalHours = source.SpeedTestIntervalHours,
         MassDeletionMinCount = source.MassDeletionMinCount,
@@ -135,12 +133,18 @@ public sealed class PluginSettingsAccessor : ISettingsAccessor
         ParkAfterHours = source.ParkAfterHours,
         NotifyClientsWhenOffline = source.NotifyClientsWhenOffline,
         HlsSubtitlesEnabled = source.HlsSubtitlesEnabled,
+        DetectableByFriends = source.DetectableByFriends,
         TailscaleSocket = source.TailscaleSocket,
         AlternateVersionsEnabled = source.AlternateVersionsEnabled,
         TrickplayEnabled = source.TrickplayEnabled,
         TrickplayCacheGb = source.TrickplayCacheGb,
         AttachmentsEnabled = source.AttachmentsEnabled,
-        ReencodeImages = source.ReencodeImages
+        ReencodeImages = source.ReencodeImages,
+        TvShowsEnabled = source.TvShowsEnabled,
+        TvEpisodeThumbs = source.TvEpisodeThumbs,
+        OfflineCardEnabled = source.OfflineCardEnabled,
+        RequestServiceName = source.RequestServiceName,
+        RequestServiceUrl = source.RequestServiceUrl
     };
 }
 
@@ -211,7 +215,8 @@ public sealed class StubRootChecker : IStubRootChecker
             {
                 foreach (var theirs in new[] { library, libraryResolved })
                 {
-                    if (IsInside(mine, theirs, comparison) || IsInside(theirs, mine, comparison))
+                    // Shoal's own libraries live inside the stub root (<root>/<peer key>/<folder>); they are what the root is for, not a conflict.
+                    if (IsInside(mine, theirs, comparison) || (IsInside(theirs, mine, comparison) && !IsShoalOwn(theirs, mine)))
                     {
                         return StubRootCheck.InsideLibrary;
                     }
@@ -225,6 +230,17 @@ public sealed class StubRootChecker : IStubRootChecker
         }
 
         return CanWrite(full, probeWrite) ? StubRootCheck.Ok : StubRootCheck.NotWritable;
+    }
+
+    /// <summary>Whether a library lies at <c>root/&lt;32 hex characters&gt;/...</c>: the layout Shoal itself creates for a paired server.</summary>
+    /// <param name="library">The library's folder.</param>
+    /// <param name="root">The stub root.</param>
+    /// <returns>True for a folder Shoal made.</returns>
+    internal static bool IsShoalOwn(string library, string root)
+    {
+        var relative = Path.GetRelativePath(root, library);
+        var first = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+        return first.Length == 32 && first.All(static c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
     }
 
     /// <summary>Whether a file system type is one that must not hold Shoal's files (network, or any FUSE mount).</summary>
@@ -382,9 +398,6 @@ public sealed class NoGuardCounters : IGuardCounters
 
     /// <inheritdoc />
     public int GuardErrors => 0;
-
-    /// <inheritdoc />
-    public int ShieldHits => 0;
 
     /// <inheritdoc />
     public int TranscodeCapHits => 0;

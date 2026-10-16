@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -15,17 +16,17 @@ namespace Jellyfin.Plugin.Shoal.Tests;
 public sealed class InviteHomeTests
 {
     // Roomy call timeouts: the default 400 ms can be missed on a busy build machine, which has nothing to do with what is tested.
-    private static PairingRig NewRig() => new(o =>
+    internal static PairingRig NewRig() => new(o =>
     {
         o.PollTotal = TimeSpan.FromSeconds(15);
         o.NetworkAbortAfter = TimeSpan.FromSeconds(30);
     });
 
     // These are deadlines, not delays: every wait returns the moment its condition is true. A loaded build machine can starve the thread pool for seconds.
-    private const int Deadline = 60_000;
+    internal const int Deadline = 60_000;
 
     // Home shows its safety code after the first call; the Peer's admin can only decide once the nonce reveal (the second call) has arrived.
-    private static async Task AwaitPendingAsync(PeerSide side, string shareId)
+    internal static async Task AwaitPendingAsync(PeerSide side, string shareId)
     {
         var until = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < until)
@@ -41,12 +42,34 @@ public sealed class InviteHomeTests
         Assert.Fail("The Peer never saw the revealed nonce.");
     }
 
-    private static async Task<(PairingSessionInfo Session, ProbeResult Probe)> StartAsync(PairingRig rig, FakeJellyfinPeer peer, string invite)
+    internal static async Task<(PairingSessionInfo Session, ProbeResult Probe)> StartAsync(PairingRig rig, FakeJellyfinPeer peer, string invite, string name = "Hops", string? peerHandle = null)
     {
-        var probe = await rig.Service.ProbeAsync(new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet, Invite = invite });
+        var probe = await rig.Service.ProbeAsync(peerHandle is null ? new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet, Invite = invite } : new ProbeRequest { PeerHandle = peerHandle, Invite = invite });
         Assert.True(probe.Ok, probe.Failure);
-        var session = await rig.Service.BeginAsync(PairingRig.Admin, probe.ProbeHandle!, "Hops", PairingMethod.Invite);
+        var session = await rig.Service.BeginAsync(PairingRig.Admin, probe.ProbeHandle!, name);
         return (session, probe);
+    }
+
+    /// <summary>Starts a pairing with a real invite and waits until the Peer's admin has something to decide (the Home side shows its safety code).</summary>
+    internal static async Task<(PairingSessionInfo Waiting, ShareState Share)> BeginPendingAsync(PairingRig rig, FakeJellyfinPeer peer, PeerSide side, string name = "Hops", string? peerHandle = null)
+    {
+        var (share, invite) = await side.InviteAsync();
+        var (_, _) = await StartAsync(rig, peer, invite, name, peerHandle);
+        var waiting = await rig.UntilAsync(s => s.Step == PairingStep.AwaitingApproval && s.SafetyCode is not null, Deadline);
+        await AwaitPendingAsync(side, share.ShareId);
+        return (waiting, share);
+    }
+
+    /// <summary>Pairs a Home with the fake peer through a real invite and a typed safety code, the only way left (D17). Returns the finished session.</summary>
+    internal static async Task<PairingSessionInfo> PairByInviteAsync(PairingRig rig, FakeJellyfinPeer peer, PeerSide side, string name = "Hops")
+    {
+        var (share, invite) = await side.InviteAsync();
+        var (_, _) = await StartAsync(rig, peer, invite, name);
+        var waiting = await rig.UntilAsync(s => s.Step == PairingStep.AwaitingApproval && s.SafetyCode is not null, Deadline);
+        await AwaitPendingAsync(side, share.ShareId);
+        var (outcome, _) = await side.Service.DecideAsync(share.ShareId, new ApprovalRequest { Approve = true, Sas = waiting.SafetyCode }, default);
+        Assert.Equal(ShareOutcome.Ok, outcome);
+        return await rig.UntilFinishedAsync(Deadline);
     }
 
     [Fact]
@@ -61,7 +84,6 @@ public sealed class InviteHomeTests
         Assert.Equal(PairingMethod.Invite, started.Method);
         var waiting = await rig.UntilAsync(s => s.Step == PairingStep.AwaitingApproval && s.SafetyCode is not null, Deadline);
         Assert.Matches("^[0-9A-HJKMNP-TV-Z]{8}$", waiting.SafetyCode);
-        Assert.Null(waiting.Code);
         await AwaitPendingAsync(side, share.ShareId);
         var approval = JsonSerializer.SerializeToElement(side.Service.Approval(share.ShareId));
         Assert.Equal("pending", approval.GetProperty("state").GetString());
@@ -113,17 +135,16 @@ public sealed class InviteHomeTests
     }
 
     [Fact]
-    public async Task TheMethodMustMatchTheProbe()
+    public async Task AProbeWithoutAnInvite_CannotStartAPairing()
     {
         await using var peer = await FakeJellyfinPeer.StartAsync();
-        using var side = new PeerSide(peer);
         using var rig = NewRig();
-        var (_, invite) = await side.InviteAsync();
-        var probe = await rig.Service.ProbeAsync(new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet, Invite = invite });
+        var probe = await rig.ProbeAsync(peer);
 
-        var ex = await Assert.ThrowsAsync<PairingConflictException>(() => rig.Service.BeginAsync(PairingRig.Admin, probe.ProbeHandle!, "Hops", PairingMethod.Qc));
+        var ex = await Assert.ThrowsAsync<PairingConflictException>(() => rig.Service.BeginAsync(PairingRig.Admin, probe.ProbeHandle!, "Hops"));
 
         Assert.Equal(PairingConflict.MethodUnavailable, ex.Conflict);
+        Assert.DoesNotContain(peer.Requests, static r => r.Path.StartsWith("/QuickConnect", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -168,7 +189,58 @@ public sealed class InviteHomeTests
         Assert.Empty(rig.Secrets.PeerKeys!);
     }
 
-    private sealed class PeerSide : IDisposable
+    [Fact]
+    public async Task N11_TheSessionHasARealDeadlineFromTheFirstMoment_AndThePeerCanOnlyShortenIt()
+    {
+        await using var peer = await FakeJellyfinPeer.StartAsync();
+        using var side = new PeerSide(peer);
+        using var rig = NewRig();
+        var (_, invite) = await side.InviteAsync();
+        var before = DateTime.UtcNow;
+
+        var (started, _) = await StartAsync(rig, peer, invite);
+
+        Assert.NotNull(started.ExpiresUtc);
+        Assert.InRange(started.ExpiresUtc!.Value, before.AddMinutes(14), before.AddMinutes(16));
+        var waiting = await rig.UntilAsync(s => s.Step == PairingStep.AwaitingApproval && s.SafetyCode is not null, Deadline);
+        Assert.NotNull(waiting.ExpiresUtc);
+        Assert.True(waiting.ExpiresUtc <= started.ExpiresUtc!.Value.AddSeconds(2));
+        Assert.NotNull(rig.Service.GetSession()!.ExpiresUtc);
+    }
+
+    [Fact]
+    public async Task N13_AConfirmedPairing_EndsByItself_WhenLibrariesAreChosenAfterwards()
+    {
+        await using var peer = await FakeJellyfinPeer.StartAsync();
+        using var side = new PeerSide(peer);
+        using var rig = NewRig();
+        var done = await PairByInviteAsync(rig, peer, side);
+        Assert.Equal("confirmed", rig.Service.GetSession()!.State); // the page can still read the result
+
+        await rig.State.UpdateAsync(s => s.Home.Peers.Single(p => p.PeerKey == done.PeerHandle).Libraries.Add(new LibraryMapping { MappingKey = "movies-1", Subfolder = "movies" }));
+
+        Assert.Null(rig.Service.GetSession());
+    }
+
+    [Fact]
+    public async Task N13_AConfirmedPairing_EndsByItself_AfterItsLife()
+    {
+        await using var peer = await FakeJellyfinPeer.StartAsync();
+        using var side = new PeerSide(peer);
+        using var rig = new PairingRig(o =>
+        {
+            o.PollTotal = TimeSpan.FromSeconds(15);
+            o.NetworkAbortAfter = TimeSpan.FromSeconds(30);
+            o.ConfirmedLife = TimeSpan.FromMilliseconds(300);
+        });
+        await PairByInviteAsync(rig, peer, side);
+
+        await Task.Delay(500);
+
+        Assert.Null(rig.Service.GetSession());
+    }
+
+    internal sealed class PeerSide : IDisposable
     {
         public PeerSide(FakeJellyfinPeer peer)
         {
@@ -205,6 +277,13 @@ public sealed class InviteHomeTests
         public InviteBook Book { get; }
 
         public ShareService Service { get; }
+
+        /// <summary>A fresh invite for a share that already exists (a re-pair).</summary>
+        public async Task<string> ReinviteAsync(string shareId)
+        {
+            var (_, body) = await Service.InviteAsync(shareId, true, default);
+            return JsonSerializer.SerializeToElement(body).GetProperty("invite").GetString()!;
+        }
 
         public async Task<(ShareState Share, string Invite)> InviteAsync()
         {

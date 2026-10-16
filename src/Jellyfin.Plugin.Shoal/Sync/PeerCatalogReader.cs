@@ -134,9 +134,24 @@ public sealed class PeerCatalogReader
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The announced number of movies.</returns>
     /// <exception cref="PeerCallException">The peer could not be asked or answered something unusable.</exception>
-    public async Task<int> CountMoviesAsync(PeerEndpoint peer, Guid libraryId, CancellationToken cancellationToken)
+    public Task<int> CountMoviesAsync(PeerEndpoint peer, Guid libraryId, CancellationToken cancellationToken) => CountAsync(peer, libraryId, "Movie", cancellationToken);
+
+    /// <summary>
+    /// Asks how many items of one type a library holds, with a <c>Limit=0</c> call (the picker's "N series, M episodes", DESIGN v2.7.6).
+    /// </summary>
+    /// <param name="peer">The peer.</param>
+    /// <param name="libraryId">The peer's library id.</param>
+    /// <param name="itemType">One of <c>Movie</c>, <c>Series</c>, <c>Season</c>, <c>Episode</c>.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The count the peer announced, or 0.</returns>
+    public async Task<int> CountAsync(PeerEndpoint peer, Guid libraryId, string itemType, CancellationToken cancellationToken)
     {
-        var query = "/Items?ParentId=" + libraryId.ToString("N") + "&IncludeItemTypes=Movie&Recursive=true&StartIndex=0&Limit=0&EnableTotalRecordCount=true&EnableImages=false";
+        if (itemType is not ("Movie" or "Series" or "Season" or "Episode"))
+        {
+            throw new ArgumentOutOfRangeException(nameof(itemType));
+        }
+
+        var query = "/Items?ParentId=" + libraryId.ToString("N") + "&IncludeItemTypes=" + itemType + "&Recursive=true&StartIndex=0&Limit=0&EnableTotalRecordCount=true&EnableImages=false";
         var page = await ReadPageAsync(peer, query, 1, cancellationToken).ConfigureAwait(false);
         return Math.Max(0, page.Total);
     }
@@ -279,6 +294,21 @@ public sealed class PeerCatalogReader
         }
 
         return present;
+    }
+
+    /// <summary>
+    /// Reads one page of any <c>/Items</c> query through the same bounded, item-by-item path as the movie listing (used by the TV reader).
+    /// </summary>
+    /// <param name="peer">The peer.</param>
+    /// <param name="pathAndQuery">The path and query, built from validated values.</param>
+    /// <param name="maxItems">The most items the answer may hold.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The readable items, the total the peer announced, and how many items could not be read.</returns>
+    /// <exception cref="PeerCallException">The peer could not be asked or answered something unusable.</exception>
+    public async Task<(IReadOnlyList<BaseItemDto> Items, int Total, int Skipped)> ReadItemsAsync(PeerEndpoint peer, string pathAndQuery, int maxItems, CancellationToken cancellationToken)
+    {
+        var page = await ReadPageAsync(peer, pathAndQuery, maxItems, cancellationToken).ConfigureAwait(false);
+        return (page.Items, page.Total, page.Skipped);
     }
 
     // Optional data must never cost a title. Jellyfin 12.1's TrickplayInfoDto cannot be deserialized by System.Text.Json (its only constructor takes a database

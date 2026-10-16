@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Shoal.Api.Admin;
 using Jellyfin.Plugin.Shoal.Pairing;
+using Jellyfin.Plugin.Shoal.Security;
 using Jellyfin.Plugin.Shoal.State;
 using Microsoft.Extensions.Logging;
 
@@ -14,11 +15,12 @@ namespace Jellyfin.Plugin.Shoal.Sharing;
 
 /// <summary>What <c>POST /Shoal/Pair</c> answers to Home (DESIGN 4.1b). A <see cref="Failed"/> result is always the same 404; the rest carry the protocol's own words.</summary>
 /// <param name="Failed">True for every failure (unknown, expired, delivered, mismatch, malformed): one answer, no oracle.</param>
-/// <param name="State">pending, approved, denied or codeMismatch.</param>
+/// <param name="State">pending, approved, denied or codeMismatch; for a valid secret of an invite that is over: expired, replaced, cancelled, uncollected or used.</param>
 /// <param name="PeerServerId">This server's id (32 hex).</param>
 /// <param name="PeerNonce">This server's nonce.</param>
 /// <param name="Token">The access token, in the first approved answer only.</param>
-public sealed record PairAnswer(bool Failed, string State, string? PeerServerId, string? PeerNonce, string? Token)
+/// <param name="ExpiresInSeconds">How long the invite has left, in seconds (not a time of day: the servers' clocks need not agree), while it is pending.</param>
+public sealed record PairAnswer(bool Failed, string State, string? PeerServerId, string? PeerNonce, string? Token, int? ExpiresInSeconds = null)
 {
     /// <summary>Gets the one failure answer.</summary>
     public static PairAnswer Failure { get; } = new(true, string.Empty, null, null, null);
@@ -49,6 +51,12 @@ public sealed class InviteBook : IShareInvites
     /// <summary>How long an approved token waits for Home before it is signed out again.</summary>
     public static readonly TimeSpan CollectWindow = TimeSpan.FromMinutes(2);
 
+    /// <summary>
+    /// How long a bound attempt may go unheard before it counts as abandoned: Home polls every second and gives up after 30 seconds of silence, so a card
+    /// nobody has polled for this long is dead (the admin sees no card, and cannot approve it). The same Home can then start again with the same invite.
+    /// </summary>
+    public static readonly TimeSpan AttemptStale = TimeSpan.FromSeconds(30);
+
     private const int PerIpFailures = 10;
     private const int GlobalFailures = 100;
 
@@ -60,6 +68,7 @@ public sealed class InviteBook : IShareInvites
     private readonly ShareLocks _locks;
     private readonly ILogger _logger;
     private readonly Dictionary<string, Invite> _invites = new(StringComparer.Ordinal);
+    private readonly List<EndedInvite> _ended = [];
     private readonly FailureLimiter _failures = new(PerIpFailures, GlobalFailures);
 
     /// <summary>
@@ -143,10 +152,11 @@ public sealed class InviteBook : IShareInvites
 
             if (!create)
             {
-                _invites.Remove(share.ShareId);
+                End(share.ShareId, "cancelled");
                 return Task.FromResult<(ShareOutcome, object?)>((ShareOutcome.Ok, new { }));
             }
 
+            End(share.ShareId, "replaced"); // the old secret still gets a clear answer from now on
             var secret = InviteCrypto.NewSecret();
             var invite = new Invite(share.ShareId, SHA256.HashData(Encoding.UTF8.GetBytes(secret)), _time.GetUtcNow() + InviteLife);
             _invites[share.ShareId] = invite;
@@ -160,7 +170,7 @@ public sealed class InviteBook : IShareInvites
     {
         lock (_lock)
         {
-            _invites.Remove(shareId);
+            End(shareId, "cancelled");
         }
     }
 
@@ -174,15 +184,15 @@ public sealed class InviteBook : IShareInvites
                 return null;
             }
 
-            if (invite.Phase == Phase.Bound && _time.GetUtcNow() >= invite.ExpiresUtc)
+            if (invite.Phase == Phase.Bound && (_time.GetUtcNow() >= invite.ExpiresUtc || Stale(invite, _time.GetUtcNow())))
             {
-                return null;
+                return null; // over, or abandoned: a dead card is never offered for approval
             }
 
             var prefix = invite.HomeServerId[..8];
             return invite.Phase switch
             {
-                Phase.Bound or Phase.Approving => new { state = "pending", homeName = invite.HomeName, homeServerIdPrefix = prefix, addressClass = invite.AddressClass, triesLeft = invite.TriesLeft },
+                Phase.Bound or Phase.Approving => new { state = "pending", homeName = invite.HomeName, homeServerIdPrefix = prefix, addressClass = invite.AddressClass, triesLeft = invite.TriesLeft, restarted = invite.Restarts > 0 },
                 Phase.Approved => new { state = "approved", homeName = invite.HomeName, homeServerIdPrefix = prefix, addressClass = invite.AddressClass, triesLeft = invite.TriesLeft },
                 Phase.Delivered => new { state = "collected", homeName = invite.HomeName, homeServerIdPrefix = prefix, addressClass = invite.AddressClass, triesLeft = invite.TriesLeft },
                 Phase.Uncollected => new { state = "uncollected", homeName = invite.HomeName, homeServerIdPrefix = prefix, addressClass = invite.AddressClass, triesLeft = invite.TriesLeft },
@@ -199,7 +209,7 @@ public sealed class InviteBook : IShareInvites
         Invite invite;
         lock (_lock)
         {
-            if (!_invites.TryGetValue(share.ShareId, out var found) || found.Phase != Phase.Bound || found.Sas is null || _time.GetUtcNow() >= found.ExpiresUtc)
+            if (!_invites.TryGetValue(share.ShareId, out var found) || found.Phase != Phase.Bound || found.Sas is null || _time.GetUtcNow() >= found.ExpiresUtc || Stale(found, _time.GetUtcNow()))
             {
                 return (ShareOutcome.Conflict, null);
             }
@@ -208,6 +218,7 @@ public sealed class InviteBook : IShareInvites
             if (!request.Approve)
             {
                 invite.Phase = Phase.Denied;
+                _logger.LogInformation("An approval was denied by the admin (server {Home})", Redact.Id(invite.HomeServerId));
                 return (ShareOutcome.Ok, new { state = "denied" });
             }
 
@@ -220,7 +231,7 @@ public sealed class InviteBook : IShareInvites
                 if (invite.TriesLeft <= 0)
                 {
                     invite.Phase = Phase.WrongCode;
-                    _logger.LogWarning("An approval was cancelled after three wrong safety codes");
+                    _logger.LogWarning("An approval was cancelled after three wrong safety codes (server {Home}): codeMismatch", Redact.Id(invite.HomeServerId));
                     return (ShareOutcome.Ok, new { match = false, triesLeft = 0, state = "cancelledWrongCode" });
                 }
 
@@ -256,6 +267,7 @@ public sealed class InviteBook : IShareInvites
             return (ShareOutcome.Invalid, null);
         }
 
+        _logger.LogInformation("An approval succeeded for server {Home}; the token waits for it", Redact.Id(invite.HomeServerId));
         return (ShareOutcome.Ok, new { match = true, state = "approved" });
     }
 
@@ -272,20 +284,41 @@ public sealed class InviteBook : IShareInvites
             var now = _time.GetUtcNow();
             var presented = SHA256.HashData(Encoding.UTF8.GetBytes(request.Invite));
 
-            // Compare with every live invite, or with a fixed dummy when none is live: the same work either way.
+            // Compare with every invite Shoal still remembers (live or not) and with the ended ones, or with a fixed dummy when there are none: the same work
+            // either way. A secret that matches an invite that is over gets its reason; one that matches nothing gets the one uniform 404.
             Invite? match = null;
-            var live = _invites.Values.Where(i => now < i.ExpiresUtc && i.Phase is Phase.Active or Phase.Bound or Phase.Approving or Phase.Approved or Phase.Denied or Phase.WrongCode).ToList();
-            foreach (var candidate in live.Count == 0 ? [Invite.Dummy] : live)
+            string? endedReason = null;
+            var pool = _invites.Values.Select(static i => (i.Hash, (Invite?)i, (string?)null)).Concat(_ended.Select(static e => (e.Hash, (Invite?)null, (string?)e.Reason))).ToList();
+            foreach (var candidate in pool.Count == 0 ? [(Invite.Dummy.Hash, (Invite?)null, (string?)null)] : pool)
             {
-                if (CryptographicOperations.FixedTimeEquals(presented, candidate.Hash) && !ReferenceEquals(candidate, Invite.Dummy))
+                if (CryptographicOperations.FixedTimeEquals(presented, candidate.Hash) && !ReferenceEquals(candidate.Item2, Invite.Dummy) && (candidate.Item2 is not null || candidate.Item3 is not null))
                 {
-                    match = candidate;
+                    match = candidate.Item2;
+                    endedReason = candidate.Item3;
                 }
+            }
+
+            if (match is null && endedReason is null)
+            {
+                return Fail(request.RemoteAddress, now, "unknownInvite");
+            }
+
+            var ownId = _home.ServerId.ToLowerInvariant();
+            if (endedReason is not null)
+            {
+                _logger.LogInformation("A pairing request used an invite that is over: {Reason}", endedReason);
+                return new PairAnswer(false, endedReason, ownId, null, null);
             }
 
             if (match is null)
             {
-                return Fail(request.RemoteAddress, now);
+                return Fail(request.RemoteAddress, now, "unknownInvite");
+            }
+
+            if (DeadReason(match, now) is { } dead)
+            {
+                _logger.LogInformation("A pairing request used an invite that is over: {Reason}", dead);
+                return new PairAnswer(false, dead, ownId, null, null);
             }
 
             if (!InviteCrypto.TryBase64Url(request.HomeNonceCommit, out var commitBytes) || commitBytes.Length != 32)
@@ -306,8 +339,29 @@ public sealed class InviteBook : IShareInvites
                 match.HomeDeviceId = request.HomeDeviceId;
                 match.AddressClass = AddressClassOf(request.RemoteAddress);
                 match.PeerNonce = RandomNumberGenerator.GetBytes(16);
+                match.LastSeen = now;
                 match.Phase = Phase.Bound;
-                return new PairAnswer(false, "pending", _home.ServerId.ToLowerInvariant(), InviteCrypto.Base64Url(match.PeerNonce), null);
+                _logger.LogInformation("An invite was redeemed by server {Home} ({AddressClass}); waiting for the safety code", Redact.Id(match.HomeServerId), match.AddressClass);
+                return new PairAnswer(false, "pending", _home.ServerId.ToLowerInvariant(), InviteCrypto.Base64Url(match.PeerNonce), null, Remaining(match, now));
+            }
+
+            // The same Home starting again (it backed out, reloaded or lost its connection): the first request of a new attempt carries a new commitment and no
+            // nonce. While nothing was approved, the old attempt is dropped and the new one takes its place, with the tries already used still counted. The
+            // invite is only used up by an approval, so an interrupted attempt does not burn it, and the old attempt can no longer be approved.
+            if (match.Phase == Phase.Bound && request.HomeNonce is null && !string.Equals(match.Commit, request.HomeNonceCommit, StringComparison.Ordinal)
+                && string.Equals(request.HomeServerId.ToLowerInvariant(), match.HomeServerId, StringComparison.Ordinal)
+                && string.Equals(request.HomeName, match.HomeName, StringComparison.Ordinal))
+            {
+                match.Commit = request.HomeNonceCommit;
+                match.HomeDeviceId = request.HomeDeviceId; // Home's new attempt may use a new device id; the name and server id are what must stay the same
+                match.Restarts++;
+                match.AddressClass = AddressClassOf(request.RemoteAddress);
+                match.PeerNonce = RandomNumberGenerator.GetBytes(16);
+                match.HomeNonce = null;
+                match.Sas = null;
+                match.LastSeen = now;
+                _logger.LogInformation("An invite was started again by server {Home}; the earlier attempt is dropped", Redact.Id(match.HomeServerId));
+                return new PairAnswer(false, "pending", _home.ServerId.ToLowerInvariant(), InviteCrypto.Base64Url(match.PeerNonce), null, Remaining(match, now));
             }
 
             // A bound invite: the same commitment, and from the first poll on the nonce that hashes to it.
@@ -331,6 +385,11 @@ public sealed class InviteBook : IShareInvites
                 return Fail(request.RemoteAddress, now);
             }
 
+            if (match.Phase == Phase.Bound)
+            {
+                match.LastSeen = now;
+            }
+
             var peerNonce = InviteCrypto.Base64Url(match.PeerNonce);
             var peerId = _home.ServerId.ToLowerInvariant();
             switch (match.Phase)
@@ -347,7 +406,7 @@ public sealed class InviteBook : IShareInvites
                     return new PairAnswer(false, "codeMismatch", peerId, peerNonce, null);
                 case Phase.Bound:
                 case Phase.Approving:
-                    return new PairAnswer(false, "pending", peerId, peerNonce, null);
+                    return new PairAnswer(false, "pending", peerId, peerNonce, null, Remaining(match, now));
                 default:
                     return Fail(request.RemoteAddress, now);
             }
@@ -372,7 +431,7 @@ public sealed class InviteBook : IShareInvites
                 invite.Token = null;
             }
 
-            foreach (var key in _invites.Where(kv => now >= kv.Value.ExpiresUtc + TimeSpan.FromMinutes(30)).Select(kv => kv.Key).ToList())
+            foreach (var key in _invites.Where(kv => now >= kv.Value.ExpiresUtc + TimeSpan.FromHours(6)).Select(kv => kv.Key).ToList())
             {
                 _invites.Remove(key);
             }
@@ -403,6 +462,21 @@ public sealed class InviteBook : IShareInvites
         return _failures.Throttled(AddressKey.Of(ip), _time.GetUtcNow());
     }
 
+    // Why an invite can no longer be redeemed, or null while it can. An approved key can be collected for two minutes after the approval, even past the
+    // invite's own 15 minutes: the friend approved in time, and Home only has to fetch it.
+    private static string? DeadReason(Invite invite, DateTimeOffset now) => invite.Phase switch
+    {
+        Phase.Delivered => "used",
+        Phase.Uncollected => "uncollected",
+        Phase.Approved => now - invite.ApprovedUtc >= CollectWindow ? "uncollected" : null,
+        _ => now >= invite.ExpiresUtc ? "expired" : null,
+    };
+
+    // Seconds left, not a time of day: the two servers' clocks need not agree.
+    private static bool Stale(Invite invite, DateTimeOffset now) => invite.Phase == Phase.Bound && now - invite.LastSeen > AttemptStale;
+
+    private static int Remaining(Invite invite, DateTimeOffset now) => (int)Math.Clamp((invite.ExpiresUtc - now).TotalSeconds, 0, InviteLife.TotalSeconds);
+
     private static string AddressClassOf(string address)
     {
         if (!System.Net.IPAddress.TryParse(address, out var ip))
@@ -429,8 +503,32 @@ public sealed class InviteBook : IShareInvites
         return bytes[0] == 0xfd && bytes[1] == 0x7a ? "tailnet" : System.Net.IPAddress.IsLoopback(ip) || (bytes[0] & 0xfe) == 0xfc ? "lan" : "public";
     }
 
-    private PairAnswer Fail(string ip, DateTimeOffset now)
+    // Takes an invite out of the book and remembers its secret's hash with the reason, so a friend or Home holding the old secret learns what happened.
+    // Called with the lock held.
+    private void End(string shareId, string reason)
     {
+        if (!_invites.Remove(shareId, out var gone))
+        {
+            return;
+        }
+
+        var why = gone.Phase switch { Phase.Delivered => "used", Phase.Uncollected => "uncollected", _ => reason };
+        var now = _time.GetUtcNow();
+        _ended.RemoveAll(e => now - e.At > TimeSpan.FromHours(6));
+        _ended.Add(new EndedInvite(gone.Hash, why, now));
+        if (_ended.Count > 16)
+        {
+            _ended.RemoveAt(0);
+        }
+    }
+
+    private PairAnswer Fail(string ip, DateTimeOffset now, string reason = "badRequest")
+    {
+        if (!_failures.Throttled(AddressKey.Of(ip), now))
+        {
+            _logger.LogInformation("A pairing request was refused: {Reason}", reason); // no address, no invite, no code
+        }
+
         _failures.Record(AddressKey.Of(ip), now);
         return PairAnswer.Failure;
     }
@@ -475,6 +573,8 @@ public sealed class InviteBook : IShareInvites
         }
     }
 
+    private sealed record EndedInvite(byte[] Hash, string Reason, DateTimeOffset At);
+
     private sealed class Invite
     {
         public Invite(string shareId, byte[] hash, DateTimeOffset expiresUtc)
@@ -515,5 +615,9 @@ public sealed class InviteBook : IShareInvites
         public string? Token { get; set; }
 
         public DateTimeOffset ApprovedUtc { get; set; }
+
+        public DateTimeOffset LastSeen { get; set; }
+
+        public int Restarts { get; set; }
     }
 }

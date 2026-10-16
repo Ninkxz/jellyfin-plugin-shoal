@@ -25,25 +25,15 @@ public sealed class StartPairingRequest
     [JsonPropertyName("displayName")]
     public string? DisplayName { get; set; }
 
-    /// <summary>Gets or sets the method, <c>qc</c> or <c>invite</c>.</summary>
+    /// <summary>Gets or sets the method. Ignored: every pairing is by invite (D17). The value <c>qc</c> is refused with 409 <c>methodUnavailable</c>.</summary>
     [JsonPropertyName("method")]
     public string? Method { get; set; }
 }
 
 /// <summary>
-/// The body of <c>POST Shoal/Admin/Pairing/Confirm</c>.
-/// </summary>
-public sealed class ConfirmPairingRequest
-{
-    /// <summary>Gets or sets a value indicating whether the check in the friend's Devices list matched.</summary>
-    [JsonPropertyName("match")]
-    public bool? Match { get; set; }
-}
-
-/// <summary>
 /// The Home-side pairing endpoints of the admin API (DESIGN 9.6): probe, the watch-side pairing session, dismissing a stopped pairing, and
 /// confirming a restore. Every action requires an administrator (<c>RequiresElevation</c>); nothing here is anonymous. No response contains a
-/// token, the Quick Connect secret or a peer GUID: the session shows the 6-digit code and the check, which the admin reads out.
+/// token, the invite secret or a peer GUID: the session shows the safety code, which the friend types.
 /// </summary>
 [ApiController]
 [Route("Shoal/Admin")]
@@ -68,7 +58,7 @@ public class AdminPairingController : ControllerBase
     }
 
     /// <summary>
-    /// Looks at a server before pairing (steps 1 and 2 of the wizard). Never sends <c>QuickConnect/Initiate</c>.
+    /// Looks at a server before pairing (steps 1 and 2 of the wizard). Sends no token; a probe without an invite can be checked but cannot start a pairing.
     /// </summary>
     /// <param name="request">The address, network type and optional proxy.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects (call 1).</param>
@@ -81,7 +71,7 @@ public class AdminPairingController : ControllerBase
     /// <summary>
     /// Starts a pairing: the admin's "Start pairing" click.
     /// </summary>
-    /// <param name="request">The probe handle, the name and the method.</param>
+    /// <param name="request">The probe handle and the name (the method is ignored; <c>qc</c> is refused).</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects (call 2).</param>
     /// <response code="200">The session.</response>
     /// <response code="409"><c>sessionActive</c>, <c>probeExpired</c>, <c>secretsUnreadable</c> or <c>methodUnavailable</c>.</response>
@@ -95,10 +85,14 @@ public class AdminPairingController : ControllerBase
             return new ShoalResult(400, new { error = "invalidRequest" });
         }
 
-        var method = string.Equals(request.Method, "invite", StringComparison.OrdinalIgnoreCase) ? Jellyfin.Plugin.Shoal.State.PairingMethod.Invite : Jellyfin.Plugin.Shoal.State.PairingMethod.Qc;
+        if (string.Equals(request.Method, "qc", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ShoalResult(409, new { error = "methodUnavailable" });
+        }
+
         try
         {
-            return new ShoalResult(200, await _pairing.BeginAsync(adminId, request.ProbeHandle, request.DisplayName, method, cancellationToken).ConfigureAwait(false));
+            return new ShoalResult(200, await _pairing.BeginAsync(adminId, request.ProbeHandle, request.DisplayName, cancellationToken).ConfigureAwait(false));
         }
         catch (PairingConflictException ex)
         {
@@ -110,47 +104,24 @@ public class AdminPairingController : ControllerBase
     /// Gets the current pairing session, which keeps running without any page open.
     /// </summary>
     /// <response code="200">The session.</response>
-    /// <response code="404">There is none.</response>
+    /// <response code="204">There is none (not an error: the wizard asks every time it opens, and a 404 would show as an error in the browser console).</response>
     /// <returns>The session as it stands.</returns>
     [HttpGet("Pairing")]
-    public IActionResult Get() => _pairing.GetSession() is { } session ? new ShoalResult(200, session) : new ShoalResult(404);
-
-    /// <summary>
-    /// "The codes match" or "They don't match". Legal only while the session waits for it.
-    /// </summary>
-    /// <param name="request">The answer.</param>
-    /// <param name="cancellationToken">Cancelled when the client disconnects (call 3).</param>
-    /// <response code="200">The session after it finished.</response>
-    /// <response code="409">The session is not waiting for the confirmation (<c>notAwaitingConfirm</c>).</response>
-    /// <returns>The finished session.</returns>
-    [HttpPost("Pairing/Confirm")]
-    public async Task<IActionResult> Confirm([FromBody] ConfirmPairingRequest request, CancellationToken cancellationToken)
-    {
-        if (request.Match is null)
-        {
-            return new ShoalResult(400, new { error = "invalidRequest" });
-        }
-
-        try
-        {
-            return new ShoalResult(200, await _pairing.ConfirmAsync(request.Match.Value, cancellationToken).ConfigureAwait(false));
-        }
-        catch (PairingConflictException ex)
-        {
-            return ConflictResult(ex);
-        }
-    }
+    public IActionResult Get() => _pairing.GetSession() is { } session ? new ShoalResult(200, session) : new ShoalResult(204);
 
     /// <summary>
     /// Cancels the live session.
     /// </summary>
     /// <param name="cancellationToken">Cancelled when the client disconnects (call 4).</param>
-    /// <response code="204">Cancelled.</response>
-    /// <response code="404">There was no live session.</response>
+    /// <response code="204">Cancelled, or there was no live session (no session is never an error here).</response>
     /// <returns>Nothing.</returns>
     [HttpDelete("Pairing")]
-    public async Task<IActionResult> Cancel(CancellationToken cancellationToken) =>
-        new ShoalResult(await _pairing.CancelAsync(cancellationToken).ConfigureAwait(false) ? 204 : 404);
+    public async Task<IActionResult> Cancel(CancellationToken cancellationToken)
+    {
+        // Nothing to cancel is the same answer as cancelled: the page asks without knowing, and a 404 shows as an error in the browser console.
+        await _pairing.CancelAsync(cancellationToken).ConfigureAwait(false);
+        return new ShoalResult(204);
+    }
 
     /// <summary>
     /// Clears a stopped pairing (the card's Dismiss).
@@ -187,7 +158,6 @@ public class AdminPairingController : ControllerBase
     {
         PairingConflict.SessionActive => "sessionActive",
         PairingConflict.ProbeExpired => "probeExpired",
-        PairingConflict.NotAwaitingConfirm => "notAwaitingConfirm",
         PairingConflict.NoSession => "noSession",
         PairingConflict.SecretsUnreadable => "secretsUnreadable",
         PairingConflict.MethodUnavailable => "methodUnavailable",

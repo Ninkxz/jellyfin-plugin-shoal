@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
@@ -201,6 +202,7 @@ public sealed class HlsProxyHandler
     private const int SegmentGateSlots = 8;
 
     private static readonly TimeSpan Reauthorize = TimeSpan.FromMinutes(5);
+    private static readonly Regex SegmentLine = new("^hls1/main/(\\d+)\\.(ts|mp4)\\?ApiKey=[^&\\n]*&runtimeTicks=(\\d+)&actualSegmentLengthTicks=(\\d+)$", RegexOptions.CultureInvariant | RegexOptions.Multiline, TimeSpan.FromMilliseconds(100));
     private static readonly Regex GrantIdShape = new("^[A-Za-z0-9_-]{22}\\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(100));
 
     private readonly GrantStore _grants;
@@ -216,6 +218,7 @@ public sealed class HlsProxyHandler
     private readonly TimeProvider _time;
     private readonly ILogger<HlsProxyHandler> _logger;
     private readonly Jellyfin.Plugin.Shoal.Diagnostics.ISegmentTelemetry? _telemetry;
+    private readonly HlsReadAhead? _readAhead;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _segmentGates = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -234,6 +237,7 @@ public sealed class HlsProxyHandler
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="telemetry">Watches the segments for the speed diagnostics, or null.</param>
+    /// <param name="readAhead">Reads the next segments of a stream ahead, or null (none).</param>
     public HlsProxyHandler(
         GrantStore grants,
         IPeerEndpoints peers,
@@ -247,8 +251,10 @@ public sealed class HlsProxyHandler
         RateLimiter limiter,
         TimeProvider time,
         ILogger<HlsProxyHandler> logger,
-        Jellyfin.Plugin.Shoal.Diagnostics.ISegmentTelemetry? telemetry = null)
+        Jellyfin.Plugin.Shoal.Diagnostics.ISegmentTelemetry? telemetry = null,
+        HlsReadAhead? readAhead = null)
     {
+        _readAhead = readAhead;
         _telemetry = telemetry;
         _grants = grants;
         _peers = peers;
@@ -414,6 +420,7 @@ public sealed class HlsProxyHandler
         if (result.Outcome == PlaylistOutcome.Ok)
         {
             grant.PeerVariantQuery = result.VariantQuery;
+            StartMainPrefetch(grant, peer);
         }
 
         return Playlist(result, caller);
@@ -426,20 +433,57 @@ public sealed class HlsProxyHandler
             return new ShoalResult(StatusCodes.Status404NotFound); // the master playlist comes first; there is no variant query yet
         }
 
-        var query = QueryOf(grant.PeerVariantQuery);
-        if (!IsQ(query))
+        if (MainPath(grant) is not { } path)
         {
             return new ShoalResult(StatusCodes.Status502BadGateway);
         }
 
-        var result = await PlaylistAsync(peer, $"/Videos/{grant.PeerItemId:N}/main.m3u8?{query}", PeerCallProfile.HlsMain, PlaylistKind.Variant, context, cancellationToken).ConfigureAwait(false);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var prefetched = false;
+        PlaylistResult? ready = null;
+        var started = grant.MainPrefetch;
+        if (started is not null)
+        {
+            // A client that cancels leaves the fetch running (it is not tied to the request), so its retry finds the answer instead of starting over.
+            var bytes = await started.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (bytes is null)
+            {
+                grant.MainPrefetch = null; // it failed: ask again below, with this request's own deadlines and errors
+            }
+            else
+            {
+                prefetched = true;
+                ready = PlaylistGrammar.Process(PlaylistKind.Variant, bytes, context);
+            }
+        }
+
+        var result = ready ?? await PlaylistAsync(peer, path, PeerCallProfile.HlsMain, PlaylistKind.Variant, context, cancellationToken).ConfigureAwait(false);
+        grant.MainPrefetch = null; // a later request reads the Peer's current playlist
+        _logger.LogInformation("The main playlist of a transcode was ready after {Ms} ms (started at the master playlist: {Prefetched}, outcome {Outcome})", clock.ElapsedMilliseconds, prefetched, result.Outcome);
         if (result.Outcome == PlaylistOutcome.Ok)
         {
             grant.SegmentCount = result.Segments; // the only ids the segment route will serve (H-1)
             grant.HasInitSegment = result.Text.Contains("#EXT-X-MAP:", StringComparison.Ordinal);
+            grant.SegmentPlan = PlanOf(result.Text, result.Segments);
         }
 
         return Playlist(result, caller);
+    }
+
+    // The segment lines of the playlist Home itself wrote (rebuilt from parsed values, so every number is one Home produced): what the read-ahead asks the Peer for.
+    private static SegmentPlanItem[] PlanOf(string text, int count)
+    {
+        var plan = new SegmentPlanItem?[count];
+        foreach (Match match in SegmentLine.Matches(text))
+        {
+            if (int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id >= 0 && id < count
+                && long.TryParse(match.Groups[3].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var runtime) && long.TryParse(match.Groups[4].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var length))
+            {
+                plan[id] = new SegmentPlanItem(runtime, length, match.Groups[2].Value);
+            }
+        }
+
+        return [.. plan.Select(static p => p ?? new SegmentPlanItem(0, 0, string.Empty))];
     }
 
     private async Task<IActionResult> SubtitlePlaylistAsync(Grant grant, PeerEndpoint peer, PlaylistContext context, Caller caller, int index, CancellationToken cancellationToken)
@@ -476,7 +520,41 @@ public sealed class HlsProxyHandler
         return await _subtitles.HlsSegmentAsync(grant, caller, peer, index, start, end, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<PlaylistResult> PlaylistAsync(PeerEndpoint peer, string path, PeerCallProfile profile, PlaylistKind kind, PlaylistContext context, CancellationToken cancellationToken)
+    private static string? MainPath(Grant grant)
+    {
+        if (grant.PeerVariantQuery.Count == 0)
+        {
+            return null;
+        }
+
+        var query = QueryOf(grant.PeerVariantQuery);
+        return IsQ(query) ? $"/Videos/{grant.PeerItemId:N}/main.m3u8?{query}" : null;
+    }
+
+    // Asks for the main playlist now, on Home's own deadline and not the client's (Pilot: the client cancelled after 3 s on a relay link while the Peer was still starting its conversion).
+    private void StartMainPrefetch(Grant grant, PeerEndpoint peer)
+    {
+        if (grant.MainPrefetch is not null || MainPath(grant) is not { } path)
+        {
+            return;
+        }
+
+        grant.PeerJobStarted = true; // the Peer's conversion begins with this request: it must be stopped with the session even if the client never gets further
+        grant.MainPrefetch = Task.Run(async () =>
+        {
+            using var deadline = new CancellationTokenSource((PeerCallProfile.HlsMain.Total ?? TimeSpan.FromSeconds(40)) + TimeSpan.FromSeconds(5));
+            try
+            {
+                return await FetchPlaylistBytesAsync(peer, path, PeerCallProfile.HlsMain, deadline.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is PeerCallException or OperationCanceledException)
+            {
+                return null;
+            }
+        });
+    }
+
+    private async Task<byte[]?> FetchPlaylistBytesAsync(PeerEndpoint peer, string path, PeerCallProfile profile, CancellationToken cancellationToken)
     {
         if (!await _trust.EnsureAsync(peer, TrustRequirement.PinFresh, cancellationToken).ConfigureAwait(false))
         {
@@ -486,11 +564,16 @@ public sealed class HlsProxyHandler
         using var response = await _client.SendAsync(peer, PeerRequest.GetMedia(path).WithTrust(TrustRequirement.PinFresh), profile, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode != HttpStatusCode.OK || !response.HasBody || !ResponseWriter.IsAcceptedUpstream(ResponseKind.HlsPlaylist, response.MediaType))
         {
-            return PlaylistResult.Reject(PlaylistFault.Structure);
+            return null;
         }
 
-        var bytes = await response.ReadBytesAsync(cancellationToken).ConfigureAwait(false);
-        return PlaylistGrammar.Process(kind, bytes, context);
+        return await response.ReadBytesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<PlaylistResult> PlaylistAsync(PeerEndpoint peer, string path, PeerCallProfile profile, PlaylistKind kind, PlaylistContext context, CancellationToken cancellationToken)
+    {
+        var bytes = await FetchPlaylistBytesAsync(peer, path, profile, cancellationToken).ConfigureAwait(false);
+        return bytes is null ? PlaylistResult.Reject(PlaylistFault.Structure) : PlaylistGrammar.Process(kind, bytes, context);
     }
 
     private IActionResult Playlist(PlaylistResult result, Caller caller)
@@ -547,6 +630,26 @@ public sealed class HlsProxyHandler
             return new ShoalResult(StatusCodes.Status502BadGateway);
         }
 
+        // A segment Home already read ahead (or is reading now) is served from memory: the client reads it from Home's fast side.
+        if (_readAhead is not null && request.SegmentId >= 0 && _registry.Check(grant.PeerKey, true, TrustRequirement.PinAndAuthFresh) == TrustDenial.None && _readAhead.Find(grant.GrantId, request.SegmentId) is { } held)
+        {
+            byte[]? bytes = null;
+            try
+            {
+                bytes = await held.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // dropped while waiting: ask the Peer below
+            }
+
+            if (bytes is not null && _slots.TryTakeHls(grant, peerState.MaxConcurrentStreams, peerState.MaxConcurrentTranscodes, out _))
+            {
+                _slots.TouchHls(grant.GrantId);
+                return new HlsBufferedSegmentResult(bytes, request.Extension, _slots, grant.GrantId, () => ReadAhead(grant, peer, peerState, request.SegmentId, count));
+            }
+        }
+
         // At most 3 segment calls per grant and 8 per peer at once, so Peer restarts caused by far seeks can never pin the pool (H-1).
         if (!grant.TryEnterSegment(MaxSegmentsPerGrant))
         {
@@ -573,6 +676,7 @@ public sealed class HlsProxyHandler
             {
                 gate.Release();
                 grant.ExitSegment();
+                ReadAhead(grant, peer, peerState, request.SegmentId, count); // the segment is through: read the window after it
             }
 
             var result = await FetchSegmentAsync(grant, peer, request, caller, variant, runtime, length, Done, cancellationToken).ConfigureAwait(false);
@@ -586,6 +690,116 @@ public sealed class HlsProxyHandler
                 gate.Release();
                 grant.ExitSegment();
             }
+        }
+    }
+
+    // Keeps reading the window after the segment the client is at. A segment goes through the same limits as the client's own: the grant's three calls, the peer's
+    // eight, the stream slot (which it never takes anew and never touches: only the client's own requests keep a stream looking active); one read at a time per stream.
+    private void ReadAhead(Grant grant, PeerEndpoint peer, PeerState peerState, int segment, int count)
+    {
+        if (_readAhead is null || grant.SegmentPlan is null)
+        {
+            return;
+        }
+
+        _readAhead.Advance(grant.GrantId, grant.PeerKey, segment, count, (next, reservation, token) => ReadSegmentAsync(grant, peer, next, reservation, token));
+    }
+
+    private async Task<byte[]?> ReadSegmentAsync(Grant grant, PeerEndpoint peer, int id, ReadAheadReservation reservation, CancellationToken cancellationToken)
+    {
+        if (grant.SegmentPlan is not { } plan || id < 0 || id >= plan.Count || plan[id].Extension.Length == 0 || grant.PeerVariantQuery.Count == 0)
+        {
+            return null;
+        }
+
+        var variant = QueryOf(grant.PeerVariantQuery);
+        if (!IsQ(variant) || !_slots.HoldsOwnSlot(grant) || !grant.TryEnterSegment(MaxSegmentsPerGrant))
+        {
+            return null; // a stream that holds no slot (stopped, freed, replaced) is read for no more
+        }
+
+        var gate = SegmentGateOf(grant.PeerKey);
+        if (!await gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            grant.ExitSegment();
+            return null; // the peer already has its eight: reading ahead never takes a place a client's own request could use
+        }
+
+        PeerResponse? upstream = null;
+        try
+        {
+            var item = plan[id];
+            var path = $"/Videos/{grant.PeerItemId:N}/hls1/main/{id.ToString(CultureInfo.InvariantCulture)}.{item.Extension}?{variant}&runtimeTicks={item.RuntimeTicks.ToString(CultureInfo.InvariantCulture)}&actualSegmentLengthTicks={item.LengthTicks.ToString(CultureInfo.InvariantCulture)}";
+            upstream = await _client.SendAsync(peer, PeerRequest.GetMedia(path).WithTrust(TrustRequirement.PinAndAuthFresh), PeerCallProfile.HlsSegment, cancellationToken).ConfigureAwait(false);
+            if (upstream.StatusCode != HttpStatusCode.OK || !upstream.HasBody || !ResponseWriter.IsAcceptedUpstream(ResponseKind.HlsSegment, upstream.MediaType) || upstream.ContentLength > HlsReadAhead.MaxSegmentBytes)
+            {
+                return null;
+            }
+
+            // The bytes are reserved before they are read: the segment's own length when the Peer declares it, else the most one can be. Nothing is read without the room.
+            var declared = upstream.ContentLength;
+            if (!reservation.TryReserve(declared ?? HlsReadAhead.MaxSegmentBytes))
+            {
+                return null;
+            }
+
+            var body = upstream.OpenBody();
+            var copying = System.Diagnostics.Stopwatch.StartNew();
+            if (declared is { } length)
+            {
+                var exact = new byte[length]; // exactly the size reserved, no copy
+                var filled = 0;
+                while (filled < exact.Length)
+                {
+                    var read = await body.ReadAsync(exact.AsMemory(filled), cancellationToken).ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        return null; // shorter than declared
+                    }
+
+                    filled += read;
+                }
+
+                if (await body.ReadAsync(new byte[1].AsMemory(), cancellationToken).ConfigureAwait(false) != 0)
+                {
+                    return null; // longer than declared
+                }
+
+                _telemetry?.ObserveCopy(grant.PeerKey, grant.GrantId, item.LengthTicks / 1e7, exact.Length, copying.Elapsed); // a segment read ahead tells about the link too
+                return exact;
+            }
+
+            // No declared length: read into a buffer capped at half the reservation, so the copy to an exact array stays inside what was reserved.
+            const long Half = HlsReadAhead.MaxSegmentBytes / 2;
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81 * 1024];
+            int got;
+            while ((got = await body.ReadAsync(chunk.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (buffer.Length + got > Half)
+                {
+                    return null; // too big to hold: the client streams it itself
+                }
+
+                await buffer.WriteAsync(chunk.AsMemory(0, got), cancellationToken).ConfigureAwait(false);
+            }
+
+            _telemetry?.ObserveCopy(grant.PeerKey, grant.GrantId, item.LengthTicks / 1e7, buffer.Length, copying.Elapsed);
+            return buffer.ToArray();
+        }
+        catch (PeerCallException)
+        {
+            return null; // the client's own request will meet the failure and say what it is
+        }
+        finally
+        {
+            if (upstream is not null)
+            {
+                await upstream.DisposeAsync().ConfigureAwait(false);
+            }
+
+            gate.Release();
+            grant.ExitSegment();
         }
     }
 
@@ -692,6 +906,7 @@ internal sealed class HlsSegmentResult : IActionResult
         var http = context.HttpContext;
         var response = http.Response;
         long copied = 0;
+        long upstreamTicks = 0;
         var complete = false;
         try
         {
@@ -705,8 +920,16 @@ internal sealed class HlsSegmentResult : IActionResult
             var body = _upstream.OpenBody();
             var buffer = new byte[BufferSize];
             int read;
-            while ((read = await body.ReadAsync(buffer.AsMemory(), http.RequestAborted).ConfigureAwait(false)) > 0)
+            while (true)
             {
+                var waited = System.Diagnostics.Stopwatch.GetTimestamp();
+                read = await body.ReadAsync(buffer.AsMemory(), http.RequestAborted).ConfigureAwait(false);
+                upstreamTicks += System.Diagnostics.Stopwatch.GetTimestamp() - waited; // only the reads from the peer are timed: the client's own speed says nothing about the link
+                if (read <= 0)
+                {
+                    break;
+                }
+
                 await response.Body.WriteAsync(buffer.AsMemory(0, read), http.RequestAborted).ConfigureAwait(false);
                 copied += read;
                 _slots.TouchHls(_grantId);
@@ -727,10 +950,52 @@ internal sealed class HlsSegmentResult : IActionResult
         {
             if (complete)
             {
-                _measure?.Done(copied);
+                _measure?.Done(copied, System.Diagnostics.Stopwatch.GetElapsedTime(0, upstreamTicks));
             }
 
             await _upstream.DisposeAsync().ConfigureAwait(false);
+            _onDone();
+        }
+    }
+}
+
+/// <summary>
+/// A segment Home read ahead, written from memory with the same headers as a segment copied from the Peer.
+/// </summary>
+internal sealed class HlsBufferedSegmentResult : IActionResult
+{
+    private readonly byte[] _bytes;
+    private readonly string _extension;
+    private readonly StreamSlots _slots;
+    private readonly string _grantId;
+    private readonly Action _onDone;
+
+    public HlsBufferedSegmentResult(byte[] bytes, string extension, StreamSlots slots, string grantId, Action onDone)
+    {
+        _bytes = bytes;
+        _extension = extension;
+        _slots = slots;
+        _grantId = grantId;
+        _onDone = onDone;
+    }
+
+    public async Task ExecuteResultAsync(ActionContext context)
+    {
+        var http = context.HttpContext;
+        try
+        {
+            http.Response.StatusCode = StatusCodes.Status200OK;
+            ResponseWriter.Apply(http.Response, ResponseKind.HlsSegment, _extension);
+            http.Response.ContentLength = _bytes.Length;
+            await http.Response.Body.WriteAsync(_bytes, http.RequestAborted).ConfigureAwait(false);
+            _slots.TouchHls(_grantId);
+        }
+        catch (OperationCanceledException)
+        {
+            // the client went away
+        }
+        finally
+        {
             _onDone();
         }
     }

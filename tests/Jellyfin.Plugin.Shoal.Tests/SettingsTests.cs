@@ -63,7 +63,7 @@ public sealed class SettingsTests
         Assert.Equal(2, c.DiskQuotaGbPerPeer);
         Assert.Equal(ArtQuality.Standard, c.ArtQuality);
         Assert.False(c.ParkOfflinePeers);
-        Assert.Equal(72, c.ParkAfterHours);
+        Assert.Equal(0.5, c.ParkAfterHours);
         Assert.True(c.NotifyClientsWhenOffline);
         Assert.True(c.HlsSubtitlesEnabled);
         Assert.Equal("auto", c.TailscaleSocket);
@@ -87,9 +87,9 @@ public sealed class SettingsTests
         Assert.Equal(
             new[]
             {
-                "AlternateVersionsEnabled", "ArtQuality", "AttachmentsEnabled", "AutoFitQualityToLink", "DiskQuotaGbPerPeer", "HlsSubtitlesEnabled", "MassDeletionMinCount", "MassDeletionPercent",
-                "MaxStreamsPerUser", "NewItemsMinCount", "NewItemsPercent", "NotifyClientsWhenOffline", "ParkAfterHours", "ParkOfflinePeers", "ReencodeImages",
-                "SchemaVersion", "SpeedTestIntervalHours", "SyncIntervalHours", "TailscaleSocket", "TrickplayCacheGb", "TrickplayEnabled"
+                "AlternateVersionsEnabled", "ArtQuality", "AttachmentsEnabled", "AutoFitQualityToLink", "DetectableByFriends", "DiskQuotaGbPerPeer", "HlsBufferAhead", "HlsSubtitlesEnabled", "MassDeletionMinCount", "MassDeletionPercent",
+                "MaxStreamsPerUser", "NewItemsMinCount", "NewItemsPercent", "NotifyClientsWhenOffline", "OfflineCardEnabled", "ParkAfterHours", "ParkOfflinePeers", "ReencodeImages",
+                "RequestServiceName", "RequestServiceUrl", "SchemaVersion", "SpeedTestIntervalHours", "SyncIntervalHours", "TailscaleSocket", "TrickplayCacheGb", "TrickplayEnabled", "TvEpisodeThumbs", "TvShowsEnabled"
             }.Order(StringComparer.Ordinal),
             members);
         Assert.DoesNotContain(members, m => m.Contains("Token", StringComparison.OrdinalIgnoreCase) || m.Contains("Secret", StringComparison.OrdinalIgnoreCase) || m is "Peers" or "StubRoot" or "Url");

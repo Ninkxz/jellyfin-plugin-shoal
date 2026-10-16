@@ -660,8 +660,9 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 
 /* ---------- Pairing wizard (ui-spec 8.2) ---------- */
 .shoalPage .shoal-stepshead { margin-bottom: 20px; }
-.shoalPage .shoal-steps { display: flex; flex-wrap: wrap; gap: 8px 24px; }
-.shoalPage .shoal-steps__item { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--shoal-muted); font-size: 0.875rem; }
+.shoalPage .shoal-steps { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.shoalPage .shoal-status__note { flex-basis: 100%; }
+.shoalPage .shoal-steps__item { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--shoal-muted); font-size: 0.8125rem; white-space: nowrap; }
 .shoalPage .shoal-steps__item.is-current { color: var(--shoal-text); font-weight: 700; box-shadow: inset 0 -3px 0 var(--shoal-accent); }
 .shoalPage .shoal-steps__item.is-done { color: var(--shoal-muted); }
 .shoalPage .shoal-steps__item.is-done .shoal-steps__n { color: var(--shoal-ok); }
@@ -850,3 +851,39 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 .shoalPage .shoal-sandbox strong, .shoalPage .shoal-sandboxalert strong { display: block; }
 .shoalPage .shoal-sandboxalert { margin: 0 0 24px; }
 .shoalPage .shoal-hint__line { display: block; }
+
+/* ---------- pairing v2 (docs/ui-spec-pairing-v2.md): who label, say box, codes card, recovery card, address helper ---------- */
+.shoalPage .shoal-whos { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .5rem; }
+.shoalPage .shoal-who { display: inline-flex; align-items: center; gap: .4rem; margin: 0; padding: .25rem .75rem; min-height: 1.75rem; border: 1px solid var(--shoal-control-border, currentColor); border-radius: 999px; font-size: .875rem; font-weight: 700; color: var(--shoal-text); }
+.shoalPage .shoal-who[data-who="you"] { border-color: var(--shoal-accent, currentColor); }
+.shoalPage .shoal-say { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: .75rem 0; padding: .75rem; border-radius: 8px; background: var(--shoal-surface-2, rgb(var(--shoal-ink) / .06)); }
+.shoalPage .shoal-say__text { flex: 1 1 16rem; margin: 0; overflow-wrap: anywhere; }
+.shoalPage .shoal-codesguide__row { margin: 0 0 .75rem; }
+@media (min-width: 900px) { .shoalPage .shoal-codesguide__row { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.8fr; gap: 12px; align-items: start; padding: 8px 0; border-top: 1px solid rgb(var(--shoal-ink) / .16); } }
+.shoalPage .shoal-codesguide__row dd { margin: 0; overflow-wrap: anywhere; }
+.shoalPage .shoal-codesguide__name { margin: 0 0 .15rem; }
+.shoalPage .shoal-badge { display: inline-flex; align-items: center; gap: .25rem; margin-left: .5rem; padding: .05rem .5rem; border: 1px solid var(--shoal-ok, currentColor); border-radius: 999px; font-size: .8125rem; font-weight: 700; }
+.shoalPage .shoal-block { margin: 1rem 0; padding: .75rem 1rem; border: 1px solid var(--shoal-control-border, rgb(var(--shoal-ink) / .24)); border-radius: 8px; }
+.shoalPage .shoal-numbered { margin: .5rem 0 .75rem 0; padding: 0 0 0 1.5rem; list-style: decimal; }
+.shoalPage .shoal-numbered > li { display: list-item; padding-left: .25rem; }
+.shoalPage .shoal-addrhints { margin-bottom: 12px; }
+.shoalPage .shoal-setups { display: grid; grid-template-columns: 1fr; gap: .75rem; margin: .75rem 0; }
+@media (min-width: 720px) { .shoalPage .shoal-setups { grid-template-columns: 1fr 1fr; } }
+.shoalPage .shoal-setup { padding: .75rem; border: 1px solid var(--shoal-control-border, rgb(var(--shoal-ink) / .24)); border-radius: 8px; }
+.shoalPage .shoal-setup__title { margin: 0 0 .25rem; font-size: 1rem; font-weight: 700; }
+.shoalPage .shoal-countdown__warn { display: inline-flex; align-items: center; gap: .35rem; margin-top: .35rem; font-weight: 700; }
+.shoalPage .shoal-message { width: 100%; font-family: inherit; overflow-wrap: anywhere; }
+.shoalPage .shoal-recover__kept { margin-top: .75rem; }
+.shoalPage .shoal-version { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.shoalPage .shoal-errors { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 1200; width: min(720px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.shoalPage .shoal-errors > * { pointer-events: auto; }
+.shoalPage .shoal-errorbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.shoalPage .shoal-errorbar .shoal-hint__body { flex: 1 1 auto; }
+.shoalPage .shoal-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 8px; max-width: min(92vw, 520px); padding: 12px 16px; border-radius: 8px; background: var(--shoal-surface-2, #222); color: var(--shoal-text); border: 1px solid rgb(var(--shoal-ink) / .32); box-shadow: 0 6px 24px rgb(0 0 0 / .35); font-weight: 700; }
+.shoalPage .is-flash { outline: 2px solid var(--shoal-link, currentColor); outline-offset: 4px; border-radius: 8px; }
+.shoalPage .shoal-safety4 { font-weight: 700; }
+@media (max-width: 480px) { .shoalPage .shoal-step__actions .shoal-btn { width: 100%; min-height: 44px; } }
+
+/* Pilot 08 D15: seven steps never fit a 720 px wizard with their words, so only the current step shows its name; the others are numbers (their names stay for screen readers). */
+.shoalPage .shoal-steps__item:not(.is-current) .shoal-steps__label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.shoalPage .shoal-body--narrow > * { width: 100%; box-sizing: border-box; }

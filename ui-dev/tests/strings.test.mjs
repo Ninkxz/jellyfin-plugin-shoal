@@ -71,9 +71,8 @@ test('copy placeholders are balanced and plural pairs have two entries', () => {
     }
 });
 
-test('safety-code and Quick Connect copy matches the v2 formats', () => {
+test('safety-code copy matches the v2 formats', () => {
     assert.match(mod.STRINGS.safetyCodeLabel, /Safety code/);
-    assert.match(mod.STRINGS.codeLabel, /^Code/);
     assert.equal(mod.STRINGS.pickerEveryone, 'Select all'); // ui-spec 8.4.3: the picker's top row
     assert.equal(mod.STRINGS.modeSelected, 'Only selected users');
     assert.equal(mod.STRINGS.modeEveryone, 'Everyone on this server');
@@ -105,4 +104,39 @@ test('every copy key is used somewhere (a dead string can be revived by a later 
         return ![...prefixes].some((p) => key === p || (p.length >= 3 && key.startsWith(p)));
     });
     assert.deepEqual(dead, []);
+});
+
+// Pairing v2 (docs/ui-spec-pairing-v2.md rule 7 and section 12): no hyphen, en dash, em dash or arrow in any sentence of the pair and share flows.
+test('pairing v2 strings have no dashes or arrows (placeholders and the literal shoal1 aside)', () => {
+    const bad = [];
+    for (const [key, value] of Object.entries(mod.STRINGS)) {
+        if (!key.startsWith('pv2')) {
+            continue;
+        }
+
+        for (const text of Array.isArray(value) ? value : [value]) {
+            if (/[-\u2013\u2014]|>|\u2192/.test(text.replace(/\{\w+\}/g, ''))) {
+                bad.push(key);
+            }
+        }
+    }
+
+    assert.deepEqual(bad, []);
+});
+
+test('pairing v2 strings are all present for the steps the spec names', () => {
+    for (const key of ['pv2WhoYou', 'pv2WhoFriend', 'pv2WhoWait', 'pv2CodesTitle', 'pv2Under3', 'pv2InviteTitle', 'pv2CodeTitle', 'installTitle', 'pv2ShReachTitle', 'pv2ShSendTitle']) {
+        assert.equal(typeof mod.STRINGS[key], 'string', key);
+    }
+});
+
+test('the friend steps (fs_) have no dash, arrow, or numbered cross reference either (Lumen 03 M3)', () => {
+    const bad = [];
+    for (const [key, value] of Object.entries(mod.STRINGS)) {
+        if (key.startsWith('fs_') && /[\u2013\u2014>]|\d-(digit|character)|shoal-friend|in step \d|from step \d/.test(String(value).replace(/\{\w+\}/g, ''))) {
+            bad.push(key);
+        }
+    }
+
+    assert.deepEqual(bad, []);
 });

@@ -111,19 +111,23 @@ internal sealed class PairingRig : IDisposable
         return Service;
     }
 
-    public async Task<ProbeResult> ProbeAsync(FakeJellyfinPeer peer, string? peerHandle = null)
+    public async Task<ProbeResult> ProbeAsync(FakeJellyfinPeer peer, string? peerHandle = null, string? invite = null)
     {
         var result = await Service.ProbeAsync(peerHandle is null
-            ? new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet }
-            : new ProbeRequest { PeerHandle = peerHandle });
+            ? new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet, Invite = invite }
+            : new ProbeRequest { PeerHandle = peerHandle, Invite = invite });
         Assert.True(result.Ok, "probe failed: " + result.Failure + " " + result.AddressProblem);
         return result;
     }
 
+    /// <summary>A well formed invite for this server that its invite book has never heard of: the session starts and the Peer answers its one 404, so it ends as inviteInvalid.</summary>
+    public static string UnknownInvite(FakeJellyfinPeer peer) => Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.Format(peer.ServerId, Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.NewSecret());
+
+    /// <summary>Starts a pairing with an invite nobody issued: it ends at once as inviteInvalid (a session that fails quickly).</summary>
     public async Task<PairingSessionInfo> BeginAsync(FakeJellyfinPeer peer, string name = "Hops", string? peerHandle = null)
     {
-        var probe = await ProbeAsync(peer, peerHandle);
-        return await Service.BeginAsync(Admin, probe.ProbeHandle!, name, PairingMethod.Qc);
+        var probe = await ProbeAsync(peer, peerHandle, UnknownInvite(peer));
+        return await Service.BeginAsync(Admin, probe.ProbeHandle!, name);
     }
 
     public async Task<PairingSessionInfo> UntilAsync(Func<PairingSessionInfo, bool> predicate, int timeoutMs = 8000)
@@ -187,15 +191,11 @@ internal sealed class PairingOptionsBuilder
 
     public TimeSpan PollTotal { get; set; } = TimeSpan.FromMilliseconds(400);
 
-    public TimeSpan BaselineWindow { get; set; } = TimeSpan.FromSeconds(1);
-
-    public TimeSpan LocalDeadline { get; set; } = TimeSpan.FromSeconds(20);
-
     public TimeSpan NetworkAbortAfter { get; set; } = TimeSpan.FromMilliseconds(1500);
 
-    public TimeSpan ConfirmWindow { get; set; } = TimeSpan.FromSeconds(20);
-
     public TimeSpan ProbeLifetime { get; set; } = TimeSpan.FromMinutes(10);
+
+    public TimeSpan ConfirmedLife { get; set; } = TimeSpan.FromMinutes(2);
 
     public bool RealPolicy { get; set; }
 
@@ -205,13 +205,10 @@ internal sealed class PairingOptionsBuilder
         return new PairingOptions
         {
             PollInterval = PollInterval,
-            PollProfile = profile,
             StepProfile = profile,
-            BaselineWindow = BaselineWindow,
-            LocalDeadline = LocalDeadline,
             NetworkAbortAfter = NetworkAbortAfter,
-            ConfirmWindow = ConfirmWindow,
             ProbeLifetime = ProbeLifetime,
+            ConfirmedLife = ConfirmedLife,
             AddressValidator = RealPolicy ? null : Permissive
         };
     }

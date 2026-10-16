@@ -13,6 +13,7 @@ using Jellyfin.Plugin.Shoal.State;
 using Microsoft.Extensions.Logging;
 
 #pragma warning disable SA1600 // internal plumbing of the sync; the public surface is documented on CatalogSyncService
+#pragma warning disable SA1202 // SyncPrimary and KeepTrickplay are internal for the TV engine and stay next to the code they belong with
 
 namespace Jellyfin.Plugin.Shoal.Sync;
 
@@ -24,8 +25,6 @@ internal sealed class SyncRun
     private const int FlushEvery = 200;
     private const string KeyAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
     private const int MaxFolderChangesForPerFolderRefresh = 50;
-    private const int TrickplayRefreshPerSync = 50;
-    private static readonly TimeSpan TrickplayRefreshEvery = TimeSpan.FromHours(24);
 
     private readonly CatalogSyncService.Dependencies _d;
     private readonly PeerState _peer;
@@ -42,8 +41,10 @@ internal sealed class SyncRun
     private readonly HashSet<string> _alerts = [];
     private readonly NameBudget _names;
     private bool _firstStubs;
+    private bool _promoted;
+    private HashSet<string> _libraryWithoutStubs = new(StringComparer.Ordinal);
     private int _sinceFlush;
-    private int _trickplayBudget = TrickplayRefreshPerSync;
+    private TrickplayRecheck? _recheck;
 
     public SyncRun(CatalogSyncService.Dependencies dependencies, ShoalState state, PeerState peer, PeerEndpoint endpoint, CatalogDocument document, SyncSettings settings, DateTime now, bool bypassRemovals, bool bypassAdditions)
     {
@@ -151,7 +152,7 @@ internal sealed class SyncRun
     }
 
     // Keeps the first source of the entry equal to the entry's own fields: the primary, whose key and path never change.
-    private static void SyncPrimary(CatalogEntry entry)
+    internal static void SyncPrimary(CatalogEntry entry)
     {
         if (entry.Sources.Count == 0)
         {
@@ -174,7 +175,7 @@ internal sealed class SyncRun
 
     // The trickplay levels (already range-checked by the sanitizer) go to the primary source of the entry (schema 3, DESIGN v2.6.5); every extra
     // version gets its own source's levels in FillSource.
-    private static void KeepTrickplay(CatalogEntry entry, SanitizedSource? source)
+    internal static void KeepTrickplay(CatalogEntry entry, SanitizedSource? source)
     {
         if (entry.Sources.Count == 0)
         {
@@ -230,7 +231,7 @@ internal sealed class SyncRun
         }
 
         var libraries = new List<LibraryRun>();
-        foreach (var mapping in _peer.Libraries.Where(static m => m.Import))
+        foreach (var mapping in _peer.Libraries.Where(static m => m.Import && !TvSyncEngine.IsTv(m)))
         {
             var folder = VisibilityPath(mapping);
             if (folder is null)
@@ -440,7 +441,7 @@ internal sealed class SyncRun
         }
 
         var confirmedGone = removalsAllowed ? goneEntries : [];
-        var activeBefore = _doc.Entries.Count(IsActiveWithStub);
+        var activeBefore = _doc.Entries.Count(static e => e.Kind == EntryKind.Movie && IsActiveWithStub(e));
         var removalSet = confirmedGone.Where(IsActiveWithStub).Concat(demotions.Select(static d => d.Entry)).ToList();
         foreach (var library in libraries.Where(l => l.Listing is { Complete: true, Items.Count: 0 }))
         {
@@ -461,11 +462,13 @@ internal sealed class SyncRun
             _doc.HeldTracker = null;
         }
 
-        var importable = adds.Count;
+        // The first sync of a mapping is exempt from the new-items guard, not only the first sync of the peer (a library added later fills at once).
+        var guardedAdds = adds.Where(a => MappingHasCompleted(a.Library.Mapping.MappingKey)).ToList();
+        var importable = guardedAdds.Count;
         var holdAdditions = !_bypassAdditions && _doc.CompletedOnce && importable > Math.Max(_settings.NewItemsMinCount, CeilPercent(activeBefore, _settings.NewItemsPercent));
         if (holdAdditions)
         {
-            foreach (var add in adds.Where(static a => a.Promoted is null))
+            foreach (var add in guardedAdds.Where(static a => a.Promoted is null))
             {
                 var id = add.Listed.Id.ToString("N");
                 if (!_doc.HeldAdditions.Contains(id))
@@ -474,7 +477,7 @@ internal sealed class SyncRun
                 }
             }
 
-            adds.Clear();
+            adds.RemoveAll(a => guardedAdds.Contains(a));
             _alerts.Add(nameof(SyncAlert.HeldAdditions));
         }
         else if (_bypassAdditions)
@@ -515,16 +518,12 @@ internal sealed class SyncRun
     // again about once a day, at most 50 titles per sync, through the normal details path (DESIGN v2.6.5).
     private bool TrickplayDue(CatalogEntry entry)
     {
-        if (!_settings.TrickplayRefresh || _trickplayBudget <= 0 || entry.Sources.Any(static s => s.Trickplay.Count > 0)
-            || _now - (entry.TrickplayCheckedUtc ?? entry.FirstSeenUtc) < TrickplayRefreshEvery)
-        {
-            return false;
-        }
-
-        _trickplayBudget--;
-        entry.TrickplayCheckedUtc = _now;
-        return true;
+        return _settings.TrickplayRefresh && (_recheck ??= new TrickplayRecheck(_now)).Due(entry);
     }
+
+    // A mapping that has synced completely before, or that held titles under the old per-peer flag, is guarded; a mapping that never filled is not.
+    private bool MappingHasCompleted(string mappingKey) =>
+        _doc.Libraries.FirstOrDefault(l => l.MappingKey == mappingKey) is { } known && (known.CompletedOnce || (_doc.CompletedOnce && known.LastCount > 0));
 
     private static int CeilPercent(int count, int percent) => (int)(((long)count * percent) + 99) / 100;
 
@@ -532,7 +531,7 @@ internal sealed class SyncRun
     {
         var local = _d.Local.List(_state.StubRoot);
         var index = new DedupIndex(local);
-        foreach (var other in _state.Home.Peers.Where(p => p.Enabled && p.PeerKey != _peer.PeerKey && CatalogSyncService.Outranks(p, _peer)))
+        foreach (var other in _state.Home.Peers.Where(p => p.Enabled && p.PeerKey != _peer.PeerKey && _d.IsUp(p.PeerKey) && CatalogSyncService.Outranks(p, _peer)))
         {
             var load = _d.Store.Load(other.PeerKey);
             if (load.Unreadable)
@@ -540,7 +539,7 @@ internal sealed class SyncRun
                 continue;
             }
 
-            foreach (var entry in load.Document.Entries.Where(IsActiveWithStub))
+            foreach (var entry in load.Document.Entries.Where(static e => e.Kind == EntryKind.Movie && IsActiveWithStub(e)))
             {
                 index.Claim(IdsOf(entry), entry.Title, entry.Year, entry.StubKey);
             }
@@ -601,6 +600,9 @@ internal sealed class SyncRun
     {
         var libraryOf = libraries.ToDictionary(static l => l.Mapping.MappingKey, StringComparer.Ordinal);
         StubTarget TargetOf(LibraryRun library) => new(_state.StubRoot, library.Folder, _endpoint);
+
+        // A library with no stub on disk yet (new, re-added, or all its titles held back by a better-ranked server) shows nothing until core is told: its first stubs ask for a scan.
+        _libraryWithoutStubs = libraries.Select(static l => l.Mapping.MappingKey).Where(key => !_doc.Entries.Any(e => e.MappingKey == key && e.StubRelPath is not null)).ToHashSet(StringComparer.Ordinal);
 
         foreach (var library in libraries.Where(static l => l.Listing is not null))
         {
@@ -783,6 +785,11 @@ internal sealed class SyncRun
             }
 
             var entry = add.Promoted ?? new CatalogEntry { FirstSeenUtc = _now, MappingKey = add.Library.Mapping.MappingKey };
+            if (add.Promoted is not null)
+            {
+                _promoted = true; // a title a better-ranked server held back now has its stub
+            }
+
             entry.StubKey = stubKey;
             entry.PeerItemId = add.Listed.Id.ToString("N");
             entry.State = EntryState.Active;
@@ -956,7 +963,7 @@ internal sealed class SyncRun
 
     private void MarkFolderChanged(LibraryRun library, string? relPath)
     {
-        if ((_doc.Libraries.FirstOrDefault(l => l.MappingKey == library.Mapping.MappingKey)?.LastCount ?? 0) == 0)
+        if (_libraryWithoutStubs.Contains(library.Mapping.MappingKey))
         {
             _firstStubs = true;
         }
@@ -1029,6 +1036,10 @@ internal sealed class SyncRun
         foreach (var library in _doc.Libraries)
         {
             library.LastCount = _doc.Entries.Count(e => e.MappingKey == library.MappingKey && e.State != EntryState.Removed);
+            if (report.Complete && _peer.Libraries.FirstOrDefault(m => m.MappingKey == library.MappingKey) is { } mapped && !TvSyncEngine.IsTv(mapped))
+            {
+                library.CompletedOnce = true;
+            }
         }
 
         Save();
@@ -1038,17 +1049,7 @@ internal sealed class SyncRun
 
     private void ComputeReport()
     {
-        var duplicates = _doc.Entries.Where(static e => e.State == EntryState.DuplicateLocal).ToList();
-        var active = _doc.Entries.Where(static e => e.State == EntryState.Active).ToList();
-        _doc.Report = new OverlapReport
-        {
-            OverlapCount = duplicates.Count,
-            OverlapLocalBytes = duplicates.Sum(static e => e.LocalSizeBytes),
-            OverlapPeerBytes = duplicates.Sum(static e => e.SizeBytes),
-            GainCount = active.Count,
-            GainBytes = active.Sum(static e => e.SizeBytes),
-            ComputedUtc = _now,
-        };
+        _doc.Report = OverlapReports.Compute(_doc, _now);
     }
 
     private void Refresh()
@@ -1058,16 +1059,17 @@ internal sealed class SyncRun
             return;
         }
 
-        if (_firstStubs)
+        if ((_firstStubs || _promoted) && _d.TryStartScan(_peer.PeerKey, _now, promotion: !_firstStubs))
         {
-            // A library with no stubs yet: core does not see the new folders without a scan (realtime monitoring is off).
+            // A library with no stubs yet, or titles that were held back by a better-ranked server and now have theirs: core does not see the new folders without a scan
+            // (realtime monitoring is off). One scan, at most one in five minutes per server, never a loop.
             _d.Refresh.QueueScan();
         }
 
         if (_changedFolders.Count > MaxFolderChangesForPerFolderRefresh)
         {
             // Too many for one-by-one: tell core about each library folder (never a scan of every library).
-            foreach (var library in _peer.Libraries.Where(static m => m.Import))
+            foreach (var library in _peer.Libraries.Where(static m => m.Import && !TvSyncEngine.IsTv(m)))
             {
                 if (VisibilityPath(library) is { } folder)
                 {

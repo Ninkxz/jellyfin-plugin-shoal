@@ -185,7 +185,7 @@ public sealed class AdminUiResourceTests
         Assert.DoesNotContain("WebSocket", js, StringComparison.Ordinal);
         Assert.DoesNotContain("sendBeacon", js, StringComparison.Ordinal);
         var addresses = Regex.Matches(js, @"['""]https?://[a-z0-9][^'""]*", RegexOptions.IgnoreCase).Select(m => m.Value.Trim('\'', '"')).ToList();
-        Assert.Equal(new[] { "http://www.w3.org/2000/svg" }, addresses); // the SVG namespace is the only URL in the file
+        Assert.Equal(new[] { "http://www.w3.org/2000/svg", "https://github.com/Ninkxz/jellyfin-plugin-shoal" }, addresses); // the SVG namespace, and the install link shown to a friend without Shoal (a link the admin may follow, never a request)
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public sealed class AdminUiResourceTests
         Assert.DoesNotContain("debugger", js, StringComparison.Ordinal);
         // The only persisted browser state is two per-viewer conveniences, always through safeStorage().
         var keys = Regex.Matches(js, @"const [A-Z_]*KEY = '([^']+)'").Select(m => m.Groups[1].Value).OrderBy(x => x, StringComparer.Ordinal).ToList();
-        Assert.Equal(new[] { "shoal.qcStepsSeen", "shoal.selected" }.OrderBy(x => x, StringComparer.Ordinal).ToList(), keys);
+        Assert.Equal(new[] { "shoal.selected" }.OrderBy(x => x, StringComparer.Ordinal).ToList(), keys);
         Assert.Single(Regex.Matches(js, @"window\.localStorage\.setItem"));
         Assert.DoesNotContain("sessionStorage", js, StringComparison.Ordinal);
         Assert.DoesNotContain("indexedDB", js, StringComparison.Ordinal);

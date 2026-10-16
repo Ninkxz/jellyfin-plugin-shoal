@@ -26,32 +26,21 @@ test('header: server ID, how it was paired, lock and session limit confirmed, no
     try {
         const h = header(p);
         assert.match(h.textContent, /Server ID/);
-        assert.match(h.textContent, /Paired \d+ \w+ by Quick Connect/);
-        assert.match(h.textContent, /Lock confirmed/);
-        assert.match(h.textContent, /Session limit 1/);
-        assert.equal(h.querySelector('.shoal-detail__how'), null, 'nothing to fix, no How');
-        const notes = h.querySelector('.shoal-detail__notes details');
-        assert.ok(notes, 'notes details');
-        assert.equal(notes.open, false);
-        assert.match(notes.textContent, /Jellyfin 12\.1 lets this sharing account change its own password/);
-        assert.match(notes.textContent, /three options it doesn't use/);
+        assert.match(h.textContent, /Paired \d+ \w+ by invite/);
+        assert.doesNotMatch(h.textContent, /Lock confirmed|Session limit|Quick Connect/);
+        assert.equal(h.querySelector('.shoal-detail__how'), null);
+        assert.equal(h.querySelector('.shoal-detail__notes'), null);
         assert.doesNotMatch(p.text(), /safety code/i);
     } finally {
         p.close();
     }
 });
 
-test('an offline Quick Connect server with a missing lock and limit shows the warnings, How and Retry now first', async () => {
+test('an offline server has Retry now first and no lock or limit warnings (those belonged to the old pairing)', async () => {
     const p = await server('h-gran');
     try {
         const h = header(p);
-        assert.match(h.textContent, /Ask your friend to lock the sharing account to Shoal's device/);
-        assert.match(h.textContent, /Ask your friend to set the session limit to 1/);
-        const how = h.querySelector('.shoal-detail__how details');
-        assert.ok(how);
-        assert.match(how.textContent, /untick Enable access from all devices/);
-        assert.match(how.textContent, /Maximum number of simultaneous user sessions to 1/);
-        assert.ok(buttonIn(how, 'Copy steps'));
+        assert.doesNotMatch(h.textContent, /lock the sharing account|session limit/);
         const actions = [...h.querySelectorAll('.shoal-detail__actions button')].map((b) => b.textContent.trim());
         assert.equal(actions[0], 'Retry now');
         assert.ok(h.querySelector('.shoal-btn--primary').textContent.includes('Retry now'));
@@ -174,7 +163,6 @@ test('Remove server: three effects, the right note for the pairing, typed name s
         const d = dialog(p);
         assert.match(d.textContent, /Remove Hops\?/);
         assert.match(d.textContent, /Shoal undoes the library access changes it made for Hops's libraries\./);
-        assert.match(d.textContent, /Your friend still has the sharing account they made for you\. Ask them to delete it in Dashboard > Users\./);
         assert.match(d.textContent, /Also delete the Hops Movies library and its/);
         const confirm = buttonIn(d, 'Remove server');
         assert.equal(confirm.disabled, true);
@@ -334,13 +322,11 @@ test('M5: a poll keeps open details and unsaved settings', async () => {
     const p = await server('h-hops');
     try {
         const find = (text) => [...p.page.querySelectorAll('details')].find((d) => d.querySelector('summary').textContent.includes(text));
-        find('Notes about this sharing account').open = true;
         find('Settings for this server').open = true;
         p.mock.stores.servers.get('h-hops').mbps = 31;
         await p.handle.screen().refresh();
         await p.wait(100);
         const open = [...p.page.querySelectorAll('details[open]')].map((d) => d.querySelector('summary').textContent.trim());
-        assert.ok(open.includes('Notes about this sharing account'), 'notes stay open');
         assert.ok(open.includes('Settings for this server'), 'settings stay open');
 
         const field = [...find('Settings for this server').querySelectorAll('input')].find((i) => i.type === 'number');
@@ -423,7 +409,7 @@ test('S2/S3: the fix comes first; the pause help sits under Pause and is describ
         assert.ok(pause.closest('.shoal-action').contains(note));
         const items = [...hops.page.querySelectorAll('.shoal-detail__meta > .shoal-detail__metaitem')].map((i) => i.textContent.replace(/\s+/g, ' ').trim());
         assert.ok(items.some((i) => /^Server ID [0-9a-f]{8}$/.test(i)), 'Server ID alone: ' + JSON.stringify(items));
-        assert.ok(items.some((i) => /^Paired .* by Quick Connect$/.test(i)));
+        assert.ok(items.some((i) => /^Paired .* by invite$/.test(i)));
     } finally {
         hops.close();
     }
@@ -521,6 +507,16 @@ test('L7: unticking Also delete the library says the library stays in Jellyfin',
         d.querySelector('input[type="checkbox"]').click();
         assert.equal(note.hidden, false);
         assert.match(note.textContent, /The library stays in Jellyfin and Shoal won't manage it any more\./);
+    } finally {
+        p.close();
+    }
+});
+
+test('N2: when the friend lists more titles than are stubbed here, the library row says both numbers', async () => {
+    const p = await server('h-fern', { splitCounts: true });
+    try {
+        const row = [...p.page.querySelectorAll('.shoal-row--library')].find((r) => r.textContent.includes('Fernwood Movies'));
+        assert.match(row.textContent, /390 on their server, 386 here/);
     } finally {
         p.close();
     }

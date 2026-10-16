@@ -121,6 +121,7 @@ public sealed class PeerSessionReporter : IAsyncDisposable
         _slots = slots;
         _time = time;
         _logger = logger;
+        _slots.HlsSuperseded += OnSuperseded;
     }
 
     /// <summary>Gets the number of queued or running reports (tests).</summary>
@@ -246,6 +247,7 @@ public sealed class PeerSessionReporter : IAsyncDisposable
             return; // the host and the container both dispose it at shutdown
         }
 
+        _slots.HlsSuperseded -= OnSuperseded;
         _queue.Writer.TryComplete();
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_loop is not null)
@@ -286,6 +288,18 @@ public sealed class PeerSessionReporter : IAsyncDisposable
 
         _lastPing[grant.GrantId] = now;
         Enqueue(token => SendAsync(PeerSessionRequests.Ping(grant), grant, token));
+    }
+
+    // The next episode took the slot of an HLS stream that went quiet: its job on the Peer is stopped now (best effort, off the caller's thread), not at the Peer's idle timeout.
+    private void OnSuperseded(IReadOnlyList<string> grantIds)
+    {
+        foreach (var id in grantIds)
+        {
+            if (_grants.Get(id) is { Method: PlayMethod.Transcode, PeerJobStarted: true } grant)
+            {
+                Enqueue(token => _jobs.SendScopedKillAsync(grant, token));
+            }
+        }
     }
 
     private void Enqueue(Func<CancellationToken, Task> work)

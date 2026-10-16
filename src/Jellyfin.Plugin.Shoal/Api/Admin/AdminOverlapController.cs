@@ -71,8 +71,8 @@ public class AdminOverlapController : ControllerBase
             return AdminReply.Json(StatusCodes.Status200OK, new OverlapDto());
         }
 
-        var both = load.Document.Entries.Where(static e => e.State == EntryState.DuplicateLocal).ToList();
-        var gain = load.Document.Entries.Where(static e => e.State == EntryState.Active).ToList();
+        var both = load.Document.Entries.Where(static e => e.State == EntryState.DuplicateLocal && e.Kind is EntryKind.Movie or EntryKind.Episode).ToList();
+        var gain = load.Document.Entries.Where(static e => e.State == EntryState.Active && e.Kind is EntryKind.Movie or EntryKind.Episode).ToList();
         var buckets = new[] { "4k", "1080p", "720p", "sd" };
         var byQuality = new List<OverlapQualityDto>();
         foreach (var bucket in buckets)
@@ -90,6 +90,9 @@ public class AdminOverlapController : ControllerBase
                 Both = new OverlapSideDto(report.OverlapCount, report.OverlapLocalBytes, null),
                 Gain = new OverlapSideDto(report.GainCount, null, report.GainBytes),
                 ByQuality = byQuality,
+                Tv = load.Document.Entries.Any(static e => e.Kind != EntryKind.Movie)
+                    ? new OverlapTvDto(report.SharedSeries, report.SharedSeriesEpisodes, report.GainSeries, report.GainEpisodes)
+                    : null,
             });
     }
 }
@@ -110,6 +113,9 @@ internal sealed class OverlapDto
 
     /// <summary>Gets the same by quality.</summary>
     public IReadOnlyList<OverlapQualityDto>? ByQuality { get; init; }
+
+    /// <summary>Gets the TV lines (absent when the server has no TV entries): "N shows you already have, K episodes of them", "M shows, E episodes gained".</summary>
+    public OverlapTvDto? Tv { get; init; }
 }
 
 /// <summary>
@@ -119,6 +125,15 @@ internal sealed class OverlapDto
 /// <param name="LocalBytes">Home's own copies, in bytes (the "both" half).</param>
 /// <param name="PeerBytes">The server's copies, in bytes (the "gain" half).</param>
 internal sealed record OverlapSideDto(int Count, long? LocalBytes, long? PeerBytes);
+
+/// <summary>
+/// The TV lines of the overlap report (DESIGN v2.7, decision 3): a series Home has hides the friend's whole copy, so the episodes it hides are counted apart.
+/// </summary>
+/// <param name="SharedSeries">Shows both servers have.</param>
+/// <param name="SharedSeriesEpisodes">Episodes the friend has of those shows (not imported).</param>
+/// <param name="GainSeries">Shows Home gains.</param>
+/// <param name="GainEpisodes">Episodes Home gains (counted in the gain total too).</param>
+internal sealed record OverlapTvDto(int SharedSeries, int SharedSeriesEpisodes, int GainSeries, int GainEpisodes);
 
 /// <summary>
 /// One row of the quality table.

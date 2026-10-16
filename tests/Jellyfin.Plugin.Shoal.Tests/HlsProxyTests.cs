@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Net;
 using System.Net.Http;
 using System.Security.Claims;
@@ -41,6 +42,7 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
 
     public async Task InitializeAsync()
     {
+        await DrainPrefetchesAsync(); // a main playlist asked for by an earlier test must not land in this one's counters
         await H.ResetAsync();
         H.Peer.Requests.Clear();
         await H.State.UpdateAsync(s =>
@@ -72,11 +74,30 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
         H.Peer.KillStatus = 204;
         H.Peer.SegmentSize = 100_000;
         H.Peer.SegmentOverride = null;
+        P.ReadAhead.Enabled = false;
+        P.ReadAhead.ReleaseWhereGone();
+        P.HlsBufferAhead = 3;
         H.Peer.PlaybackInfoReply = (id, _) => Reply.Json(Answer(id));
         H.Peer.HlsPlaylistReply = DefaultPlaylists;
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public Task DisposeAsync() => DrainPrefetchesAsync();
+
+    // The proxy asks the Peer for main.m3u8 at the master playlist, on a task of its own (DESIGN v2.7 / owner feedback 01). A test that ends before that call returns would
+    // leave it running against the next test's fake peer; waiting for every grant's fetch makes each test start clean.
+    private async Task DrainPrefetchesAsync()
+    {
+        var pending = new List<Task>();
+        foreach (var user in new[] { MatrixWorld.Admin, MatrixWorld.Selected, MatrixWorld.Other })
+        {
+            pending.AddRange(P.Grants.ForUser(user).Select(static g => g.MainPrefetch).OfType<Task>());
+        }
+
+        if (pending.Count > 0)
+        {
+            await Task.WhenAny(Task.WhenAll(pending), Task.Delay(TimeSpan.FromSeconds(60)));
+        }
+    }
 
     // --- fixtures
 
@@ -358,13 +379,14 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
         var grant = await NewGrantAsync();
         await LoadPlaylistsAsync(grant);
         var before = PeerCalls(".ts");
+        var startedByPlaylists = grant.PeerJobStarted; // the main playlist starts the Peer's conversion
 
         using var response = await GetAsync(SegmentPath(grant, 1, query: query), Sign(MatrixWorld.Admin));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(before, PeerCalls(".ts"));
         Assert.Equal(0, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
-        Assert.False(grant.PeerJobStarted);
+        Assert.Equal(startedByPlaylists, grant.PeerJobStarted);
     }
 
     [Theory]
@@ -478,10 +500,93 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
     }
 
     [Fact]
+    public async Task TheMainPlaylist_IsAskedForAtTheMasterPlaylist_SoAClientThatGaveUpFindsItOnItsRetry()
+    {
+        var grant = await NewGrantAsync();
+        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
+        Assert.Equal(HttpStatusCode.OK, master.StatusCode);
+        Assert.True(grant.PeerJobStarted, "the Peer's conversion starts with the main playlist: the stop at the end of the session must know");
+        await grant.MainPrefetch!;
+        Assert.Equal(1, PeerCalls("/main.m3u8"));
+
+        using var first = await GetAsync($"/Shoal/Hls/{grant.GrantId}/main.m3u8?ApiKey={HexToken}", Sign(MatrixWorld.Admin));
+        var text = await first.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Contains($"hls1/main/1.ts?ApiKey={HexToken}", text, StringComparison.Ordinal);
+        Assert.Equal(1, PeerCalls("/main.m3u8")); // answered from what was asked for at the master playlist
+        Assert.Equal(20, grant.SegmentCount);
+    }
+
+    [Fact]
+    public async Task AClientThatCancelsTheMainPlaylist_DoesNotCancelTheFetch_AndItsRetryNeedsNoSecondPeerCall()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        H.Peer.HlsPlaylistReply = (path, query) =>
+        {
+            if (path.EndsWith("/main.m3u8", StringComparison.Ordinal))
+            {
+                gate.Task.GetAwaiter().GetResult(); // the Peer is still starting its conversion
+            }
+
+            return DefaultPlaylists(path, query);
+        };
+        var grant = await NewGrantAsync();
+        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
+
+        using (var cancel = new CancellationTokenSource())
+        {
+            var waiting = Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            {
+                using var abandoned = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, $"/Shoal/Hls/{grant.GrantId}/main.m3u8", null, cancel.Token);
+            });
+            for (var i = 0; i < 600 && PeerCalls("/main.m3u8") == 0; i++)
+            {
+                await Task.Delay(50); // the Peer has the request and holds it
+            }
+
+            Assert.Equal(1, PeerCalls("/main.m3u8"));
+            await Task.Delay(200); // and the client has waited on it for a while
+            cancel.Cancel();
+            await waiting;
+        }
+
+        Assert.NotNull(grant.MainPrefetch);
+        Assert.False(grant.MainPrefetch!.IsCompleted, "the fetch goes on after the client left");
+        gate.SetResult();
+        var prefetched = await grant.MainPrefetch!; // the one fetch is done (any retry the transport made inside it is counted here, not against the client's retry)
+        var afterTheFetch = PeerCalls("/main.m3u8");
+        using var retry = await GetAsync($"/Shoal/Hls/{grant.GrantId}/main.m3u8", Sign(MatrixWorld.Admin));
+
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        if (prefetched is not null)
+        {
+            Assert.Equal(afterTheFetch, PeerCalls("/main.m3u8")); // the client's retry needed no second Peer call (a fetch that failed under load is asked again, as it should be)
+        }
+
+        Assert.Equal(20, grant.SegmentCount);
+    }
+
+    [Fact]
+    public async Task IfTheMainPlaylistWasNeverFetched_TheStopAtTheEndStillReachesThePeer()
+    {
+        var grant = await NewGrantAsync();
+        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
+        await grant.MainPrefetch!; // the client left before it asked for main.m3u8 or any segment
+        var before = PeerCalls("/ActiveEncodings");
+
+        using var response = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Delete, KillPath(grant));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(before + 1, PeerCalls("/ActiveEncodings"));
+    }
+
+    [Fact]
     public async Task H1_NoSegmentIsServed_BeforeAMediaPlaylistWasAccepted()
     {
         var grant = await NewGrantAsync();
         using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
+        await grant.MainPrefetch!; // the main playlist was asked for at the master playlist; let it land before counting
         var before = H.Peer.Requests.Count;
 
         using var response = await GetAsync(SegmentPath(grant, 0), Sign(MatrixWorld.Admin));
@@ -495,8 +600,8 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
     public async Task H1_ARejectedMediaPlaylist_DoesNotOpenTheRoute()
     {
         var grant = await NewGrantAsync();
-        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
         H.Peer.HlsPlaylistReply = (path, query) => path.EndsWith("/main.m3u8", StringComparison.Ordinal) ? new Reply(200, "#EXTM3U\n#EXT-X-ENDLIST\n", "application/x-mpegURL") : DefaultPlaylists(path, query);
+        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
         using var main = await GetAsync($"/Shoal/Hls/{grant.GrantId}/main.m3u8", Sign(MatrixWorld.Admin));
 
         using var response = await GetAsync(SegmentPath(grant, 0), Sign(MatrixWorld.Admin));
@@ -659,7 +764,6 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
         Assert.Equal(HttpStatusCode.BadRequest, badTicks.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(before, PeerCalls(".ts"));
-        Assert.False(grant.PeerJobStarted);
         Assert.Equal(0, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
     }
 
@@ -913,7 +1017,6 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
 
         Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
         Assert.NotNull(refused.Headers.RetryAfter);
-        Assert.False(two.PeerJobStarted);
         Assert.Equal(HttpStatusCode.OK, again.StatusCode); // the running stream keeps its slot
         Assert.Equal(0, P.StreamSlots.ActiveSlots(MatrixWorld.Selected));
     }
@@ -1009,8 +1112,7 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
     [Fact]
     public async Task T_SEC_25_ADeleteForAGrantWithoutAStartedJob_SendsNothing_AndReleasesNothing()
     {
-        var hls = await NewGrantAsync(MatrixWorld.Admin, Item);
-        await LoadPlaylistsAsync(hls);
+        var hls = await NewGrantAsync(MatrixWorld.Admin, Item); // no playlist was asked for, so the Peer started nothing
         var before = H.Peer.Requests.Count;
 
         using var response = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Delete, KillPath(hls));
@@ -1103,5 +1205,244 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
         Assert.ThrowsAny<ArgumentException>(() => PeerJobRequests.ScopedKill(empty, PeerPlaySession));
         Assert.ThrowsAny<ArgumentException>(() => PeerJobRequests.ScopedKill(null!, PeerPlaySession));
         Assert.Equal("/Videos/ActiveEncodings?deviceId=a%20b&playSessionId=p%26q", PeerJobRequests.ScopedKill("a b", "p&q").PathAndQuery);
+    }
+
+    // ---------------- read ahead (owner request, 2026-10-16; Warden 18) ----------------
+
+    private IReadOnlyList<int> SegmentsAsked() => [.. H.Peer.Requests.Select(static r => r.Path).Where(static p => p.Contains("/hls1/main/", StringComparison.Ordinal)).Select(static p => int.Parse(p.Split('/').Last().Split('.')[0], System.Globalization.CultureInfo.InvariantCulture)).Order()];
+
+    private async Task WaitForAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 300 && !condition(); i++)
+        {
+            await Task.Delay(20);
+        }
+    }
+
+    private async Task PlayAsync(Grant grant, params int[] segments)
+    {
+        foreach (var segment in segments)
+        {
+            using var response = await GetAsync(SegmentPath(grant, segment), Sign(MatrixWorld.Admin));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            await response.Content.ReadAsByteArrayAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ReadAhead_StartsWithTheSecondRequestInOrder_ReadsTheWindow_ThenServesFromMemory_WithoutAnotherPeerCall()
+    {
+        P.ReadAhead.Enabled = true;
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+
+        await PlayAsync(grant, 0);
+        await Task.Delay(150);
+        Assert.Equal([0], SegmentsAsked()); // the first request only says where the client is
+
+        await PlayAsync(grant, 1);
+        await WaitForAsync(() => SegmentsAsked().Count >= 5);
+        await Task.Delay(150);
+
+        Assert.Equal([0, 1, 2, 3, 4], SegmentsAsked()); // the window is three; nothing past it
+        Assert.True(P.ReadAhead.HeldBytes > 0);
+
+        using var third = await GetAsync(SegmentPath(grant, 2), Sign(MatrixWorld.Admin));
+        var bytes = await third.Content.ReadAsByteArrayAsync();
+
+        Assert.Equal(HttpStatusCode.OK, third.StatusCode);
+        Assert.Equal(H.Peer.SegmentSize, bytes.Length);
+        Assert.Equal((byte)(1000 % 251), bytes[1000]);
+        Assert.Equal("video/mp2t", third.Content.Headers.ContentType!.MediaType);
+        await WaitForAsync(() => SegmentsAsked().Contains(5));
+        Assert.Single(SegmentsAsked(), static s => s == 2); // served from memory: the Peer was asked for segment 2 once
+        Assert.Contains(5, SegmentsAsked()); // and the window slid by one
+    }
+
+    [Fact]
+    public async Task ReadAhead_AfterASeek_NothingIsReadUntilTheNextRequestInOrder()
+    {
+        P.ReadAhead.Enabled = true;
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+        await PlayAsync(grant, 0, 1);
+        await WaitForAsync(() => SegmentsAsked().Count >= 5);
+
+        await PlayAsync(grant, 12); // a seek
+        await Task.Delay(200);
+        Assert.DoesNotContain(SegmentsAsked(), static s => s is > 12 and < 17);
+
+        await PlayAsync(grant, 13);
+        await WaitForAsync(() => SegmentsAsked().Contains(16));
+        Assert.Contains(16, SegmentsAsked());
+    }
+
+    [Fact]
+    public async Task ReadAhead_IsOneReadAtATimePerStream_AndStopsWhenTheStreamStops()
+    {
+        P.ReadAhead.Enabled = true;
+        P.HlsBufferAhead = 6;
+        var inFlight = 0;
+        var most = 0;
+        H.Peer.SegmentOverride = async ctx =>
+        {
+            var now = Interlocked.Increment(ref inFlight);
+            most = Math.Max(most, now);
+            await Task.Delay(40);
+            Interlocked.Decrement(ref inFlight);
+            return false;
+        };
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+        await PlayAsync(grant, 0, 1);
+
+        await WaitForAsync(() => SegmentsAsked().Count >= 4);
+        P.StreamSlots.ReleaseHls(grant.GrantId); // the stream stops
+        var asked = SegmentsAsked().Count;
+        await Task.Delay(300);
+
+        Assert.Equal(1, most);
+        Assert.Equal(0, P.ReadAhead.HeldBytes);
+        Assert.InRange(SegmentsAsked().Count, asked, asked + 1); // at most the read that was on its way
+    }
+
+    [Fact]
+    public async Task ReadAhead_TheWindowIsTheSetting_AndAnythingElseIsClamped()
+    {
+        P.ReadAhead.Enabled = true;
+        P.HlsBufferAhead = 2;
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+
+        await PlayAsync(grant, 0, 1);
+        await WaitForAsync(() => SegmentsAsked().Count >= 4);
+        await Task.Delay(150);
+
+        Assert.Equal([0, 1, 2, 3], SegmentsAsked());
+        Assert.Equal(2, P.ReadAhead.Window);
+    }
+
+    [Fact]
+    public async Task ReadAhead_AFailedReadIsLeftToTheClient_ItsOwnRequestMeetsTheFailure()
+    {
+        P.ReadAhead.Enabled = true;
+        H.Peer.SegmentOverride = async ctx =>
+        {
+            if (ctx.Request.Path.Value!.Contains("/2.", StringComparison.Ordinal))
+            {
+                ctx.Response.StatusCode = 502;
+                return true;
+            }
+
+            await Task.CompletedTask;
+            return false;
+        };
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+        await PlayAsync(grant, 0, 1);
+        await WaitForAsync(() => SegmentsAsked().Count >= 5);
+
+        using var broken = await GetAsync(SegmentPath(grant, 2), Sign(MatrixWorld.Admin));
+
+        Assert.Equal(HttpStatusCode.BadGateway, broken.StatusCode); // the client's own request went to the Peer and said what happened
+    }
+
+    [Fact]
+    public async Task ReadAhead_NeverTouchesTheStreamsSlot_OnlyTheClientsOwnRequestsKeepItAlive()
+    {
+        P.ReadAhead.Enabled = true;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+        await PlayAsync(grant, 0);
+        H.Peer.SegmentOverride = async ctx =>
+        {
+            var path = ctx.Request.Path.Value!;
+            if (!path.Contains("/0.", StringComparison.Ordinal) && !path.Contains("/1.", StringComparison.Ordinal))
+            {
+                await release.Task; // the reads for the segments after the client's second request wait here
+            }
+
+            return false;
+        };
+        await PlayAsync(grant, 1);
+        var touched = P.StreamSlots.HlsActivity(grant.GrantId);
+        await WaitForAsync(() => SegmentsAsked().Count >= 3);
+
+        P.Time.Advance(TimeSpan.FromSeconds(30)); // the client went quiet; Home is still reading ahead
+        release.SetResult();
+        await WaitForAsync(() => SegmentsAsked().Count >= 5);
+        await Task.Delay(200);
+
+        Assert.Equal(touched, P.StreamSlots.HlsActivity(grant.GrantId)); // the reads did not make the stream look alive
+    }
+
+    [Fact]
+    public async Task ReadAhead_AServerThatIsStopped_LosesWhatWasReadForIt_AndItsStreamsAreNotServedFromMemory()
+    {
+        P.ReadAhead.Enabled = true;
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+        await PlayAsync(grant, 0, 1);
+        await WaitForAsync(() => SegmentsAsked().Count >= 5);
+        Assert.True(P.ReadAhead.HeldBytes > 0);
+
+        P.Registry.SetStatus(H.World.PeerKey, PeerStatus.AuthFailed); // its check failed
+
+        Assert.Equal(0, P.ReadAhead.HeldBytes);
+        Assert.Null(P.ReadAhead.Find(grant.GrantId, 2));
+    }
+
+    // ---------------- link evidence (Warden 19) ----------------
+
+    private string ShortSegmentPath(Grant grant, int n) => SegmentPath(grant, n, query: "runtimeTicks=0&actualSegmentLengthTicks=5000000"); // half a second of playing time
+
+    [Fact]
+    public async Task LinkEvidence_ASlowClientReadingAFastUpstream_SaysNothingAboutTheLink()
+    {
+        H.Peer.SegmentSize = 4_000_000;
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+
+        for (var i = 0; i < 3; i++)
+        {
+            using var response = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, ShortSegmentPath(grant, i));
+            await Task.Delay(700); // the client takes its time: longer than the segment plays
+            Assert.Equal(H.Peer.SegmentSize, (await response.Content.ReadAsByteArrayAsync()).Length);
+        }
+
+        Assert.Null(P.Telemetry.SlowLinkMbps(H.World.PeerKey)); // the reads from the Peer were fast; only the client was slow
+    }
+
+    [Fact]
+    public async Task LinkEvidence_ARealSlowUpstream_StillShowsAsASlowLink()
+    {
+        H.Peer.SegmentSize = 4_000_000;
+        H.Peer.SegmentOverride = async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "video/mp2t";
+            ctx.Response.ContentLength = 4_000_000;
+            for (var i = 0; i < 4; i++)
+            {
+                await ctx.Response.Body.WriteAsync(new byte[1_000_000]);
+                await ctx.Response.Body.FlushAsync();
+                await Task.Delay(150); // the link carries about 1 MB in 150 ms: the segment takes 0.6 s to arrive and plays for 0.5
+            }
+
+            return true;
+        };
+        var grant = await NewGrantAsync();
+        await LoadPlaylistsAsync(grant);
+
+        for (var i = 0; i < 3; i++)
+        {
+            using var response = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, ShortSegmentPath(grant, i));
+            await response.Content.ReadAsByteArrayAsync();
+        }
+
+        var live = P.Telemetry.SlowLinkMbps(H.World.PeerKey);
+        Assert.NotNull(live);
+        Assert.InRange(live!.Value, 20, 80); // 32 Mbit in about 0.6 s is about 53 Mbps: the read time is the Peer's, and it is too slow for half a second of playing time
     }
 }

@@ -63,6 +63,35 @@ public sealed class StateBackedLiveStatusTests
     }
 
     [Fact]
+    public async Task TitlesWithoutAStubBecauseAnotherServerCarriesThem_AreCountedWithTheWinnersName()
+    {
+        using var rig = new PairingRig();
+        await rig.State.UpdateAsync(StateSamples.Fill);
+        await rig.State.UpdateAsync(s => s.Home.Peers.Add(new Jellyfin.Plugin.Shoal.State.PeerState { PeerKey = StateSamples.PeerKeyB, DisplayName = "Hop_Media", BaseUrl = "http://other.tail1234.ts.net:8096" }));
+        var catalogs = new Jellyfin.Plugin.Shoal.Sync.CatalogStore(rig.Paths, NullLogger<Jellyfin.Plugin.Shoal.Sync.CatalogStore>.Instance);
+        var mine = new Jellyfin.Plugin.Shoal.Sync.CatalogDocument { PeerKey = StateSamples.PeerKeyA };
+        foreach (var (title, key) in new[] { ("One", "aaaaaaaaaaaaaaa1"), ("Two", "aaaaaaaaaaaaaaa2") })
+        {
+            mine.Entries.Add(new Jellyfin.Plugin.Shoal.Sync.CatalogEntry { StubKey = key, PeerItemId = new string(key[^1], 32), MappingKey = "m", Title = title, State = Jellyfin.Plugin.Shoal.Sync.EntryState.DuplicatePeer, DuplicateOf = "bbbbbbbbbbbbbbb" + key[^1] });
+        }
+
+        mine.Entries.Add(new Jellyfin.Plugin.Shoal.Sync.CatalogEntry { StubKey = "aaaaaaaaaaaaaaa3", PeerItemId = new string('3', 32), MappingKey = "m", Title = "Three", State = Jellyfin.Plugin.Shoal.Sync.EntryState.Active, StubRelPath = "m/three.strm" });
+        catalogs.Save(mine);
+        var winner = new Jellyfin.Plugin.Shoal.Sync.CatalogDocument { PeerKey = StateSamples.PeerKeyB };
+        winner.Entries.Add(new Jellyfin.Plugin.Shoal.Sync.CatalogEntry { StubKey = "bbbbbbbbbbbbbbb1", PeerItemId = new string('2', 32), MappingKey = "m", Title = "One", State = Jellyfin.Plugin.Shoal.Sync.EntryState.Active, StubRelPath = "m/one.strm" });
+        winner.Entries.Add(new Jellyfin.Plugin.Shoal.Sync.CatalogEntry { StubKey = "bbbbbbbbbbbbbbb2", PeerItemId = new string('2', 32), MappingKey = "m", Title = "Two", State = Jellyfin.Plugin.Shoal.Sync.EntryState.Active, StubRelPath = "m/two.strm" });
+        catalogs.Save(winner);
+        var live = new StateBackedLiveStatus(rig.Health, new Gate(), catalogs, state: rig.State);
+
+        var info = live.ForPeer(StateSamples.PeerKeyA);
+        var card = Jellyfin.Plugin.Shoal.Api.Admin.AdminStatusBuilder.Server(rig.State.Current.Home.Peers.First(p => p.PeerKey == StateSamples.PeerKeyA), info);
+
+        Assert.Equal(1, info.TitleCount);
+        Assert.Equal(2, card.HiddenByDedup);
+        Assert.Equal("Hop_Media", card.DedupWinner);
+    }
+
+    [Fact]
     public void TheCatalog_GivesTheLastSyncTheCountsTheStorageAndTheAlerts()
     {
         using var dir = new TempDirectory();

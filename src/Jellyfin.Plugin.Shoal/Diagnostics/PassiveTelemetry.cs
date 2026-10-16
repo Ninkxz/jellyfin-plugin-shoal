@@ -16,6 +16,14 @@ public interface ISegmentTelemetry
     /// <param name="segmentIndex">The segment's number in the playlist.</param>
     /// <returns>The measurement to complete.</returns>
     SegmentMeasure Begin(Grant grant, double segmentSeconds, int segmentIndex);
+
+    /// <summary>A segment was read ahead (no client waited for it): only what it says about the link is kept.</summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="grantId">The play the segment belongs to.</param>
+    /// <param name="segmentSeconds">The length of the segment.</param>
+    /// <param name="bytes">The bytes copied.</param>
+    /// <param name="copy">How long the reads from the peer took (the client is not in it).</param>
+    void ObserveCopy(string peerKey, string grantId, double segmentSeconds, long bytes, TimeSpan copy);
 }
 
 /// <summary>One segment fetch: the time to the first byte and the copy.</summary>
@@ -48,7 +56,8 @@ public sealed class SegmentMeasure
 
     /// <summary>The whole segment was copied.</summary>
     /// <param name="bytes">The bytes of the segment.</param>
-    public void Done(long bytes)
+    /// <param name="upstream">How long the reads from the peer took, the waits on the client left out (the speed of the client says nothing about the link); null for the time from the headers to the end.</param>
+    public void Done(long bytes, TimeSpan? upstream = null)
     {
         if (_headers == 0)
         {
@@ -56,7 +65,7 @@ public sealed class SegmentMeasure
         }
 
         var end = Stopwatch.GetTimestamp();
-        _owner.Record(_grant, _segmentSeconds, _index, Stopwatch.GetElapsedTime(_started, _headers).TotalMilliseconds, bytes, Stopwatch.GetElapsedTime(_headers, end));
+        _owner.Record(_grant, _segmentSeconds, _index, Stopwatch.GetElapsedTime(_started, _headers).TotalMilliseconds, bytes, upstream ?? Stopwatch.GetElapsedTime(_headers, end));
     }
 }
 
@@ -70,6 +79,9 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
     /// <summary>How long a play may be quiet before it counts as ended.</summary>
     public static readonly TimeSpan Quiet = TimeSpan.FromMinutes(2);
 
+    /// <summary>How far back the live evidence of a slow link reaches.</summary>
+    public static readonly TimeSpan EvidenceWindow = TimeSpan.FromSeconds(30);
+
     private const int MinSegments = 3;
     private const int FirstMeasuredIndex = 3;
 
@@ -77,6 +89,8 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
     private readonly StreamSlots _slots;
     private readonly TimeProvider _time;
     private readonly ConcurrentDictionary<string, Play> _plays = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, List<Observation>> _recent = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, bool> _remeasure = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PassiveTelemetry"/> class.
@@ -113,6 +127,57 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
         return new SegmentMeasure(this, grant, segmentSeconds, segmentIndex);
     }
 
+    /// <summary>
+    /// What the segments of the last 30 seconds say about the link, when they say it is too slow for the stream: the reads from the peer took about as long as the
+    /// segments take to play (a segment is made before it is served, so the reads are the link; the client is not timed). Advice only, and careful with who gives it:
+    /// one play counts for at most 30 seconds of playing time; with several streams through the peer at least two plays (half of them, rounded up) must show it, so one
+    /// slow play of four changes nothing; one segment, or no recent segment, says nothing.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>The measured rate of the reads in Mbps, or null.</returns>
+    public double? SlowLinkMbps(string peerKey)
+    {
+        if (!_recent.TryGetValue(peerKey, out var list))
+        {
+            return null;
+        }
+
+        var now = _time.GetUtcNow();
+        var since = now - EvidenceWindow;
+        var perGrant = new Dictionary<string, (double Bytes, double Copy, double Played, int Count)>(StringComparer.Ordinal);
+        lock (list)
+        {
+            list.RemoveAll(o => o.T < since);
+            foreach (var o in list.OrderByDescending(static o => o.T))
+            {
+                var have = perGrant.GetValueOrDefault(o.GrantId);
+                if (have.Played >= EvidenceWindow.TotalSeconds)
+                {
+                    continue; // this play already gave 30 seconds of playing time: a burst of read-ahead does not drown the others
+                }
+
+                perGrant[o.GrantId] = (have.Bytes + o.Bytes, have.Copy + o.CopySeconds, have.Played + o.SegmentSeconds, have.Count + 1);
+            }
+        }
+
+        var slow = perGrant.Values.Where(static g => g.Count >= 2 && g.Copy > 0 && g.Played > 0 && g.Copy >= 0.9 * g.Played).ToList();
+        var active = _slots.ActiveSlotsOnPeer(peerKey);
+        var needed = active <= 1 ? 1 : Math.Max(2, (active + 1) / 2);
+        if (slow.Count < needed)
+        {
+            return null;
+        }
+
+        var bytes = slow.Sum(static g => g.Bytes);
+        var copy = slow.Sum(static g => g.Copy);
+        return copy > 0 ? Math.Round(bytes * 8 / 1e6 / copy, 2) : null;
+    }
+
+    /// <summary>Says, once, that a peer link was seen too slow while it streamed, so a light test runs when the stream is over.</summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>True the first time after the evidence.</returns>
+    public bool TakeRemeasure(string peerKey) => _remeasure.TryRemove(peerKey, out _);
+
     /// <summary>Turns every play that has been quiet for two minutes into a sample.</summary>
     /// <returns>The number of samples saved.</returns>
     public int FlushIdle()
@@ -143,6 +208,25 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
         return saved;
     }
 
+    /// <inheritdoc />
+    public void ObserveCopy(string peerKey, string grantId, double segmentSeconds, long bytes, TimeSpan copy)
+    {
+        var list = _recent.GetOrAdd(peerKey, static _ => []);
+        lock (list)
+        {
+            list.Add(new Observation(_time.GetUtcNow(), grantId, bytes, copy.TotalSeconds, segmentSeconds));
+            if (list.Count > 40)
+            {
+                list.RemoveAt(0);
+            }
+        }
+
+        if (SlowLinkMbps(peerKey) is not null)
+        {
+            _remeasure[peerKey] = true;
+        }
+    }
+
     /// <summary>Records one finished segment.</summary>
     /// <param name="grant">The play.</param>
     /// <param name="segmentSeconds">The segment's length.</param>
@@ -157,6 +241,7 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
             return;
         }
 
+        ObserveCopy(grant.PeerKey, grant.GrantId, segmentSeconds, bytes, copy);
         lock (play)
         {
             play.LastActivity = _time.GetUtcNow();
@@ -197,6 +282,8 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
             Path = latest?.Path ?? "unknown"
         };
     }
+
+    private sealed record Observation(DateTimeOffset T, string GrantId, long Bytes, double CopySeconds, double SegmentSeconds);
 
     private sealed class Play
     {

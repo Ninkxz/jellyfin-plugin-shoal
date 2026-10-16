@@ -17,8 +17,6 @@ public sealed partial class PairingService
     {
         private string? _sas;
 
-        private PairingMethod Method => _probe.InviteSecret is null ? PairingMethod.Qc : PairingMethod.Invite;
-
         private async Task RunInviteAsync()
         {
             var secret = _probe.InviteSecret!;
@@ -44,6 +42,7 @@ public sealed partial class PairingService
             });
 
             var first = await InviteCallAsync(Body(false)).ConfigureAwait(false);
+            ThrowIfEnded(first.State);
             if (first.State != "pending" || !InviteCrypto.TryBase64Url(first.PeerNonce, out var peerNonce) || peerNonce.Length != 16)
             {
                 throw new AbortException(PairingErrorKind.BadPeerResponse);
@@ -55,6 +54,8 @@ public sealed partial class PairingService
                 throw new AbortException(PairingErrorKind.ServerChanged);
             }
 
+            // The invite lives 15 minutes from when the friend made it, not from now: the Peer says how long is left (seconds, so clock differences do not matter).
+            deadline = Sooner(deadline, first.ExpiresInSeconds, now.GetUtcNow());
             lock (_gate)
             {
                 _sas = InviteCrypto.Sas(secret, homeNonce, peerNonce, homeId, peerId);
@@ -95,9 +96,16 @@ public sealed partial class PairingService
                     continue;
                 }
 
+                ThrowIfEnded(answer.State);
                 switch (answer.State)
                 {
                     case "pending":
+                        deadline = Sooner(deadline, answer.ExpiresInSeconds, now.GetUtcNow());
+                        lock (_gate)
+                        {
+                            _expiresUtc = deadline.UtcDateTime;
+                        }
+
                         continue;
                     case "denied":
                         throw new AbortException(PairingErrorKind.Denied);
@@ -105,7 +113,6 @@ public sealed partial class PairingService
                         throw new AbortException(PairingErrorKind.CodeMismatch);
                     case "approved" when !string.IsNullOrEmpty(answer.Token):
                         _token = answer.Token;
-                        _tokenUserId = Guid.Empty;
                         SetStep(PairingStep.Validating);
                         await ValidateAsync().ConfigureAwait(false);
 
@@ -117,6 +124,27 @@ public sealed partial class PairingService
                 }
             }
         }
+
+        // The Peer answers 200 with a reason to a request that carries a valid secret of an invite that is over; anything else stays the one 404.
+        private static void ThrowIfEnded(string? state)
+        {
+            var kind = state switch
+            {
+                "expired" => PairingErrorKind.Expired,
+                "replaced" => PairingErrorKind.InviteReplaced,
+                "cancelled" => PairingErrorKind.InviteCancelled,
+                "uncollected" => PairingErrorKind.TokenNotCollected,
+                "used" => PairingErrorKind.InviteInvalid,
+                _ => (PairingErrorKind?)null,
+            };
+            if (kind is { } ended)
+            {
+                throw new AbortException(ended);
+            }
+        }
+
+        private static DateTimeOffset Sooner(DateTimeOffset deadline, int? secondsLeft, DateTimeOffset now) =>
+            secondsLeft is { } left && now.AddSeconds(Math.Max(0, left)) < deadline ? now.AddSeconds(Math.Max(0, left)) : deadline;
 
         private async Task InvitePreflightAsync()
         {
@@ -184,5 +212,8 @@ internal sealed class InviteWire
 
     [JsonPropertyName("token")]
     public string? Token { get; set; }
+
+    [JsonPropertyName("expiresInSeconds")]
+    public int? ExpiresInSeconds { get; set; }
 }
 #pragma warning restore SA1600

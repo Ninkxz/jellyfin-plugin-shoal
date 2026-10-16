@@ -99,6 +99,13 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
 
     public string LibraryName { get; set; } = "Movies";
 
+    /// <summary>Gets or sets the collection type the view reports (<c>movies</c>, or <c>tvshows</c> with the counts below).</summary>
+    public string CollectionType { get; set; } = "movies";
+
+    public int SeriesCount { get; set; }
+
+    public int EpisodeCount { get; set; }
+
     public List<PeerMovie> Movies { get; } = [];
 
     public ConcurrentQueue<string> Requests { get; } = new();
@@ -114,11 +121,17 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
     /// <summary>Replaces the answer to an image request.</summary>
     public Func<PeerMovie, string, (int Status, string ContentType, byte[] Body)?>? ImageOverride { get; set; }
 
+    /// <summary>Replaces the answer to an image request for a TV item: (peer item id, image type) to (status, content type, body), or null for the normal JPEG.</summary>
+    public Func<Guid, string, (int Status, string ContentType, byte[] Body)?>? TvImageOverride { get; set; }
+
     /// <summary>Delay before each answer.</summary>
     public int DelayMs { get; set; }
 
     /// <summary>Items to generate on the fly after the real ones (for scale tests).</summary>
     public int GeneratedCount { get; set; }
+
+    /// <summary>Gets or sets the TV library this peer also has (series, seasons, episodes; DESIGN v2.7, K34), or null for a movies-only peer.</summary>
+    public FakeTvTree? Tv { get; set; }
 
     public string Url { get; private set; } = string.Empty;
 
@@ -260,7 +273,13 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
         }
         else if (path == "/UserViews")
         {
-            await WriteJsonAsync(ctx, new { Items = new[] { new { Id = LibraryId.ToString("N"), Name = LibraryName, CollectionType = "movies" } }, TotalRecordCount = 1 });
+            var views = new List<object> { new { Id = LibraryId.ToString("N"), Name = LibraryName, CollectionType = CollectionType } };
+            if (Tv is not null)
+            {
+                views.Add(new { Id = Tv.LibraryId.ToString("N"), Name = Tv.LibraryName, CollectionType = "tvshows" });
+            }
+
+            await WriteJsonAsync(ctx, new { Items = views, TotalRecordCount = views.Count });
         }
         else if (path == "/Items")
         {
@@ -279,11 +298,30 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
     private async Task HandleItemsAsync(HttpContext ctx)
     {
         var query = ctx.Request.Query;
+        if (Tv is not null
+            && Tv.TryServe(
+                query.TryGetValue("IncludeItemTypes", out var types) ? types.ToString() : string.Empty,
+                query.TryGetValue("Ids", out var tvIds) ? tvIds.ToString() : string.Empty,
+                query.TryGetValue("StartIndex", out var tvStart) ? int.Parse(tvStart.ToString(), System.Globalization.CultureInfo.InvariantCulture) : 0,
+                query.TryGetValue("Limit", out var tvLimit) ? int.Parse(tvLimit.ToString(), System.Globalization.CultureInfo.InvariantCulture) : 200,
+                out var tvBody))
+        {
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(tvBody);
+            return;
+        }
+
         if (query.TryGetValue("Ids", out var idsValue))
         {
             var ids = idsValue.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => Guid.ParseExact(s, "N")).ToHashSet();
             var found = Live().Where(m => ids.Contains(m.Id)).Select(Detail).ToArray();
             await WriteJsonAsync(ctx, new { Items = found, TotalRecordCount = found.Length, StartIndex = 0 });
+            return;
+        }
+
+        if (query.TryGetValue("IncludeItemTypes", out var kinds) && (kinds == "Series" || kinds == "Episode"))
+        {
+            await WriteJsonAsync(ctx, new { Items = Array.Empty<object>(), TotalRecordCount = kinds == "Series" ? SeriesCount : EpisodeCount, StartIndex = 0 });
             return;
         }
 
@@ -329,6 +367,22 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
         var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var movie = Movies.FirstOrDefault(m => m.Id.ToString("N") == parts[1]);
         var type = parts[3];
+        if (movie is null && Tv is not null && Guid.TryParseExact(parts[1], "N", out var tvId))
+        {
+            var (tvStatus, tvType, tvBody) = TvImageOverride?.Invoke(tvId, type) ?? (200, "image/jpeg", ImageBuilder.Jpeg(480, 270, 3000));
+            if (tvStatus < 0)
+            {
+                ctx.Abort(); // the connection drops: the peer is not answering
+                return;
+            }
+
+            ctx.Response.StatusCode = tvStatus;
+            ctx.Response.ContentType = tvType;
+            ctx.Response.ContentLength = tvBody.Length;
+            await ctx.Response.Body.WriteAsync(tvBody);
+            return;
+        }
+
         if (movie is null)
         {
             ctx.Response.StatusCode = 404;
@@ -358,7 +412,17 @@ internal sealed class FakeRefresh : ILibraryRefresh
 
     public List<string> Reported { get; } = [];
 
-    public void ReportChanged(string path) => Reported.Add(path);
+    public bool Throw { get; set; }
+
+    public void ReportChanged(string path)
+    {
+        if (Throw)
+        {
+            throw new InvalidOperationException("the refresher failed");
+        }
+
+        Reported.Add(path);
+    }
 
     public int Scans { get; private set; }
 
@@ -372,6 +436,9 @@ internal sealed class SyncRig : IAsyncDisposable
 {
     public const string PeerKey = "4b0c1d2e3f405162738495a6b7c8d9e0";
     public const string MappingKey = "movies-1";
+    public const string TvMappingKey = "tv-1";
+
+    private bool _realTv;
 
     private SyncRig(FakeLibraryPeer peer)
     {
@@ -398,11 +465,26 @@ internal sealed class SyncRig : IAsyncDisposable
 
     public CatalogSyncService Sync { get; private set; } = null!;
 
+    /// <summary>Peers the sync counts as unreachable (offline or paused): their titles hold nothing against another peer.</summary>
+    public HashSet<string> DownPeers { get; } = new(StringComparer.Ordinal);
+
     public PeerCatalogReader Reader { get; private set; } = null!;
 
     public SyncSettings Settings { get; set; } = SyncSettings.Default;
 
     public CapturingLogger Log { get; } = new();
+
+    /// <summary>Gets or sets a value indicating whether TV libraries are synced (the <c>TvShowsEnabled</c> switch).</summary>
+    public bool TvEnabled { get; set; } = true;
+
+    /// <summary>Gets Home's own series, for series-level dedup.</summary>
+    public FakeLocalSeries LocalSeries { get; } = new();
+
+    /// <summary>Gets the TV sync engine with the test stand-ins of K35's classes.</summary>
+    public TvSyncEngine Tv { get; private set; } = null!;
+
+    /// <summary>Gets the library folder of the TV mapping.</summary>
+    public string TvFolder => Path.Combine(StubRoot, PeerKey, "tv");
 
     public string StubRoot => Dir.Combine("stubs");
 
@@ -414,12 +496,15 @@ internal sealed class SyncRig : IAsyncDisposable
 
     public ShoalPaths Paths { get; private set; } = null!;
 
-    public static async Task<SyncRig> CreateAsync(Action<FakeLibraryPeer>? seed = null)
+    public static async Task<SyncRig> CreateAsync(Action<FakeLibraryPeer>? seed = null) => await CreateAsync(seed, realTv: false);
+
+    /// <summary>Creates the rig; with <paramref name="realTv"/> the TV engine runs with the real sanitizer, layout, NFO writer and image stage (what the plugin registers) instead of the stand-ins.</summary>
+    public static async Task<SyncRig> CreateAsync(Action<FakeLibraryPeer>? seed, bool realTv)
     {
         var peer = new FakeLibraryPeer();
         seed?.Invoke(peer);
         await peer.StartAsync();
-        var rig = new SyncRig(peer);
+        var rig = new SyncRig(peer) { _realTv = realTv };
         await rig.InitializeAsync();
         return rig;
     }
@@ -436,6 +521,9 @@ internal sealed class SyncRig : IAsyncDisposable
             Libraries = { new LibraryMapping { MappingKey = "movies-1", RemoteName = "Movies", LocalLibraryName = name + " Movies", Subfolder = "movies" } },
         }));
     }
+
+    /// <summary>Maps the TV library of the fake peer (set <see cref="FakeLibraryPeer.Tv"/> first).</summary>
+    public Task AddTvMappingAsync() => State.UpdateAsync(s => s.Home.Peers[0].Libraries.Add(new LibraryMapping { MappingKey = TvMappingKey, RemoteName = Peer.Tv!.LibraryName, CollectionType = "tvshows", LocalLibraryName = "Hops TV shows", Subfolder = "tv" }));
 
     public CatalogDocument Catalog() => Catalogs.Load(PeerKey).Document;
 
@@ -480,8 +568,19 @@ internal sealed class SyncRig : IAsyncDisposable
         var reader = new PeerCatalogReader(Client, trust, Registry, sanitizer, Log);
         Reader = reader;
         Catalogs = new CatalogStore(Paths, Log);
-        var writer = new StubWriter(new ImageFetcher(Client, NullLogger<ImageFetcher>.Instance), Log);
-        Sync = new CatalogSyncService(State, key => HasCredentials && key == PeerKey ? Endpoint : null, trust, reader, Catalogs, writer, Local, Refresh, () => Settings, Time, Log);
+        var fetcher = new ImageFetcher(Client, NullLogger<ImageFetcher>.Instance);
+        var writer = new StubWriter(fetcher, Log);
+        ITvLayout layout = _realTv ? new TvLayout() : new TestTvLayout();
+        ITvSanitizer tvSanitizer = _realTv ? new TvSanitizer(new KnownRatings("R", "PG-13", "PG", "G"), new TrickplaySanitizer()) : new TestTvSanitizer();
+        ITvNfoWriter tvNfo = _realTv ? new TvNfoWriter() : new TestTvNfo();
+        Tv = new TvSyncEngine(tvSanitizer, layout, tvNfo, new PeerTvReader(reader, Log), new TvPlanner(layout), new TvStubWriter(Log), LocalSeries, Log) { RefreshDeferral = TimeSpan.Zero };
+        if (_realTv)
+        {
+            Tv.ImageWork = new TvImageWork();
+            Tv.Images = new TvImageRunner(fetcher, Time);
+        }
+
+        Sync = new CatalogSyncService(State, key => HasCredentials && key == PeerKey ? Endpoint : null, trust, reader, Catalogs, writer, Local, Refresh, () => Settings, Time, Log, Tv, () => TvEnabled, key => !DownPeers.Contains(key));
     }
 
     private sealed class KnownRatings(params string[] known) : IRatingTable

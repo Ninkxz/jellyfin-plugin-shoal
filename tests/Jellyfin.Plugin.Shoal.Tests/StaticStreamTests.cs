@@ -132,6 +132,20 @@ public sealed class StaticStreamTests : IClassFixture<PlaybackFixture>, IAsyncLi
     }
 
     [Fact]
+    public async Task DirectPlay_IsReadAheadThroughABoundedBuffer_TheBytesArriveWhole_AndTheBudgetComesBack()
+    {
+        H.Peer.StreamChunkDelayMs = 2;
+
+        using var response = await GetAsync($"/Videos/{Item}/stream?Static=true&MediaSourceId={Item}");
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(Expected(0, FileSize), bytes);
+        Assert.Equal(0, P.StaticReadAhead.Used); // the few MB of the buffer went back when the stream ended
+        Assert.Equal(4 * 1024 * 1024, StaticStreamResult.ReadAheadBytes);
+    }
+
+    [Fact]
     public async Task T_CLI_2_WithNoRange_TheWholeFileComesBack_As200()
     {
         using var response = await GetAsync($"/Videos/{Item}/stream?Static=true");

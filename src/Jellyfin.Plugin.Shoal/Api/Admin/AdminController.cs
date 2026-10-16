@@ -266,12 +266,9 @@ public class AdminController : ControllerBase
             Users = users,
             ServerIdPrefix = peer.PinnedServerId is { Length: >= 8 } id ? id[..8] : null,
             PairedUtc = peer.Pairing?.PairedUtc,
-            PairingMethod = peer.Pairing is null ? null : peer.Pairing.Method == PairingMethod.Invite ? "invite" : "qc",
-            DeviceLock = peer.Pairing?.Method == PairingMethod.Qc ? _live.ForPeer(peer.PeerKey).DeviceLock : null,
-            SessionLimit = peer.Pairing?.Method == PairingMethod.Qc ? _live.ForPeer(peer.PeerKey).SessionLimit : null,
             Alerts = _live.ForPeer(peer.PeerKey).Alerts.Select(a => (object)a).ToList(),
             Usage = _live.ForPeer(peer.PeerKey).Usage is { } usage ? new UsageDto(usage.DiskBytes, usage.QuotaBytes, usage.Stubs, usage.People, usage.Genres, usage.Studios) : null,
-            Settings = new PeerSettingsDto(peer.MaxConcurrentStreams, peer.Priority, peer.ProxyUrl, !string.IsNullOrEmpty(peer.TlsSpkiPin)),
+            Settings = new PeerSettingsDto(peer.MaxConcurrentStreams, peer.Priority, peer.ProxyUrl, !string.IsNullOrEmpty(peer.TlsSpkiPin), peer.Alias),
             UpdatedUtc = null,
             Rotation = _rotation?.Describe(peer),
             Link = LinkOf(peer)
@@ -328,10 +325,11 @@ public class AdminController : ControllerBase
     /// </summary>
     /// <param name="handle">The server's handle.</param>
     /// <param name="kind">removals or additions.</param>
-    /// <param name="action">Release or Keep.</param>
+    /// <param name="decision">Release or Keep.</param>
+    /// <param name="series">Optional: release only this series group (a key from <c>GET Peers/{h}/Holds</c>).</param>
     /// <returns>202 for Release, 200 for Keep, 400, 404 or 409.</returns>
-    [HttpPost("Peers/{handle}/Holds/{kind}/{action}")]
-    public IActionResult Hold(string handle, string kind, string action)
+    [HttpPost("Peers/{handle}/Holds/{kind}/{decision}")]
+    public IActionResult Hold(string handle, string kind, string decision, [FromQuery] string? series = null)
     {
         if (_state.Status == StateStatus.Recovery)
         {
@@ -339,7 +337,7 @@ public class AdminController : ControllerBase
         }
 
         var removals = string.Equals(kind, "removals", StringComparison.Ordinal);
-        if ((!removals && !string.Equals(kind, "additions", StringComparison.Ordinal)) || (!string.Equals(action, "Release", StringComparison.Ordinal) && !string.Equals(action, "Keep", StringComparison.Ordinal)))
+        if ((!removals && !string.Equals(kind, "additions", StringComparison.Ordinal)) || (!string.Equals(decision, "Release", StringComparison.Ordinal) && !string.Equals(decision, "Keep", StringComparison.Ordinal)))
         {
             return AdminReply.Error(StatusCodes.Status400BadRequest, "invalid");
         }
@@ -349,8 +347,18 @@ public class AdminController : ControllerBase
             return AdminReply.Error(StatusCodes.Status404NotFound, "notFound");
         }
 
+        if (series is not null && (series.Length is < 8 or > 32 || !series.All(static c => c is (>= '0' and <= '9') or (>= 'a' and <= 'z'))))
+        {
+            return AdminReply.Error(StatusCodes.Status400BadRequest, "invalid");
+        }
+
+        if (series is not null && string.Equals(decision, "Release", StringComparison.Ordinal))
+        {
+            return AdminReply.Json(StatusCodes.Status202Accepted, new { started = _live.StartReleaseSeries(handle, removals, series) });
+        }
+
         // Keep changes nothing: the guard keeps holding, and removals release on their own after 3 complete syncs over 24 hours.
-        return string.Equals(action, "Keep", StringComparison.Ordinal)
+        return string.Equals(decision, "Keep", StringComparison.Ordinal)
             ? AdminReply.Json(StatusCodes.Status200OK, new { })
             : AdminReply.Json(StatusCodes.Status202Accepted, new { started = _live.StartRelease(handle, removals) });
     }

@@ -62,6 +62,15 @@ export function createMockClient(mock, opts) {
         },
         ajax(request) {
             const url = String(request.url);
+            // The catalog and the plugin list, for the version line (o.installed and o.latest set the versions; o.noCatalog hides them).
+            if (url.endsWith('/Plugins') && !o.noCatalog) {
+                return Promise.resolve(JSON.stringify([{ Name: 'Shoal', Version: o.installed || '1.0.2.0' }]));
+            }
+
+            if (url.endsWith('/Packages') && !o.noCatalog) {
+                return Promise.resolve(JSON.stringify([{ name: 'Shoal', versions: o.latest ? [{ version: '1.0.9.0' }, { version: o.latest }] : [{ version: o.installed || '1.0.2.0' }] }]));
+            }
+
             const at = url.indexOf(API_BASE);
             if (at < 0) {
                 return Promise.reject({ status: 404, headers: { get: () => null }, json: async () => ({}) });
@@ -71,8 +80,18 @@ export function createMockClient(mock, opts) {
             const body = request.data ? JSON.parse(request.data) : undefined;
             return mock.handle(request.type || 'GET', path, body).then((res) => {
                 if (res.status >= 200 && res.status < 300) {
-                    // Like the real client: a 204 has no body, and dataType 'text' hands back an empty string.
-                    return request.dataType === 'text' || res.status === 204 ? '' : o.nulls ? nullify(res.body) : res.body;
+                    // Like the real client: a 204 has no body, and dataType 'text' hands back the answer as text (empty when there is none).
+                    // o.emptyBodies makes every success come back with no body at all, as some proxies and browsers deliver it.
+                    if (o.garbage && request.type !== 'GET') {
+                        return '<html>a proxy page</html>';
+                    }
+
+                    if (res.status === 204 || (o.emptyBodies && request.type !== 'GET') || res.body === undefined || res.body === null) {
+                        return request.dataType === 'text' ? '' : null;
+                    }
+
+                    const answer = o.nulls ? nullify(res.body) : res.body;
+                    return request.dataType === 'text' ? JSON.stringify(answer) : answer;
                 }
 
                 throw {

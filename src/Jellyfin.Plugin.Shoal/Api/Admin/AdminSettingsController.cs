@@ -56,8 +56,20 @@ internal sealed record SettingsDto
     /// <summary>Gets the streams per person.</summary>
     public int? MaxStreamsPerUser { get; init; }
 
+    /// <summary>Gets how many HLS segments Home reads ahead (2 to 20).</summary>
+    public int? HlsBufferAhead { get; init; }
+
+    /// <summary>Gets a value indicating whether friends' TV libraries can be added and synced (DESIGN v2.7).</summary>
+    public bool? TvShowsEnabled { get; init; }
+
+    /// <summary>Gets a value indicating whether episode thumbnails are fetched for TV libraries.</summary>
+    public bool? TvEpisodeThumbs { get; init; }
+
     /// <summary>Gets a value indicating whether HLS subtitles are offered.</summary>
     public bool? HlsSubtitlesEnabled { get; init; }
+
+    /// <summary>Gets a value indicating whether friends' servers may detect Shoal here.</summary>
+    public bool? DetectableByFriends { get; init; }
 
     /// <summary>Gets the speed test interval.</summary>
     public int? SpeedTestIntervalHours { get; init; }
@@ -69,7 +81,16 @@ internal sealed record SettingsDto
     public bool? ParkOfflinePeers { get; init; }
 
     /// <summary>Gets the hours before parking.</summary>
-    public int? ParkAfterHours { get; init; }
+    public double? ParkAfterHours { get; init; }
+
+    /// <summary>Gets a value indicating whether an offline friend's titles play the offline card instead of a bare error.</summary>
+    public bool? OfflineCardEnabled { get; init; }
+
+    /// <summary>Gets the request service name (Seerr).</summary>
+    public string? RequestServiceName { get; init; }
+
+    /// <summary>Gets the request service address, or empty to clear it.</summary>
+    public string? RequestServiceUrl { get; init; }
 
     /// <summary>Gets the Tailscale socket: auto, off or a path.</summary>
     public string? TailscaleSocket { get; init; }
@@ -129,9 +150,6 @@ internal sealed record HardeningDto
 
     /// <summary>Gets how many errors the guard let through.</summary>
     public int GuardErrors { get; init; }
-
-    /// <summary>Gets how many pairing requests were slowed down.</summary>
-    public int ShieldHits { get; init; }
 
     /// <summary>Gets how many transcodes were refused.</summary>
     public int TranscodeCapHits { get; init; }
@@ -265,12 +283,19 @@ public class AdminSettingsController : ControllerBase
         config.ArtQuality = body.ArtQuality ?? config.ArtQuality;
         config.AutoFitQualityToLink = body.AutoFitQualityToLink ?? config.AutoFitQualityToLink;
         config.MaxStreamsPerUser = body.MaxStreamsPerUser ?? config.MaxStreamsPerUser;
+        config.HlsBufferAhead = body.HlsBufferAhead ?? config.HlsBufferAhead;
+        config.TvShowsEnabled = body.TvShowsEnabled ?? config.TvShowsEnabled;
+        config.TvEpisodeThumbs = body.TvEpisodeThumbs ?? config.TvEpisodeThumbs;
         config.HlsSubtitlesEnabled = body.HlsSubtitlesEnabled ?? config.HlsSubtitlesEnabled;
+        config.DetectableByFriends = body.DetectableByFriends ?? config.DetectableByFriends;
         config.SpeedTestIntervalHours = body.SpeedTestIntervalHours ?? config.SpeedTestIntervalHours;
         config.NotifyClientsWhenOffline = body.NotifyClientsWhenOffline ?? config.NotifyClientsWhenOffline;
         config.ParkOfflinePeers = body.ParkOfflinePeers ?? config.ParkOfflinePeers;
         config.ParkAfterHours = body.ParkAfterHours ?? config.ParkAfterHours;
         config.TailscaleSocket = body.TailscaleSocket ?? config.TailscaleSocket;
+        config.OfflineCardEnabled = body.OfflineCardEnabled ?? config.OfflineCardEnabled;
+        config.RequestServiceName = body.RequestServiceName?.Trim() ?? config.RequestServiceName;
+        config.RequestServiceUrl = body.RequestServiceUrl?.Trim() ?? config.RequestServiceUrl;
         config.AlternateVersionsEnabled = body.AlternateVersionsEnabled ?? config.AlternateVersionsEnabled;
         config.TrickplayEnabled = body.TrickplayEnabled ?? config.TrickplayEnabled;
         config.TrickplayCacheGb = body.TrickplayCacheGb ?? config.TrickplayCacheGb;
@@ -526,12 +551,19 @@ public class AdminSettingsController : ControllerBase
             ArtQuality = c.ArtQuality,
             AutoFitQualityToLink = c.AutoFitQualityToLink,
             MaxStreamsPerUser = c.MaxStreamsPerUser,
+            HlsBufferAhead = c.HlsBufferAhead,
+            TvShowsEnabled = c.TvShowsEnabled,
+            TvEpisodeThumbs = c.TvEpisodeThumbs,
             HlsSubtitlesEnabled = c.HlsSubtitlesEnabled,
+            DetectableByFriends = c.DetectableByFriends,
             SpeedTestIntervalHours = c.SpeedTestIntervalHours,
             NotifyClientsWhenOffline = c.NotifyClientsWhenOffline,
             ParkOfflinePeers = c.ParkOfflinePeers,
             ParkAfterHours = c.ParkAfterHours,
             TailscaleSocket = c.TailscaleSocket,
+            OfflineCardEnabled = c.OfflineCardEnabled,
+            RequestServiceName = c.RequestServiceName,
+            RequestServiceUrl = c.RequestServiceUrl,
             TailscaleDetected = false,
             AlternateVersionsEnabled = c.AlternateVersionsEnabled,
             TrickplayEnabled = c.TrickplayEnabled,
@@ -561,7 +593,6 @@ public class AdminSettingsController : ControllerBase
             SinceUtc = role.HardeningSinceUtc == default ? null : role.HardeningSinceUtc,
             Counters = _guard.WouldHaveBeenBlocked.Select(c => new CounterDto(c.App, c.Network, c.Kind, c.Count)).ToList(),
             GuardErrors = _guard.GuardErrors,
-            ShieldHits = _guard.ShieldHits,
             TranscodeCapHits = _guard.TranscodeCapHits,
             InviteFailures = new InviteFailuresDto(_guard.InviteFailuresLastHour, _guard.InviteFailuresLastHour >= 5),
             ProxySuspected = _guard.ProxySuspected
@@ -578,7 +609,7 @@ public class AdminSettingsController : ControllerBase
             ReconcileKind.LibraryMissing => new FindingDto("libraryMissing", peer?.PeerKey, peer?.DisplayName, f.Detail),
             ReconcileKind.LibraryWithoutPeer => new FindingDto("orphanLibrary", null, null, f.Detail),
             ReconcileKind.SecretWithoutPeer => new FindingDto("orphanSecret", null, null, null),
-            ReconcileKind.FolderWithoutPeer => new FindingDto("orphanFolder", null, null, null),
+            ReconcileKind.FolderWithoutPeer => new FindingDto("orphanFolder", null, null, f.Detail),
             _ => null
         };
     }

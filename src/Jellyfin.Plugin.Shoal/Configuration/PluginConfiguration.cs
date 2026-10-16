@@ -38,6 +38,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the most streams one local user may run at once across all friends' servers (1 to 4, owner D13).</summary>
     public int MaxStreamsPerUser { get; set; } = 4;
 
+    /// <summary>Gets or sets how many segments Home reads ahead of an HLS stream from a friend's server (2 to 20): the client then reads from Home's fast side and a short loss on the slow link does not stall playback.</summary>
+    public int HlsBufferAhead { get; set; } = 6;
+
     /// <summary>Gets or sets how often the catalogs are synced, in hours.</summary>
     public int SyncIntervalHours { get; set; } = 6;
 
@@ -66,13 +69,16 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool ParkOfflinePeers { get; set; }
 
     /// <summary>Gets or sets after how many hours an offline peer is parked.</summary>
-    public int ParkAfterHours { get; set; } = 72;
+    public double ParkAfterHours { get; set; } = 0.5;
 
     /// <summary>Gets or sets a value indicating whether clients are told (a display message) when a peer is offline.</summary>
     public bool NotifyClientsWhenOffline { get; set; } = true;
 
     /// <summary>Gets or sets a value indicating whether HLS subtitles are offered (a kill switch).</summary>
     public bool HlsSubtitlesEnabled { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether friends' servers may detect that Shoal is installed here (DESIGN pairing v2; the anonymous ping; default on). Off makes the ping answer like any unknown address.</summary>
+    public bool DetectableByFriends { get; set; } = true;
 
     /// <summary>Gets or sets the Tailscale LocalAPI socket: <c>auto</c> or an absolute path (phase 4).</summary>
     public string TailscaleSocket { get; set; } = "auto";
@@ -91,4 +97,19 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets a value indicating whether images are re-encoded in a child process when it is available (DESIGN v2.6.7; default on).</summary>
     public bool ReencodeImages { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether TV libraries of a friend can be added (DESIGN v2.7; default off until the lab gate T-TV-0 has passed). Off keeps v1 behavior: the picker lists tvshows as coming later.</summary>
+    public bool TvShowsEnabled { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether episode thumbnails are fetched and stored (DESIGN v2.7.3; default on). Off writes none.</summary>
+    public bool TvEpisodeThumbs { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether a friend's offline server gets the offline card (a short video that says so) instead of a bare "playback error" (default on).</summary>
+    public bool OfflineCardEnabled { get; set; } = true;
+
+    /// <summary>Gets or sets the name of the request service ("Seerr") used in the offline card and the offline message.</summary>
+    public string RequestServiceName { get; set; } = "Seerr";
+
+    /// <summary>Gets or sets the address of the request service, or empty. Shown in the admin page and in the offline message; never in the video.</summary>
+    public string RequestServiceUrl { get; set; } = string.Empty;
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -95,7 +96,7 @@ public sealed class ImageFetcher : IDisposable
 
     private readonly PeerClient _client;
     private readonly ILogger<ImageFetcher> _logger;
-    private readonly SemaphoreSlim _serial = new(1, 1);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _lanes = new(StringComparer.Ordinal); // one image at a time per peer (Warden 12): a slow peer does not hold the others up
     private readonly IImageSanitizer _sanitizer;
 
     /// <summary>
@@ -147,7 +148,80 @@ public sealed class ImageFetcher : IDisposable
             return new ImageFetchResult(ImageOutcome.QuotaReached);
         }
 
-        await _serial.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var width = WidthFor(kind, quality);
+        var path = PathFor(peerItemId, kind, safeTag, quality);
+        var profile = kind == ImageKind.Poster ? PeerCallProfile.PosterImage : PeerCallProfile.BackdropImage;
+        return await RunAsync(peer, path, profile, long.MaxValue, new ImageSpec(kind, width), kind == ImageKind.Poster ? PosterName : BackdropName, stubRoot, folder, quota, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Fetches, validates and stores one image of a TV library (DESIGN v2.7.3): the same checks, sandbox and quota as a movie image, with the width, the size cap and
+    /// the file name of the job.
+    /// </summary>
+    /// <param name="peer">The peer to ask.</param>
+    /// <param name="job">The image to fetch (validated here again: id, tag and sizes).</param>
+    /// <param name="baseName">The file name without extension: <c>poster</c>, <c>backdrop</c>, <c>banner</c>, <c>landscape</c> or <c>S01E01-thumb</c> (from integers; see <see cref="TvImageNames"/>).</param>
+    /// <param name="stubRoot">The validated StubRoot.</param>
+    /// <param name="folder">The existing folder of the series or season, below it.</param>
+    /// <param name="quota">The peer's disk budget.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The outcome; this method does not throw for anything a peer can cause.</returns>
+    public async Task<ImageFetchResult> FetchTvAsync(PeerEndpoint peer, TvImageJob job, string baseName, string stubRoot, string folder, DiskQuota quota, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(peer);
+        ArgumentNullException.ThrowIfNull(job);
+        ArgumentNullException.ThrowIfNull(quota);
+        if (MetadataSanitizer.ImageTag(job.Tag) is not { } safeTag || job.PeerItemId == Guid.Empty || !TvImageNames.IsSafeBaseName(baseName) || job.MaxWidth is < 1 or > 4000)
+        {
+            return new ImageFetchResult(ImageOutcome.Skipped);
+        }
+
+        var (type, jpegQuality, profile) = job.Kind switch
+        {
+            TvImageKind.SeriesBackdrop => ("Backdrop", 80, PeerCallProfile.BackdropImage),
+            TvImageKind.SeriesBanner => ("Banner", 85, PeerCallProfile.PosterImage),
+            TvImageKind.SeriesLandscape => ("Thumb", 85, PeerCallProfile.BackdropImage),
+            _ => ("Primary", 85, PeerCallProfile.PosterImage),
+        };
+        var path = string.Create(CultureInfo.InvariantCulture, $"/Items/{job.PeerItemId:N}/Images/{type}?format=Jpg&maxWidth={job.MaxWidth}&quality={jpegQuality}&tag={safeTag}");
+        var spec = new ImageSpec(job.Kind is TvImageKind.SeriesBackdrop or TvImageKind.SeriesLandscape ? ImageKind.Backdrop : ImageKind.Poster, job.MaxWidth);
+        return await RunAsync(peer, path, profile, job.MaxBytes, spec, baseName, stubRoot, folder, quota, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        foreach (var lane in _lanes.Values)
+        {
+            lane.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The request path of an image (DESIGN 5.1): <c>format=Jpg</c> asks the peer for a JPEG; the tag is the already validated one.
+    /// </summary>
+    /// <param name="peerItemId">The peer's item id.</param>
+    /// <param name="kind">Poster or backdrop.</param>
+    /// <param name="tag">A tag of 1 to 64 letters and digits.</param>
+    /// <param name="quality">The requested size.</param>
+    /// <returns>The path and query.</returns>
+    internal static string PathFor(Guid peerItemId, ImageKind kind, string tag, ArtQuality quality)
+    {
+        var (type, width, jpegQuality) = Sizes(kind, quality);
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"/Items/{peerItemId:N}/Images/{type}?format=Jpg&maxWidth={width}&quality={jpegQuality}&tag={tag}");
+    }
+
+    private async Task<ImageFetchResult> RunAsync(PeerEndpoint peer, string path, PeerCallProfile profile, long maxBytes, ImageSpec spec, string baseName, string stubRoot, string folder, DiskQuota quota, CancellationToken cancellationToken)
+    {
+        if (quota.Exhausted)
+        {
+            return new ImageFetchResult(ImageOutcome.QuotaReached);
+        }
+
+        var lane = _lanes.GetOrAdd(peer.PeerKey, static _ => new SemaphoreSlim(1, 1));
+        await lane.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (quota.Exhausted)
@@ -155,14 +229,14 @@ public sealed class ImageFetcher : IDisposable
                 return new ImageFetchResult(ImageOutcome.QuotaReached);
             }
 
-            var downloaded = await DownloadAsync(peer, peerItemId, kind, safeTag, quality, cancellationToken).ConfigureAwait(false);
+            var downloaded = await DownloadAsync(peer, path, profile, maxBytes, cancellationToken).ConfigureAwait(false);
             if (downloaded.Failure is not null)
             {
                 return downloaded.Failure;
             }
 
             // The header checks above stay as the cheap first filter; the sanitizer runs before the quota is touched (DESIGN v2.6.7).
-            var cleaned = await _sanitizer.SanitizeAsync(downloaded.Bytes!, new ImageSpec(kind, WidthFor(kind, quality)), cancellationToken).ConfigureAwait(false);
+            var cleaned = await _sanitizer.SanitizeAsync(downloaded.Bytes!, spec, cancellationToken).ConfigureAwait(false);
             if (!cleaned.Ok)
             {
                 _logger.LogDebug("An image from peer {Peer} was refused by the image sandbox", Redact.Id(peer.PeerKey));
@@ -181,31 +255,12 @@ public sealed class ImageFetcher : IDisposable
                 }
             }
 
-            return Store(peer, kind, bytes, info, stubRoot, folder, quota);
+            return Store(peer, baseName, bytes, info, stubRoot, folder, quota);
         }
         finally
         {
-            _serial.Release();
+            lane.Release();
         }
-    }
-
-    /// <inheritdoc />
-    public void Dispose() => _serial.Dispose();
-
-    /// <summary>
-    /// The request path of an image (DESIGN 5.1): <c>format=Jpg</c> asks the peer for a JPEG; the tag is the already validated one.
-    /// </summary>
-    /// <param name="peerItemId">The peer's item id.</param>
-    /// <param name="kind">Poster or backdrop.</param>
-    /// <param name="tag">A tag of 1 to 64 letters and digits.</param>
-    /// <param name="quality">The requested size.</param>
-    /// <returns>The path and query.</returns>
-    internal static string PathFor(Guid peerItemId, ImageKind kind, string tag, ArtQuality quality)
-    {
-        var (type, width, jpegQuality) = Sizes(kind, quality);
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"/Items/{peerItemId:N}/Images/{type}?format=Jpg&maxWidth={width}&quality={jpegQuality}&tag={tag}");
     }
 
     private static int WidthFor(ImageKind kind, ArtQuality quality) => Sizes(kind, quality).Width;
@@ -218,16 +273,9 @@ public sealed class ImageFetcher : IDisposable
         _ => ("Backdrop", 1920, 80),
     };
 
-    private async Task<(ImageFetchResult? Failure, byte[]? Bytes, ImageInfo Info)> DownloadAsync(
-        PeerEndpoint peer,
-        Guid peerItemId,
-        ImageKind kind,
-        string tag,
-        ArtQuality quality,
-        CancellationToken cancellationToken)
+    private async Task<(ImageFetchResult? Failure, byte[]? Bytes, ImageInfo Info)> DownloadAsync(PeerEndpoint peer, string path, PeerCallProfile profile, long maxBytes, CancellationToken cancellationToken)
     {
-        var profile = kind == ImageKind.Poster ? PeerCallProfile.PosterImage : PeerCallProfile.BackdropImage;
-        var request = PeerRequest.GetMedia(PathFor(peerItemId, kind, tag, quality));
+        var request = PeerRequest.GetMedia(path);
         try
         {
             using var response = await _client.SendAsync(peer, request, profile, cancellationToken).ConfigureAwait(false);
@@ -242,6 +290,11 @@ public sealed class ImageFetcher : IDisposable
             }
 
             var bytes = await response.ReadBytesAsync(cancellationToken).ConfigureAwait(false);
+            if (bytes.Length > maxBytes)
+            {
+                return (new ImageFetchResult(ImageOutcome.TooLarge), null, default);
+            }
+
             var refusal = ImageProbe.Inspect(bytes, out var info);
             if (refusal != ImageRefusal.None)
             {
@@ -266,9 +319,8 @@ public sealed class ImageFetcher : IDisposable
         }
     }
 
-    private ImageFetchResult Store(PeerEndpoint peer, ImageKind kind, byte[] bytes, ImageInfo info, string stubRoot, string folder, DiskQuota quota)
+    private ImageFetchResult Store(PeerEndpoint peer, string baseName, byte[] bytes, ImageInfo info, string stubRoot, string folder, DiskQuota quota)
     {
-        var baseName = kind == ImageKind.Poster ? PosterName : BackdropName;
         var otherExtension = info.Format == ImageFormat.Png ? ".jpg" : ".png";
         if (!PathSanitizer.TryConfine(folder, baseName + info.Extension, out var target)
             || !PathSanitizer.TryConfine(folder, baseName + otherExtension, out var twin)

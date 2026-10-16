@@ -17,14 +17,18 @@ public static class LibraryOptionsFactory
     /// <summary>The item types that can sit under a Shoal path; each gets a type entry with no fetchers, because an item type without an entry falls back to the server-wide providers (12.1).</summary>
     public static readonly IReadOnlyList<string> LockedTypes = ["Movie", "Video", "Trailer", "BoxSet"];
 
+    /// <summary>The item types that can sit under the path of a TV library (DESIGN v2.7.6): each gets a type entry with no fetchers.</summary>
+    public static readonly IReadOnlyList<string> TvLockedTypes = ["Series", "Season", "Episode", "Video"];
+
     /// <summary>
     /// Creates the options of a Shoal movie library.
     /// </summary>
     /// <param name="path">The library's only path: <c>&lt;StubRoot&gt;/&lt;peerKey&gt;/&lt;Subfolder&gt;</c>.</param>
     /// <param name="subtitleFetcherNames">The names of every subtitle provider core knows, to be listed as disabled.</param>
     /// <param name="mediaSegmentProviders">The names and ids of every media segment provider core knows, to be listed as disabled (a segment provider would analyze the stub), or null.</param>
+    /// <param name="tvShows">True for the options of a TV library (Series, Season and Episode locked as well, no automatic series grouping).</param>
     /// <returns>The options.</returns>
-    public static LibraryOptions Create(string path, IEnumerable<string> subtitleFetcherNames, IEnumerable<string>? mediaSegmentProviders = null)
+    public static LibraryOptions Create(string path, IEnumerable<string> subtitleFetcherNames, IEnumerable<string>? mediaSegmentProviders = null, bool tvShows = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(subtitleFetcherNames);
@@ -42,7 +46,7 @@ public static class LibraryOptionsFactory
 #pragma warning restore CS0618
             TypeOptions =
             [
-                .. LockedTypes.Select(static type => new TypeOptions
+                .. (tvShows ? TvLockedTypes : LockedTypes).Select(static type => new TypeOptions
                 {
                     Type = type,
                     MetadataFetchers = [],
@@ -58,6 +62,7 @@ public static class LibraryOptionsFactory
             EnableTrickplayImageExtraction = false,
             ExtractTrickplayImagesDuringLibraryScan = false,
             SaveTrickplayWithMedia = false,
+            EnableAutomaticSeriesGrouping = false,
             EnableLUFSScan = false,
             EnableEmbeddedTitles = false,
 

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -120,6 +121,8 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
     private readonly IOfflineNotice _notice;
     private readonly ILogger<StaticStreamHandler> _logger;
     private readonly IVersionResolver? _versions;
+    private readonly OfflineCards? _cards;
+    private readonly ReadAheadBudget? _readAhead;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StaticStreamHandler"/> class.
@@ -135,6 +138,8 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
     /// <param name="notice">The offline notice.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="versions">Maps the media source the client names to a version of the title (DESIGN v2.6.4); none means the title has one version.</param>
+    /// <param name="cards">The offline card; none means its media source is not served.</param>
+    /// <param name="readAhead">The byte budget for the read-ahead buffer of each stream, or null for none.</param>
     public StaticStreamHandler(
         StubCatalog catalog,
         IPeerEndpoints peers,
@@ -146,8 +151,12 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
         IStateStore state,
         IOfflineNotice notice,
         ILogger<StaticStreamHandler> logger,
-        IVersionResolver? versions = null)
+        IVersionResolver? versions = null,
+        OfflineCards? cards = null,
+        ReadAheadBudget? readAhead = null)
     {
+        _readAhead = readAhead;
+        _cards = cards;
         _versions = versions;
         _catalog = catalog;
         _peers = peers;
@@ -161,6 +170,20 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
         _logger = logger;
     }
 
+#pragma warning disable SA1202 // Next to the one place that calls it.
+    private async Task<IActionResult> ServeCardAsync(OfflineCards cards, FederatedRequest request, CancellationToken cancellationToken)
+    {
+        if (!_limiter.TryTake(request.Caller.UserId))
+        {
+            return new ShoalResult(StatusCodes.Status429TooManyRequests, null, 1);
+        }
+
+        var name = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == request.Stub.PeerKey)?.ShownName() ?? string.Empty;
+        return cards.Enabled && await cards.GetAsync(name, cancellationToken).ConfigureAwait(false) is { } clip
+            ? new OfflineCardResult(clip)
+            : new ShoalResult(StatusCodes.Status404NotFound);
+    }
+
     /// <inheritdoc />
     public async Task<IActionResult> HandleAsync(FederatedRequest request, CancellationToken cancellationToken)
     {
@@ -168,6 +191,13 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
         var http = request.Http;
         var caller = request.Caller;
         var peerKey = request.Stub.PeerKey;
+
+        // The offline card's own media source (owner request 2026-10-16): served from Home's cache, no peer call, no slot.
+        if (_cards is { } cards && ShoalRequest.Values(http.Request, "mediaSourceId") is [var cardSource]
+            && ShoalRequest.TryParseGuid(cardSource, out var cardId) && cardId == OfflineCards.SourceIdOf(request.ItemId))
+        {
+            return await ServeCardAsync(cards, request, cancellationToken).ConfigureAwait(false);
+        }
 
         // A media source the client names must be a version of this title: this item itself, or another member of its set (DESIGN v2.6.4).
         string? namedSource = null;
@@ -240,7 +270,7 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
         }
 
         // 3. the slot (6.9)
-        var lease = _slots.TryOpenStatic(caller.UserId, slotItem, peerKey, peerState.MaxConcurrentStreams, out var denial);
+        var lease = _slots.TryOpenStatic(caller.UserId, slotItem, peerKey, peerState.MaxConcurrentStreams, out var denial, new SlotOrigin(entry.Kind == EntryKind.Episode ? entry.PeerSeriesId : string.Empty, caller.DeviceId));
         if (lease is null)
         {
             _logger.LogInformation("A static stream was refused for lack of a slot ({Denial})", denial);
@@ -268,7 +298,7 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
                 return failure;
             }
 
-            return new StaticStreamResult(upstream, lease, verdict, ContainerToken(version is null || versionSource is null ? entry.Container : versionSource.Container ?? entry.Container), isHead, _logger);
+            return new StaticStreamResult(upstream, lease, verdict, ContainerToken(version is null || versionSource is null ? entry.Container : versionSource.Container ?? entry.Container), isHead, _logger, _readAhead);
         }
         catch (PeerCallException ex)
         {
@@ -410,6 +440,10 @@ internal sealed class StaticStreamResult : IActionResult
 {
     private const int BufferSize = 81 * 1024;
 
+    /// <summary>The read-ahead buffer of one direct-play stream: a few MB that Home keeps filled from the friend's server while the client reads.</summary>
+    internal const int ReadAheadBytes = 4 * 1024 * 1024;
+
+    private readonly ReadAheadBudget? _readAhead;
     private readonly PeerResponse _upstream;
     private readonly StaticLease _lease;
     private readonly StaticStreamHandler.StaticVerdict _verdict;
@@ -417,8 +451,9 @@ internal sealed class StaticStreamResult : IActionResult
     private readonly bool _head;
     private readonly ILogger _logger;
 
-    public StaticStreamResult(PeerResponse upstream, StaticLease lease, StaticStreamHandler.StaticVerdict verdict, string? container, bool head, ILogger logger)
+    public StaticStreamResult(PeerResponse upstream, StaticLease lease, StaticStreamHandler.StaticVerdict verdict, string? container, bool head, ILogger logger, ReadAheadBudget? readAhead = null)
     {
+        _readAhead = readAhead;
         _upstream = upstream;
         _lease = lease;
         _verdict = verdict;
@@ -431,6 +466,7 @@ internal sealed class StaticStreamResult : IActionResult
     {
         var http = context.HttpContext;
         var response = http.Response;
+        Stream? buffered = null;
         try
         {
             response.StatusCode = _verdict.Status;
@@ -453,7 +489,8 @@ internal sealed class StaticStreamResult : IActionResult
                 return;
             }
 
-            var body = _upstream.OpenBody(); // owned by the upstream response
+            var body = ReadAheadBody.Wrap(_upstream.OpenBody(), ReadAheadBytes, _readAhead); // the upstream body is owned by the upstream response
+            buffered = body;
             var buffer = new byte[BufferSize];
             int read;
             while ((read = await body.ReadAsync(buffer.AsMemory(), http.RequestAborted).ConfigureAwait(false)) > 0)
@@ -474,6 +511,11 @@ internal sealed class StaticStreamResult : IActionResult
         }
         finally
         {
+            if (buffered is ReadAheadBody readAheadBody)
+            {
+                await readAheadBody.DisposeAsync().ConfigureAwait(false); // stops the background read before the upstream response goes
+            }
+
             await _upstream.DisposeAsync().ConfigureAwait(false);
             _lease.Dispose();
         }

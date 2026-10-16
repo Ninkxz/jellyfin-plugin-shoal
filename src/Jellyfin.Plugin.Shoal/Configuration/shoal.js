@@ -23,6 +23,209 @@
 /* ====================================================================================== */
 
 const STRINGS = {
+    // ---- pairing v2 (docs/ui-spec-pairing-v2.md): every line of the new pair and share flows. No dashes in any of it. ----
+    installTitle: "This server doesn't have Shoal yet, or has an older Shoal",
+    installBody: "Both servers need Shoal. Ask your friend to install it from the link below, then check again.",
+    installMessage: "Hi! I'd like to watch some of your movies through Shoal. Both of our Jellyfin servers need the Shoal plugin. You can install it here: {url} After that, open Shoal in your Jellyfin dashboard, choose Share with a friend, and send me the invite. My server is called {home}.",
+    installMessageLabel: "Message to your friend",
+    checkAgain: "Check again",
+    pv2CodeNumber: "That's a number, not an invite or a safety code. An invite starts with shoal1. A safety code is 8 letters and numbers, like K7QM 2XA4.",
+    needsRepairTitle: "Needs re-pair by invite",
+    needsRepairBody: "{server} was paired the old way, which Shoal no longer supports, so it is paused. Its titles stay listed. Ask your friend to install Shoal and send an invite, then re-pair.",
+    repairWithInvite: "Re-pair with an invite",
+    repairBlockedChip: "Needs a safer address",
+    repairBlockedHint: "Switch this server to Tailscale or https, then pair it again, or remove it.",
+    repairBlockedTitle: "This server cannot be paired again as it is",
+    repairBlockedBody: "{server} is on plain http outside Tailscale, and invites are refused there. Switch this server to Tailscale or https, then pair it again, or remove it.",
+    changeAddressSteps: "Change the address: give your friend's server a Tailscale name or an https address, then add it again with an invite.",
+    removeOrChangeAddress: "Remove or change the address",
+    chipNeedsRepair: "Needs re-pair by invite",
+    hintNeedsRepair: "{server} was paired the old way and is paused. Re-pair it with an invite.",
+    legacyBanner: ["{n} server was paired the old way and is paused. Re-pair it with an invite.", "{n} servers were paired the old way and are paused. Re-pair each with an invite."],
+    out_unknown_title: "Pairing didn't finish",
+    out_unknown_body: "Something stopped this pairing. Nothing was saved. Start again with a new invite.",
+    pv2PageShare: "Share with a friend",
+    pv2StepAddress: "Server address",
+    pv2StepInvite: "Get an invite",
+    pv2StepCode: "Read the code",
+    pv2StepReach: "How your friend reaches you",
+    pv2StepWait: "Wait for your friend",
+    pv2WhoYou: "You do this",
+    pv2WhoFriend: "Your friend does this",
+    pv2WhoWait: "Shoal does this, just wait",
+    pv2SayLead: "Say to your friend:",
+    pv2SayLeadTo: "Say to {friend}:",
+    pv2CopyMessage: "Copy message",
+    pv2Copied: "Copied",
+    pv2Under3: "Under 3 minutes left.",
+    pv2Under3Invite: "If this is not enough time, ask your friend for a new invite.",
+    pv2Under3Code: "If this is not enough time, cancel and get a new code.",
+    pv2Under3Share: "If {friend} needs more time, make a new invite.",
+    // where each code goes
+    pv2CodesTitle: "Where each code goes",
+    pv2WhereLink: "Where does each code go?",
+    pv2ShowCodes: "Show where each code goes",
+    pv2WhoMakes: "Made by:",
+    pv2WhoTypes: "Typed by:",
+    pv2WhereGoes: "Goes in:",
+    pv2CodeRowInvite: "Invite",
+    pv2LooksInvite: "a long text starting with shoal1",
+    pv2CodeRowSafety8: "Safety code, 8 characters",
+    pv2LooksSafety8: "K7QM 2XA4",
+    pv2MadeByFriendShoal: "Your friend, in their Shoal",
+    pv2MadeByFriendShoalShows: "Your friend's Shoal shows it to them",
+    pv2MadeByYouHere: "You, on this page",
+    pv2MadeByThisPage: "This page shows it to you",
+    pv2TypedByYou: "You",
+    pv2TypedByFriend: "Your friend",
+    pv2GoesInviteBox: "The Invite box in this wizard",
+    pv2GoesFriendInviteBox: "The Invite box in their Shoal",
+    pv2GoesFriendApprove: "On their Shoal, in the approval box",
+    pv2GoesApproveBox: "The approval box on this page",
+    // step 1 and the route question
+    pv2DirTitle: "What do you want to do?",
+    pv2DirWatch: "Watch a friend's library",
+    pv2DirWatchBody: "Their movies show up in your library. They keep the files.",
+    pv2DirShare: "Share my library with a friend",
+    pv2DirShareBody: "Your movies show up in their library. Your friend needs Shoal too.",
+    pv2DirBoth: "To do both, pair once each way.",
+    pv2ChooseOne: "Choose one to continue",
+    // step 3, the address
+    pv2AddrTitle: "What is your friend's server address?",
+    pv2NameHelp: "Your users see this in library names, like Hops Movies.",
+    pv2AddrHelp: "Ask your friend to send it. For example http://myserver.tail1234.ts.net:8096",
+    pv2ReachPrivate: "Private address (home network or Tailscale router)",
+    pv2NetHelpPrivate: "Not encrypted. Works only if your two servers share a network or Tailscale routes it. A Tailscale name is easier.",
+    pv2NetChose: "Shoal chose this from the address. Change it if it's wrong.",
+    pv2AddrTailscale: "Looks like a Tailscale address. Both servers need Tailscale running.",
+    pv2AddrPrivate: "This is a private address inside your friend's network. It only works from here if your servers share a network, or Tailscale routes it. Ask your friend for their Tailscale name if you can.",
+    pv2AddrSelf: "That points to this server itself. Use your friend's address.",
+    pv2ShAddrPrivate: "This is a private address inside your own network. It only works for {friend} if the two servers share a network, or Tailscale routes it. A Tailscale name or an https address is easier.",
+    pv2ShAddrSelf: "localhost and 127 addresses only work on this server. Send an address {friend} can reach.",
+    pv2AddrHttpsNumbers: "Addresses made of numbers rarely have a valid https certificate, so the check may fail. A name works better.",
+    pv2AddrHttps8096: "Jellyfin uses plain http on port 8096 unless your friend turned on https there. If the check fails, try http, or ask for their https address.",
+    pv2AddrHttpPublic: "Over the internet the address must start with https://.",
+    pv2AddrInternet: "Looks like an internet address. It needs a valid https certificate.",
+    pv2AddrTrimmed: "Shoal removed {path}. Only the start of the address is needed.",
+    pv2AddrNoScheme: "Start the address with http:// or https://.",
+    pv2AddHttp: "Add http://",
+    pv2ErrHttpsOnly: "Internet servers need an address that starts with https://. A DMZ or port forward on their router does not change this.",
+    pv2ErrUnreachable: "Shoal could not reach that address from this server.",
+    pv2Unreach_1: "Check the address for typing mistakes.",
+    pv2Unreach_2: "If the address is https, try http with the same address, or the other way round.",
+    pv2Unreach_3: "If your friend uses Tailscale, check that Tailscale is running on both servers.",
+    pv2Unreach_4: "A private address only works if your servers share a network or Tailscale routes it.",
+    pv2OpenHelper: "Open the connection helper",
+    pv2ErrCert: "That server's https certificate isn't trusted, so Shoal won't connect. A name usually has a valid certificate. An address made of numbers almost never does. Ask your friend for a name, or use Tailscale.",
+    pv2ErrNotJellyfin: "That address answered, but it isn't a Jellyfin server. Check the port. Jellyfin usually uses 8096.",
+    pv2HelperTitle: "Not sure which address to use?",
+    pv2HelperLead: "The address must be one that works from your server, not from your friend's living room.",
+    pv2HelperSay: "Please send me the address of your Jellyfin that I can reach from my server. If you use Tailscale, send the Tailscale name.",
+    pv2Setup1Title: "Your friend shared their server with you in Tailscale",
+    pv2Setup1Body: "Use the Tailscale name of the Jellyfin machine, or its Tailscale address that starts with 100, for example http://myserver.tail1234.ts.net:8096. Plain http is fine here, Tailscale encrypts it. The Jellyfin computer needs to be its own Tailscale machine. Choose Tailscale.",
+    pv2Setup2Title: "Your friend shares their home network through a Tailscale router",
+    pv2Setup2Body: "You can use their home address, for example http://10.0.0.20:8096. This only works if Tailscale on your server accepts that route, and your friend approved it. Choose Private address. If it doesn't work, the easy fix is to install Tailscale on the Jellyfin computer itself.",
+    pv2Setup3Title: "Your friend has a public https address",
+    pv2Setup3Body: "Use the name, for example https://movies.example.com. It must start with https:// and have a real certificate. Usually there is no port number. Choose Internet.",
+    pv2Setup4Title: "Your friend put their server in a DMZ or opened a port on the router",
+    pv2Setup4Body: "That is a router setting. Shoal does not need to know about it. What matters is the address you can reach: a public https name, or Tailscale. Plain http over the open internet is not accepted. Choose Internet and use https.",
+    pv2SetupClose: "Same house? Use the home address, for example http://192.168.1.20:8096, and choose Private address.",
+    pv2UseSetup: "Use this setup",
+    // step 4, the check
+    pv2CheckTitle: "Is this the right server?",
+    pv2ServerIdNote: "Shoal uses the Server ID later to notice if this address starts leading somewhere else.",
+    pv2HasShoalYes: "Shoal is installed there. Good.",
+    pv2YesThisIsIt: "Yes, this is it",
+    pv2NoChangeAddress: "No, change the address",
+    // invite route
+    pv2InviteTitle: "Ask your friend for an invite",
+    pv2InviteStep_1: "Open Shoal in the Jellyfin dashboard, under Plugins.",
+    pv2InviteStep_2: "Choose Share with a friend.",
+    pv2InviteStep_3: "Pick the libraries to share and choose Continue.",
+    pv2InviteStep_4: "Choose how your server is reached, then choose Create invite.",
+    pv2InviteStep_5: "Send the invite and their server address to you.",
+    pv2InviteSay: "I'm ready for the invite. Please make it now, because it only lasts 15 minutes.",
+    pv2InviteLabel: "Invite",
+    pv2InviteHelp: "Paste it here. It starts with shoal1.",
+    pv2InviteFor: "Your invite is for {address}.",
+    pv2InviteLeft: ["This invite has about {m} minute left.", "This invite has about {m} minutes left."],
+    pv2PasteToContinue: "Paste the invite to continue",
+    pv2ErrInviteEmpty: "Paste the invite your friend sent.",
+    pv2ErrInviteOther: "That invite is for a different server. Check that you are using the address your friend sent with the invite.",
+    pv2ErrInviteGone: "That invite no longer works. It lasts 15 minutes and works once. Ask your friend to choose Create a new invite, then paste it here.",
+    pv2ErrInviteLan: "Invites need Tailscale or an https address so nobody on the network can copy them. There is no other way to pair over plain http. Use a Tailscale name or an https address instead.",
+    pv2ChangeAddress: "Change the address",
+    pv2CodeTitle: "Read this code to your friend",
+    pv2CodeBody: "Your friend types this code into the box on their Shoal. It proves you are talking to the right person.",
+    pv2CodeSay: "Open Shoal. There is a request from {home}. Type this code when it asks. I'll read it slowly: {code}.",
+    pv2NoRequestTitle: "My friend doesn't see a request",
+    pv2NoRequestBody: "Make sure they opened Shoal on {server} and chose the request from {home}. If there is nothing there, cancel and check the address with them.",
+    pv2ApprovedConnecting: "Approved. Connecting…",
+    // Quick Connect route
+    // code recognition
+    pv2CodeSafety: "That's a safety code. It's read out and typed on your friend's Shoal. It does not go in this box.",
+    pv2CodeAddress: "That's an address. It goes in Server address on the earlier step.",
+    pv2GoToAddress: "Go to the address",
+    pv2MoveInvite: "Move it to the Invite box",
+    pv2CodeInviteElsewhere: "That's an invite. It goes in the Invite box on the invite step.",
+    pv2CodeCutOff: "That invite looks cut off. Copy the whole text, from the first letter to the end.",
+    pv2CodeOther: "That doesn't look like an invite. An invite starts with shoal1.",
+    pv2CodeSafetyShape: "A safety code is 8 letters and numbers, like K7QM 2XA4.",
+    // recovery cards
+    pv2Kept: "Kept: {what}",
+    pv2KeptWatch: "the name {name}, the address {url} and the route",
+    pv2KeptWatchNoUrl: "the name and the address",
+    pv2KeptShare: "{friend}, the libraries and the address",
+    pv2RanOutInviteTitle: "The invite ran out",
+    pv2RanOutInviteBody: "Invites last 15 minutes and work once. Nothing was saved. Ask your friend to choose Create a new invite in Shoal, then paste it here.",
+    pv2InviteDidntTitle: "That invite didn't work",
+    pv2InviteDidntBody: "It may have run out, been used already, or been replaced by a newer one. Ask your friend for a new one.",
+    pv2DeniedTitle: "Your friend chose Deny",
+    pv2DeniedBody: "Nothing was saved. If that was a mistake, ask them for a new invite.",
+    pv2MismatchTitle: "The safety code didn't match",
+    pv2MismatchBody: "Your friend typed the wrong code 3 times, so their Shoal cancelled the request and the invite. Nothing was saved. Read the code again slowly, one group at a time. If it still fails, check the address with your friend.",
+    pv2PasteNewInvite: "Paste a new invite",
+    pv2WhoLineInvite: "Your friend makes a new invite, then you paste it.",
+    pv2CodeCancelled: "The code was cancelled.",
+    // share side
+    pv2ShWhoTitle: "Who are you sharing with?",
+    pv2ShNote: "Shoal makes a hidden sharing account for {friend}. It can only watch the libraries you pick, can't change anything, and you can remove it anytime.",
+    pv2ShReachTitle: "How will {friend} reach your server?",
+    pv2ShTs: "Through Tailscale. I shared this server with {friend}",
+    pv2ShTsHint: "Their address will look like http://myserver.tail1234.ts.net:8096",
+    pv2ShPublic: "Through a public https address",
+    pv2ShPublicHint: "Their address will look like https://movies.example.com",
+    pv2ShHome: "Through my home network or a Tailscale router",
+    pv2ShHomeHint: "Use only if {friend} is on the same network or routes it. Invites do not work over plain http, so give {friend} a Tailscale name or an https address.",
+    pv2ShHomeHttp: "That address is plain http. Invites need Tailscale or an https address, so {friend} could not use this invite. Use a Tailscale name or an https address instead.",
+    pv2ShAddrLabel: "The address to send",
+    pv2ShAddrHelp: "This is the address {friend} will type. It must work from their server.",
+    pv2ShAddrHelpEmpty: "Type the address {friend} should use, for example https://movies.example.com",
+    pv2ShHelperTitle: "Which address do I use?",
+    pv2ShHelperLead: "The address must be one that works from {friend}'s server, not from your living room.",
+    pv2ShSetup1Title: "I shared my server with {friend} in Tailscale",
+    pv2ShSetup1Body: "Send the Tailscale name of this Jellyfin machine, or its Tailscale address that starts with 100, for example http://myserver.tail1234.ts.net:8096. Plain http is fine here, Tailscale encrypts it. This computer needs to be its own Tailscale machine. Choose Tailscale.",
+    pv2ShSetup2Title: "I share my home network through a Tailscale router",
+    pv2ShSetup2Body: "{friend} can use this server's home address, for example http://10.0.0.20:8096. This only works if Tailscale on their server accepts that route and you approved it. Choose the home network option. If it doesn't work, the easy fix is to install Tailscale on this computer itself.",
+    pv2ShSetup3Title: "This server has a public https address",
+    pv2ShSetup3Body: "Send the name, for example https://movies.example.com. It must start with https:// and have a real certificate. Usually there is no port number. Choose the public https option.",
+    pv2ShSetup4Title: "I put this server in a DMZ or opened a port on my router",
+    pv2ShSetup4Body: "That is a router setting. Shoal does not need to know about it. What matters is the address {friend} can reach: a public https name, or Tailscale. Plain http over the open internet is not accepted. Choose the public https option and use https.",
+    pv2ShSetupClose: "Same house? Send the home address, for example http://192.168.1.20:8096, and choose the home network option.",
+    pv2ShSayMaking: "I'm making the invite now. It lasts 15 minutes. Tell me when you're ready to paste it.",
+    pv2ShSendTitle: "Send this to {friend}",
+    pv2ShMessageLabel: "Message to send",
+    pv2ShSecretWarn: "This message contains the invite. Send it privately, only to {friend}.",
+    pv2ShMessage: "Shoal invite for you. Address: {address}. Invite: {invite}. It lasts 15 minutes. In Shoal, choose Pair a server, Yes they use Shoal, then paste the address and the invite. Your screen will show a code. Read it to me and I will type it.",
+    pv2ShSendSay: "I sent you the message. When Shoal shows you a code, read it out to me.",
+    pv2ShApproveTitle: "Type the code {friend} reads to you",
+    pv2ShCodeLabel: "Safety code from {friend}",
+    pv2ShRestarted: "{friend}'s server started this request again. Check the code with {friend} again.",
+    pv2ShCodeHelp: "8 letters and numbers, like K7QM 2XA4. {friend} sees it on their screen.",
+    pv2ShRanOutTitle: "The invite ran out",
+    pv2ShRanOutBody: "Invites last 15 minutes and work once. Make a new one when {friend} is ready.",
+    pv2ShMakeNew: "Make a new invite",
+    pv2ShCreateNew: "Create a new invite",
     appName: "Shoal",
     navOverview: "Overview",
     navLibraries: "Libraries & access",
@@ -31,6 +234,19 @@ const STRINGS = {
     loadFailed: "Shoal couldn't load. Your server didn't answer. Try again in a moment.",
     tryAgain: "Try again",
     genericFailure: "That didn't work. Try again in a moment.",
+    needsNewerShoal: "This feature needs a newer Shoal. Update it in Dashboard, Plugins, Shoal, then restart Jellyfin.",
+    versionLine: "Shoal version {version}",
+    versionNewer: "A newer Shoal is available: {latest}. Update it in Dashboard, Plugins, Shoal, then restart Jellyfin.",
+    unreadableAnswer: "Your server answered in a way this page could not read. The action may have worked: reload the page to see.",
+    unexpectedError: "Something went wrong in this page. Reload it and try again. If it keeps happening, tell the developer: {detail}",
+    removeBlockedSyncing: "Shoal is syncing {server} right now, so it can't be removed yet. Wait for the sync to finish, then press Remove server again.",
+    removeBlockedPairing: "A pairing with {server} is in progress. Cancel it first (Pair a server, then Cancel pairing), then remove the server.",
+    dedupNote: ["{count} title comes from {winner} instead (it wins when both have the same title). Set priority or remove it to use this server's copy.", "{count} titles come from {winner} instead (it wins when both have the same title). Set priority or remove it to use this server's copy."],
+    dedupNoteHome: ["{count} title is your own copy instead (yours wins when both have the same title).", "{count} titles are your own copies instead (yours win when both have the same title)."],
+    removeFailed: "Shoal couldn't remove the server. Nothing was changed. Try again in a moment.",
+    ghostPairing: "This pairing is not there any more: the server it was for was removed. Start over to pair again.",
+    startOver: "Start over",
+    remoteUnreachable: "Shoal couldn't reach {server} just now, so it can't list its libraries. Check that the server is online, then try again.",
     saveFailed: "Couldn't save. Try again in a moment.",
     tooManyTries: "Too many tries. Try again in a few minutes.",
     noticeGone: "That server isn't paired anymore.",
@@ -83,6 +299,9 @@ const STRINGS = {
     statusOnline: ["{online} of {total} server online", "{online} of {total} servers online"],
     needAttention: ["{n} needs attention", "{n} need attention"],
     titlesSharedWithYou: ["{count} title shared with you", "{count} titles shared with you"],
+    titlesOfflineToo: ["{count} title shared with you, {off} more on servers that are offline", "{count} titles shared with you, {off} more on servers that are offline"],
+    titlesOnlyPaused: ["Nothing available right now: {count} title on a paused server", "Nothing available right now: {count} titles on paused servers"],
+    titlesOnlyOffline: ["Nothing available right now: {off} title on a server that is offline", "Nothing available right now: {off} titles on servers that are offline"],
     lastSync: "Last sync {when}",
     notSyncedYet: "Not synced yet",
     friendsServers: "Friends' servers",
@@ -106,6 +325,7 @@ const STRINGS = {
     friendsEmpty: "No one watches from your server yet. Share a library and it shows up on their server, next to theirs.",
     friendMeta: "{libs} · {devs} · last seen {when}",
     friendActive: "Active",
+    friendWaiting: "Waiting for friend",
     friendPaused: "Paused",
     friendRemoved: "Access removed",
     unexpectedDevices: ["{n} unexpected device signed out", "{n} unexpected devices signed out"],
@@ -116,8 +336,6 @@ const STRINGS = {
     noPictures: "No pictures yet",
     waitingFor: "Waiting for {server}",
     pillLatest: "Latest from {server}: {title}",
-    pillOffline: "Offline",
-    pillPaused: "Paused",
     viaTailscale: "via Tailscale",
     viaHome: "via home network",
     viaInternet: "via internet (HTTPS)",
@@ -134,6 +352,8 @@ const STRINGS = {
     speedShownBelow: "Speed shown below",
     testLinkAgain: "Test link again",
     retryNow: "Retry now",
+    announceTestStarted: "Testing the link. The result shows in about a minute.",
+    announceRetryStarted: "Checking the server again. The result shows in about a minute.",
     retrying: "Retrying…",
     pairAgain: "Pair again",
     resume: "Resume",
@@ -165,7 +385,7 @@ const STRINGS = {
     verdictWord_mayBuffer: "might pause",
     verdictWord_needsTranscode: "needs transcode",
     verdictWord_willBuffer: "will buffer",
-    hintRelayed: "Traffic is relayed, so it's slower than a direct link. Ask {server}'s admin to allow UDP 41641 on their router.",
+    hintRelayed: "This friend is connected through a Tailscale relay, so speed is limited. Open UDP 41641 on one side.",
     hintMaybeRelayed: "This link may be relayed. To check, run tailscale ping {host} on your server.",
     hintUnstable: "The link is unstable ({jitter} ms jitter, {loss}% loss), so playback may pause.",
     hintPaused: "You paused {server}. Its titles stay listed but won't play.",
@@ -252,7 +472,7 @@ const STRINGS = {
     chartTitle: "Speed from {server}, {range}",
     showAsTable: "Show as a table",
     tableSpeedCaption: "Speed tests, {range}",
-    chartSummaryMany: "Speed from {server} over the {range}: {n} tests, between {min} and {max} Mbps, latest {mbps} Mbps at {time}.",
+    chartSummaryMany: "Speed from {server} over the {range}: {n} measurements (tests and plays), between {min} and {max} Mbps, latest {mbps} Mbps at {time}.",
     chartSummaryOne: "Speed from {server} over the {range}: one test, {mbps} Mbps at {time}.",
     chartSummaryNone: "No speed tests from {server} in the {range}.",
     chartEvery: "Every test was above the {mbps} Mbps needed for {quality}.",
@@ -288,8 +508,11 @@ const STRINGS = {
 
     // overlap
     overlapTitle: "Library overlap with {server}",
-    overlapSentence: "You both have **{both} titles** ({bothSize} of your storage). {server} adds **{gain} titles** ({gainSize}) you don't store.",
-    overlapAria: "You both have {both} titles ({bothSize} of your storage). {server} adds {gain} titles ({gainSize}) you don't store.",
+    overlapSentence: "You both have **{both} {bothWord}** ({bothSize} of your storage). {server} adds **{gain} {gainWord}** ({gainSize}) you don't store.",
+    titleWord: ["title", "titles"],
+    itemWord: ["item", "items"],
+    titlesCounted: "Titles are movies and series. Seasons and episodes belong to their series and are not counted on their own.",
+    overlapAria: "You both have {both} {bothWord} ({bothSize} of your storage). {server} adds {gain} {gainWord} ({gainSize}) you don't store.",
     legendBoth: "In both libraries · {n} · {size}",
     legendNew: "New from {server} · {n} · {size}",
     fullReport: "Full report",
@@ -316,6 +539,9 @@ const STRINGS = {
     youShareIntro: "What each friend's server can see from yours.",
     noLibrariesYet: "No libraries from friends yet.",
     noSharing: "You aren't sharing any libraries.",
+    libraryMetaSplit: "{remote} on their server, {local} here · last sync {when}",
+    libraryFromMetaSplit: "From {name} · {remote} on their server, {local} here · last sync {when} ({result})",
+    libMetaRemote: "{type} · {count} on their server",
     libraryMeta: ["{count} title \u00b7 last sync {when}", "{count} titles \u00b7 last sync {when}"],
     shareMeta: "{k}: {names} \u00b7 highest quality {limit} \u00b7 {tc}",
     limitMbps: "{n} Mbps",
@@ -385,7 +611,6 @@ const STRINGS = {
     noteAllLibraries: "Has access to all libraries. If unticked, Shoal hides this library from them and keeps the rest as it is.",
     noteRestricted: "Parental limits: ratings come from {server} and aren't checked",
     noteManaged: "Shoal keeps this account's library list so it can hide some friends' libraries.",
-    codeLabel: "Code {code}",
     safetyCodeLabel: "Safety code {code}",
     typeToConfirm: "Type {text} to confirm",
     typedHelp: "The button turns on when the text matches exactly.",
@@ -430,9 +655,20 @@ const STRINGS = {
     sOffline: "Offline servers",
     fNotify: "Tell people when a server is offline",
     fNotifyNote: "When someone presses Play on a title from an offline server, their app shows a short message, if the app supports it.",
-    fPark: "Hide a server's titles after it's been offline for",
+    fPark: "Hide a server's libraries while it's offline",
     fParkHours: "Hours offline before hiding",
-    fParkWarn: "Experimental. Hiding and showing titles again might lose watch history.",
+    fBufferAhead: "Video chunks to load ahead",
+    fBufferAheadHelp: "How many video chunks your server loads ahead from a friend's server. Higher smooths a slow link and uses more memory.",
+    fOfflineCard: "Show a short video when a friend's server is offline",
+    fOfflineCardNote: "When a friend's server is offline, play shows a short video saying so instead of an error.",
+    fRequestName: "Request service name",
+    fRequestNameHelp: "What the offline message calls the place where people ask for a title, for example Seerr.",
+    fRequestUrl: "Request service address (optional)",
+    fRequestUrlHelp: "Shown to you and in the offline message, never in the video. Starts with http:// or https://.",
+    errRequestUrl: "Use an address that starts with http:// or https://, or leave it empty.",
+    fParkHoursHelp: "For example 72 for three days. Use 0.5 for half an hour.",
+    fParkWarn: "Hiding only takes the libraries off people's lists, and nothing is deleted, so watch history stays. They come back after the server has been online for 10 minutes. People who see all libraries still see the titles. While a server is hidden, change who can see it with its access setting, not by ticking the library on a person's profile, because Shoal puts it back when the server returns.",
+    errHoursNumber: "Enter a number from {min} to {max}.",
     sTailscale: "Tailscale",
     fTailscale: "Read Tailscale status",
     tsAuto: "Automatically",
@@ -449,7 +685,7 @@ const STRINGS = {
     errWholeNumber: "Enter a whole number from {min} to {max}.",
     sProtect: "Protect your shared videos",
     protectLater: "This appears once you share a library.",
-    protectIntro: "Jellyfin lets anyone who knows a video's internal ID stream it without signing in. Shoal can require sign-in for the libraries you share. Your other libraries aren't affected.",
+    protectIntro: "Jellyfin lets anyone who knows a video's internal ID stream it without signing in. Shoal requires sign-in for the libraries you share, from the first install. Your other libraries aren't affected. If something breaks, switch to log only to see what would be blocked, or turn it off.",
     protectSince: "since {date}",
     modeLogOnly: "Log only",
     modeLogOnlyTitle: "Log only (test first)",
@@ -505,7 +741,7 @@ const STRINGS = {
     keyHelp: "To keep the key out of backups, set JELLYFIN_SHOAL_KEY_FILE to a file holding 32 random bytes as 64 hex characters, for example from openssl rand -hex 32. Changing the key means pairing every server again.",
     wrongInvites: "Wrong invites tried in the last hour: {n}",
     shareAccountsLimits: "Sharing accounts can't sign in again elsewhere or change their password.",
-    proxySuspected: "Most requests reach Jellyfin from one address on your own network, so Shoal can't tell visitors apart and its limits apply to everyone at once. If Jellyfin sits behind a reverse proxy, add the proxy under Known proxies in Dashboard > Networking.",
+    proxySuspected: "Most requests reach Jellyfin from one address on your own network, so Shoal can't tell visitors apart and its limits apply to everyone at once. If Jellyfin sits behind a reverse proxy, add the proxy under Known proxies in Dashboard, then Networking.",
     stateByCopy: "This folder can't make backups the usual way, so Shoal copies the file instead. That's fine.",
     keyVolumeUnsafe: "This drive can't protect Shoal's secret files. Treat secrets.enc and master.key as readable by anyone who can read the folder.",
     sParental: "Parental limits",
@@ -519,6 +755,9 @@ const STRINGS = {
     finding_libraryMissing: "The library {library} is missing in Jellyfin. Pair {server} again or remove it.",
     finding_orphanSecret: "Shoal has a saved key for a server that isn't in its settings. Nothing is using it.",
     finding_orphanFolder: "Shoal has a library folder that belongs to no paired server. Nothing is using it.",
+    finding_orphanFolders: ["{n} library folder belongs to no paired server. Nothing is using it.", "{n} library folders belong to no paired server. Nothing is using them."],
+    finding_orphanSecrets: ["{n} saved key belongs to a server that isn't in Shoal's settings. Nothing is using it.", "{n} saved keys belong to servers that aren't in Shoal's settings. Nothing is using them."],
+    findingFolderNames: "Folders: {names}",
     finding_orphanLibrary: "The library {library} has no paired server. This happens after a restore: pair the server again, or remove the library.",
     sDanger: "Delete all Shoal data",
     dangerBody: "Removes every paired server, every friend's access, Shoal's keys and the libraries Shoal created. People whose library list Shoal kept get All libraries back.",
@@ -577,7 +816,7 @@ const STRINGS = {
 
     // token rotation (DESIGN v2.6.1)
     rotationTitle: "Server key",
-    rotationNotSupported: "{server} was paired with Quick Connect, so Shoal cannot change its key. Pair it again to get a fresh key.",
+    rotationNotSupported: "{server} was paired the old way, so Shoal cannot change its key. Re-pair it with an invite to get a fresh key.",
     rotationLast: "Key last changed",
     rotationNext: "Next change",
     rotationNoSchedule: "Not scheduled",
@@ -594,7 +833,7 @@ const STRINGS = {
     rotateConfirm: "Change the key",
     announceRotated: "Changed {server}'s key",
     announceRotationSaved: "Key schedule saved",
-    rotateErr_notSupported: "This server was paired with Quick Connect. Pair it again to change its key.",
+    rotateErr_notSupported: "This server was paired the old way. Re-pair it with an invite to change its key.",
     rotateErr_notOnline: "The server is not online right now. Try again when it is.",
     rotateErr_streamsActive: "Someone is watching from this server. Try again when they have finished.",
     rotateErr_busy: "Another change is already running. Try again in a moment.",
@@ -691,51 +930,35 @@ const STRINGS = {
     notPaired: "Not paired",
     startAgain: "Start again",
     dismiss: "Dismiss",
-    changeAddress: "Change the address",
     stoppedAgo: "Stopped {when}",
     announceDismissedNew: "Removed from your list",
     announceDismissedBack: "{server} is back to how it was",
-    hintSafety_requestReplaced: "Your pairing request was replaced. Tell your friend not to enter that code.",
-    hintSafety_codesDidNotMatch: "The safety codes didn't match, so Shoal saved nothing.",
     hintSafety_serverChanged: "The server changed during pairing, so Shoal saved nothing.",
     hintSafety_adminAccount: "That was an admin account, so Shoal refused it.",
     hintSafety_badPeerResponse: "{server} didn't answer like Jellyfin, so Shoal stopped.",
     inviteNotice: "Someone tried {n} wrong invites on your server in the last hour. Your invites still work, and Shoal is slowing those attempts down. Keep sending invites privately.",
-    out_expired_title: "The code expired",
-    out_expired_body: "Codes last 10 minutes. Start again when your friend is ready.",
     out_expiredInvite_title: "The invite expired",
     out_expiredInvite_body: "Invites last 15 minutes. Ask your friend for a new one, then start again.",
-    out_expiredConfirm_title: "The code expired",
-    out_expiredConfirm_body: "You didn't confirm within 15 minutes, so Shoal signed out of {server} and saved nothing. Start again when you're both ready.",
     out_denied_title: "Your friend chose Deny",
     out_denied_body: "Your friend turned down the request on {server}, so nothing was saved. If that was a mistake, ask them for a new invite, then start again.",
     out_codeMismatch_title: "The safety code didn't match",
     out_codeMismatch_body: "Your friend typed a code that didn't match yours 3 times, so their server cancelled the request and the invite. Nothing was saved. Call them and read the code out slowly, one group at a time. Then ask for a new invite and start again. If it still doesn't match, stop and check the server address with them first.",
     out_inviteInvalid_title: "That invite didn't work",
     out_inviteInvalid_body: "It may have expired, been used already, or been cancelled. Ask your friend for a new one.",
+    out_inviteReplaced_title: "That invite was replaced",
+    out_inviteReplaced_body: "Your friend made a newer invite while this one was waiting, so their server dropped it. Nothing was saved. Ask them for the newest one, or have them send it again, then start again.",
+    out_inviteCancelled_title: "That invite was cancelled",
+    out_inviteCancelled_body: "Your friend cancelled the invite, or stopped sharing, before it was approved. Nothing was saved. Ask them for a new one, then start again.",
+    out_tokenNotCollected_title: "The approval wasn't collected in time",
+    out_tokenNotCollected_body: "Your friend approved, but this server didn't pick up the key within 2 minutes, so their server signed it out again. Nothing was saved. Check the connection, ask for a new invite, then start again.",
     out_adminAccount_title: "That account is an admin on {server}",
     out_adminAccount_body: "Shoal only accepts a limited sharing account, so it signed that account out and saved nothing. Ask your friend to approve the code from the sharing account they made for you.",
     out_serverChanged_title: "The server changed while pairing",
     out_serverChanged_body: "The server at this address isn't the one you checked. Shoal saved nothing. Check the address with your friend, then start again.",
-    out_codesDidNotMatch_title: "Pairing stopped for your safety",
-    out_codesDidNotMatch_body: "The safety codes didn't match, so another device may have taken your place. Shoal signed out of {server} and saved nothing. Ask your friend to delete the sharing account in Dashboard > Users and make a new one. Then start again.",
-    out_requestReplaced_title: "Pairing stopped for your safety",
-    out_requestReplaced_body: "Your pairing request was replaced, or {server} restarted. Tell your friend not to enter code {code}. If they already did, they should delete the sharing account and make a new one. Shoal saved nothing.",
-    out_requestReplacedStored_body: "Your pairing request was replaced, or {server} restarted. Tell your friend not to enter the code you sent. If they already did, they should delete the sharing account and make a new one. Shoal saved nothing.",
     out_badPeerResponse_title: "Pairing stopped for your safety",
     out_badPeerResponse_body: "{server} answered in a way Jellyfin never does, so Shoal stopped and saved nothing. Check the address with your friend, then start again.",
-    out_quickConnectOff_title: "Quick Connect is off on {server}",
-    out_quickConnectOff_body: "Ask your friend to turn on Quick Connect in Dashboard > General on {server}. Then start again.",
-    out_sessionLimitBlocked_title: "Your friend's server didn't accept the code",
-    out_sessionLimitBlocked_body: "If your friend sees an error when they approve, the session limit is probably still at 1. Ask them to set it to 0, then try again. Nothing was saved. Once you're paired, they set it back to 1.",
-    out_quickConnectUnreachable_title: "Couldn't find Quick Connect on {server}",
-    out_quickConnectUnreachable_body: "Shoal couldn't reach Quick Connect at this address. Check the address with your friend, including any /jellyfin at the end. Then start again.",
-    out_interruptedBefore_title: "The code expired",
-    out_interruptedBefore_body: "Your server restarted before your friend approved, so Shoal saved nothing. The code may still work on {server} for a few minutes, so if your friend entered it anyway, ask them to delete the device named Shoal: {home} in Dashboard > Devices. Nobody can use it, but it shouldn't stay there. Then start again.",
     out_interruptedInvite_title: "The invite expired",
     out_interruptedInvite_body: "Your server restarted while waiting for your friend, so this invite can't be finished and Shoal saved nothing. If your friend approves it anyway, their Shoal signs that connection out within 2 minutes. Ask them for a new invite, then start again.",
-    out_interruptedConfirm_title: "Shoal restarted before you confirmed",
-    out_interruptedConfirm_body: "Your server restarted while Shoal waited for you to compare the codes, so it saved nothing. Ask your friend to delete the device named Shoal: {home} in Dashboard > Devices on {server}. They can keep the same sharing account. Then start again.",
     out_rateLimited_title: "Too many tries",
     out_rateLimited_body: "Wait {m} min, then try again. Nothing was saved.",
     out_network_title: "Lost contact with {server}",
@@ -746,120 +969,50 @@ const STRINGS = {
     // pairing (ui-spec 8.2)
     stepsLabel: "Pairing steps",
     stepOf: "Step {i} of {n} · {label}",
-    stepConnect: "Connect",
     stepCheck: "Check the server",
-    stepPair: "Pair",
     stepChoose: "Choose what to add",
     stepWho: "Who and what",
-    stepInvite: "Invite",
     stepApprove: "Approve",
     pairTitleShort: "Pairing is still in progress",
-    directionTitle: "What do you want to do?",
-    dirWatch: "Watch a friend's library",
-    dirWatchBody: "Their movies show up in your library. They keep the files, and they don't need Shoal.",
-    dirShare: "Share your library with a friend",
-    dirShareBody: "Your movies show up in their library. Your friend needs Shoal too. You choose which libraries and can stop anytime.",
-    dirBoth: "To do both, pair once in each direction.",
-    chooseOne: "Choose one to continue",
-    connectTitle: "How will you connect?",
-    methodInvite: "My friend sent me an invite",
-    methodInviteBody: "They have Shoal and made an invite for you.",
-    methodAddress: "I have their server address",
-    methodAddressBody: "Your friend doesn't have Shoal. You'll send them a code to approve.",
-    fInvite: "Invite",
-    fInviteHelp: "Starts with shoal1-. Your friend makes it in Shoal under Share with a friend. It works once, for 15 minutes.",
     fServerName: "Name for this server",
-    fServerNameHelp: "Your users see it in library names, like Hops Movies.",
     charsLeft: "{n} left",
     fServerAddress: "Server address",
-    fServerAddressHelp: "For example http://hops-jellyfin.tail1234.ts.net:8096",
-    fServerAddressInvite: "Your friend's server address. The invite only works there.",
-    fServerAddressInviteNet: "It must be a Tailscale address (100.x or .ts.net) or an https address.",
-    inviteNudge: "If your friend has Shoal, ask them for an invite instead. It's easier and sets up their side for you.",
-    sendToFriend: "Send this to your friend",
-    sendToFriendIntro: "I'd like to watch some of your movies through Shoal. Please follow these steps on your Jellyfin server and tell me when you reach the code.",
-    addrPrivate: "This looks like an address on your friend's home network. You probably can't reach it from here. Use their Tailscale address (100.x or .ts.net) or an https address.",
-    addrHttps8096: "Jellyfin usually uses http on 8096 or https on 8920.",
     fReach: "How you reach it",
     reachTailnet: "Tailscale (private)",
     reachLan: "Home network (same house)",
     reachPublic: "Internet (https only)",
     netHelpTailnet: "Encrypted by Tailscale. Plain http is fine here.",
-    netHelpLan: "Not encrypted. Use Tailscale if you can.",
     netHelpPublic: "Needs an https address with a valid certificate.",
     advanced: "Advanced",
     fProxy: "Proxy (optional)",
     fProxyHelp: "Only if Tailscale on this server runs in userspace mode, for example socks5://127.0.0.1:1055",
-    fLanAck: "I understand Shoal's key travels unencrypted on my home network",
-    fLanAckNote: "Anyone on your network could copy it. Tailscale avoids this.",
     checkServer: "Check server",
     checking: "Checking…",
     errEnterName: "Enter a name.",
     errEnterAddress: "Enter the server address.",
-    errEnterInvite: "Paste the invite your friend sent.",
-    errInviteShape: "That doesn't look like a Shoal invite. It starts with shoal1-.",
-    errScheme: "Use an address that starts with http:// or https://.",
-    errHttpsOnly: "Internet servers need an https:// address.",
-    errLanAck: "Tick the box to continue, or use Tailscale.",
     errBlocked: "Shoal can't connect to that address. It points to this server itself or to a private service.",
     errWrongNetwork: "That address isn't a Tailscale address. Change How you reach it, or check the address.",
     errWrongNetworkLan: "That address isn't a home network address. Change How you reach it, or check the address.",
     errWrongNetworkPublic: "That address is on a private network, not the internet. Change How you reach it, or check the address.",
     errProxyNotAllowed: "A proxy only works with a Tailscale address (a .ts.net name or a 100.x address).",
-    errUnreachable: "Couldn't reach that server. Check the address, and that Tailscale is running on this server.",
-    errCertificate: "That server's certificate isn't trusted, so Shoal won't connect. Your friend needs a valid certificate.",
-    errNotJellyfin: "That address answered, but it isn't a Jellyfin server.",
-    errInviteWrongServer: "That invite is for a different server. Check the address, or ask your friend for the right invite.",
-    errInviteLanHttp: "Invites need Tailscale or an https address, so nobody on the network can copy them. On a home network over http, choose I have their server address instead.",
     rateLimitedIn: "Too many tries. You can try again in {n} min.",
     rateLimitedWait: "Too many tries. Wait {n} min, then try again.",
-    checkTitle: "Is this the right server?",
     factName: "Server name",
     factVersion: "Jellyfin version",
     factAddress: "Address",
     factLatency: "Latency",
     factServerId: "Server ID",
     factReach: "How you reach it",
-    serverIdHelp: "The Server ID lets Shoal notice later if this address leads to a different or reset server. It isn't a safety code.",
     warnUntested: "Shoal hasn't been tested with Jellyfin {version} yet. It will probably work.",
     warnLanClear: "Home network connections aren't encrypted.",
-    warnPublicQc: "Strangers on the internet can try to grab Quick Connect codes. If your friend installs Shoal and sends you an invite, pairing is safer.",
-    qcStartNote: "Start when your friend is ready. They'll have 10 minutes to enter the code.",
-    repairNote: "Pairing again? Ask your friend to set the sharing account's session limit to 0 first, and back to 1 once you're paired. If your friend sees an error when they approve, the session limit is probably still at 1. Ask them to set it to 0, then try again.",
-    newAccountWarn: "Last time, someone else may have got in with the old sharing account. Only a new account is safe.",
-    newAccountBox: "My friend deleted the old sharing account and made a new one",
-    newAccountNote: "Steps 2 and 3 of the steps for your friend.",
-    newAccountWhy: "Tick the box once your friend has made a new account.",
-    showSteps: "Show the steps",
     startPairing: "Start pairing",
     starting: "Starting…",
     alreadyPairing: "Another pairing is already in progress.",
     goToIt: "Go to it",
-    probeExpiredNote: "That check is more than 10 minutes old. Checking again…",
-    inviteCodeTitle: "Read this code to your friend",
-    inviteCodeBody: "Call or text your friend and give them this code. They type it into Shoal on {server} to approve. If what they type doesn't match, their server won't approve.",
-    inviteNoRequest: "If your friend says they weren't asked for a code, or don't see a request from {home}, cancel and check the address with them.",
     safetyCodeWord: "Safety code",
-    qcCodeWord: "Code for your friend",
     copyCode: "Copy code",
-    qcTitle: "Send this code to your friend",
-    gettingCode: "Getting a code from {server}…",
-    qcCheckLine: "After your friend approves, they'll see Shoal: {home} ({code}) in their Devices list. You'll compare it then.",
-    stepsForFriend: "Steps for your friend",
-    copySteps: "Copy steps",
-    announceStepsCopied: "Steps copied",
-    waitingForApprove: "Waiting for {server} to approve…",
-    waitingToAnswer: "Waiting for {server} to answer…",
-    keepsTrying: "Shoal keeps trying for 30 seconds.",
-    repairLimitLine: "If your friend sees an error when they approve, the session limit is probably still at 1. Ask them to set it to 0, then try again.",
     waitingForFriend: "Waiting for your friend to approve on {server}…",
-    qcApproved: "Approved. Shoal is connected to {server}.",
     confirmWithin: "Confirm within {time}",
-    compareTitle: "Compare the safety code",
-    compareBody: "Ask your friend to open Dashboard > Devices on {server} and find **{device}**. The code in brackets must match this one, and it must be the only Shoal device for that account.",
-    lockBody: "Then your friend locks the sharing account to that device: in the account's settings, untick Enable access from all devices, tick only the Shoal device, and save.",
-    codesMatch: "The codes match",
-    codesDontMatch: "They don't match",
     cancelPairing: "Cancel pairing",
     thisServer: "this server",
     thisServerName: "this server",
@@ -867,7 +1020,24 @@ const STRINGS = {
     chooseBody: "Pick libraries from {server}. At first only you can see them, so you can try them. When they work, open them to everyone here in Libraries & access.",
     loadingLibraries: "Loading libraries…",
     libMeta: ["{type} · {count} title", "{type} · {count} titles"],
+    libMetaTv: "{type} · {series} series, {episodes} episodes",
     libLater: "{type} are coming in a later version.",
+    libTvOff: "TV shows are turned off. Turn them on in Settings, under Extra features.",
+    ovTv: "TV shows. The counts above are movies and episodes, and each series is counted here. In both libraries: {a} series (episodes: {b}). New from {server}: {c} series (episodes: {d}).",
+    heldSeriesTitle: "Held back, by series",
+    heldSeriesIntro: "Shoal paused these changes from {server} until you decide. Each series is separate.",
+    heldRemovalsHead: "Removals on hold",
+    heldAdditionsHead: "Additions on hold",
+    heldSeriesRow: "{title} ({count} episodes)",
+    heldSeriesRowNoTitle: "A series ({count} episodes)",
+    heldSeriesRemove: "Remove now",
+    heldSeriesAdd: "Add now",
+    announceSeriesReleased: "Released",
+    pv2PingThrottled: "Shoal could not be checked just now because the server limited the check. Wait a minute and check again. This does not mean Shoal is missing.",
+    fTvShows: "Show TV series from friends",
+    fTvShowsNote: "Turn on to let Shoal sync TV libraries from friends, and to pick them when you add a library. It controls what Shoal syncs, not what Jellyfin already shows. Off by default.",
+    fTvThumbs: "Episode pictures",
+    fTvThumbsNote: "Keep a small picture for each episode. Turn off to save disk space.",
     libFromFriend: "Libraries from friends' servers can't be shared on.",
     type_movies: "Movies",
     type_tvshows: "TV shows",
@@ -883,16 +1053,15 @@ const STRINGS = {
     confirmBigAdd: "Tick the box under {library} to confirm adding all of its titles.",
     adding: "Adding…",
     addFailed: "Couldn't add those libraries. Try again in a moment.",
+    addConflict: "That library is already added, or another library already uses its name. Nothing was changed.",
     noStubRootAdd: "Shoal has no folder for its library files yet. Choose one in Settings, then add the libraries again.",
     pairedTitle: "{server} is paired",
     addingProgress: "Adding titles: {done} of {total}",
     addingTitles: "Adding titles",
     leavePage: "You can leave this page. Syncing keeps going in the background.",
     noOneCanSee: "No one can see {library} yet. Choose people in Libraries & access.",
-    finishRemind: "Remind your friend to finish: sign out of the private window, lock the sharing account to Shoal's device, then set its session limit to 1. {server}'s page shows Lock confirmed and Session limit 1 once they have.",
     goToOverview: "Go to Overview",
     openServer: "Open {server}",
-    shareWhoTitle: "Who and what",
     fFriendName: "Friend's name",
     fFriendNameHelp: "Shown only to you.",
     fLibrariesToShare: "Libraries to share",
@@ -904,15 +1073,8 @@ const STRINGS = {
     limit4: "4 Mbps (720p)",
     fTranscodes: "Transcodes at once",
     fTranscodesHelp: "How many videos {friend}'s server can ask yours to convert at the same time. Converting uses your CPU. This is a limit, not a hard cap: audio and subtitle conversions aren't counted.",
-    shareAccountNote: "Shoal creates a hidden sharing account for {friend} with a random password nobody ever sees. It can only watch these libraries, can't change anything, and you can remove it anytime.",
     yourFriend: "your friend",
     errEnterFriend: "Enter your friend's name.",
-    shareInviteTitle: "Invite {friend}",
-    shareTransportLegend: "How will {friend}'s server reach yours?",
-    transportTailnet: "I shared this server with {friend} in Tailscale",
-    transportTailnetBody: "Their server needs a network path to yours.",
-    transportPublic: "My server has a public https address",
-    transportPublicBody: "It needs a valid certificate.",
     transportWhy: "Choose one to create the invite.",
     creatingInvite: "Creating…",
     inviteBody: "Send it to {friend} privately. In Shoal they choose Pair a server, then My friend sent me an invite, and enter it with your server's address. Their screen then shows a safety code, and you type it here to approve.",
@@ -920,17 +1082,12 @@ const STRINGS = {
     waitingForUse: "Waiting for {friend} to use the invite…",
     cancelInvite: "Cancel invite",
     copyInvite: "Copy invite",
-    shareExpiredTitle: "The invite expired",
-    shareExpiredBody: "Invites last 15 minutes. Create a new one when {friend} is ready.",
     approvalNoneTitle: "Nothing is waiting",
     approvalNone: "Nothing is waiting for approval.",
     approvedTitle: "Approved",
     approvedWaiting: "Approved. Waiting for {home} to connect…",
     approvalReconnect: "Approving replaces {friend}'s current connection.",
     approvalCall: "Ask {friend} to read you the safety code on their screen, by phone, text or in person. Type it here to approve. If you weren't expecting this, choose Deny.",
-    codeInputLabel: "Safety code from {friend}",
-    codeInputHelp: "8 letters and numbers. Spaces and capitals don't matter.",
-    codeFormatError: "Check the code. It has 8 letters and numbers.",
     approveReason: "Type the 8-character code to approve.",
     codeWrong: "That code doesn't match. Check it with {friend} and type it again. {n} tries left.",
     factFrom: "Connecting from",
@@ -953,30 +1110,6 @@ const STRINGS = {
     openFriend: "Open {friend}",
     resumeBody: "Pairing with {server} is still in progress.",
     // steps for your friend (ui-spec 8.2.8)
-    fs_1: "Give me access to your Jellyfin server: share it with me in Tailscale (give the Jellyfin computer its own Tailscale machine), or send me its https address.",
-    fs_2: "In Dashboard > Users, add a new user for me, for example shoal-friend, with a long random password. You'll type it only once. Under library access, untick All libraries and tick only the movie libraries you want to share.",
-    fs_3_intro: "Open that user's settings, set these, and save.",
-    fs_3_on_lead: "Turn on:",
-    fs_3_on: "Hide this user from the sign-in screen. Allow remote connections. Allow media playback. Allow video and audio playback that needs transcoding, and video that only needs remuxing.",
-    fs_3_off_lead: "Turn off:",
-    fs_3_off: "Administrator. Access to all libraries (tick only the ones you share) and to all channels. Deleting media. Downloading media. Live TV and recording management. Managing collections and subtitles. Remote control of other users and of shared devices. Set SyncPlay to no access.",
-    fs_3_leave_lead: "Leave for now:",
-    fs_3_leave: "Maximum number of simultaneous user sessions stays at 0. You'll change it in step 9.",
-    fs_3_noteTitle: "Jellyfin has no switch for these",
-    fs_3_note: "You can't turn off this user's ability to change its own password, because Jellyfin has no setting for it. That's fine: step 9 stops a second sign-in while my server is connected, and deleting the user always ends sharing completely. Three other options, media conversion, sync transcoding and public sharing, have no switch either. Jellyfin doesn't use them.",
-    fs_4: "In Dashboard > General, turn on Quick Connect.",
-    fs_5: "When I send you a 6-digit code: open a private browser window, sign in as that user, go to Settings > Quick Connect, and enter the code. If you see an error when you enter it, the session limit is probably still at 1. Set it to 0, then try again.",
-    fs_6: "Open Dashboard > Devices. There must be exactly one device for that user called Shoal: {home} ({code}), besides your browser. Read me the code in brackets. If it's different, or there are two Shoal devices, delete that user and tell me. We'll start again with a new one.",
-    fs_6_nocode: "Open Dashboard > Devices. There must be exactly one device for that user called Shoal: {home} (and a 4-character code I'll give you), besides your browser. Read me the code in brackets. If it's different, or there are two Shoal devices, delete that user and tell me. We'll start again with a new one.",
-    fs_7: "Sign out of the private window.",
-    fs_8: "In that user's settings, untick Enable access from all devices, tick only the Shoal device, and save. Check Dashboard > Devices again: one device should be left.",
-    fs_9: "When I tell you the codes matched: in that user's settings, set Maximum number of simultaneous user sessions to 1, and save. While my server is connected, nobody else can sign in as that user.",
-    fs_stop_lead: "To stop sharing:",
-    fs_stop: "delete the user (Dashboard > Users > the user > Delete). That ends it completely, including any device you can't see. Then remove me from Tailscale sharing, or block my address. Turning the user off isn't enough on its own.",
-    fs_pause_lead: "To pause for a while:",
-    fs_pause: "turn the user off, and while it's off, give it a new long password. That signs out every device. When you want to share again, turn it back on and we'll pair again from step 5.",
-    fs_again_lead: "To pair again later:",
-    fs_again: "set the user's session limit back to 0, pair again from step 5, then set it to 1 again.",
     announcePairingStarted: "Pairing started with {server}",
     announcePaired: "{server} is paired",
     announceCancelled: "Pairing cancelled",
@@ -989,9 +1122,7 @@ const STRINGS = {
     // server detail
     serverIdLabel: "Server ID",
     pairedByInvite: "Paired {date} by invite",
-    pairedByQc: "Paired {date} by Quick Connect",
-    lockConfirmed: "Lock confirmed",
-    lockAsk: "Ask your friend to lock the sharing account to Shoal's device",
+    pairedByQc: "Paired {date} the old way (Quick Connect)",
     testLink: "Test link",
     removeServerEllipsis: "Remove server…",
     needsAttention: "Needs attention",
@@ -1025,7 +1156,7 @@ const STRINGS = {
     toCheck: "To check yourself, run",
     copyCommand: "Copy command",
     localApiYes: "Shoal can read Tailscale's status on this server.",
-    localApiNo: "Shoal can't read Tailscale's status here, so relay detection is a guess.",
+    localApiNo: "Shoal can't read Tailscale's status on this server, so whether the link goes through a relay is only a guess.",
     speedHint_relayed: "Relayed through Tailscale: expect lower speed and higher latency. Allow UDP 41641 or enable UPnP/NAT-PMP on one side.",
     speedHint_maybeRelayed: "This link may be relayed through Tailscale. Run tailscale ping to check.",
     speedHint_peerTranscodeSlow: "{server} transcodes too slowly. Use direct play or a lower quality; {server} needs hardware acceleration.",
@@ -1078,12 +1209,6 @@ const STRINGS = {
     removeAlsoDelete: ["Also delete the {library} library and its {count} entry", "Also delete the {library} library and its {count} entries"],
     removeConfirm: "Remove server",
 
-    limitOk: "Session limit 1",
-    limitAsk: "Ask your friend to set the session limit to 1",
-    howToFix: "How",
-    accountNotesTitle: "Notes about this sharing account",
-    accountNotePassword: "Jellyfin 12.1 lets this sharing account change its own password and has no setting to stop it. The session limit protects your friend while you're connected, and deleting the account ends sharing completely.",
-    accountNoteUnused: "Jellyfin turns on three options it doesn't use for this account (media conversion, sync transcoding, public sharing). They have no effect.",
     checkCertificate: "Check certificate",
     pausePeerHelp: "Titles stay listed here but won't play until you resume.",
     announcePausedLong: "{server} paused. Its titles stay listed but won't play.",
@@ -1112,8 +1237,6 @@ const STRINGS = {
     policy_liveTv: "use Live TV",
     policy_remoteControl: "control other people's devices",
     policy_allDevices: "sign in from any device",
-    alertLimitTitle: "Ask {server}'s admin to set the session limit to 1",
-    alertLimitBody: "Without a session limit, the sharing account on {server} could also be signed into from somewhere else. A limit of 1 stops that while Shoal is connected. It's step 9 of the steps for your friend.",
     openTitle: "Open {title}",
     alertEntityTitle: "Some names from {server} were skipped",
     alertEntityBody: "{server}'s library lists more than 20,000 cast, genre or studio names, so Shoal skipped the extra ones. Titles still appear.",
@@ -1145,7 +1268,6 @@ const STRINGS = {
     addressBody: "Shoal signs out of {server} and deletes its saved key before it uses the new address, so the key never reaches a server you haven't checked. Titles stay listed but won't play until you pair again.",
     addressConfirm: "Change address",
     removeItem3: "Shoal undoes the library access changes it made for {server}'s libraries.",
-    removeNoteQc: "Your friend still has the sharing account they made for you. Ask them to delete it in Dashboard > Users. Shoal can't do that from here.",
     removeNoteInvite: "Your friend can stop sharing with you in their Shoal.",
     aFriendsServer: "a friend's server",
     appsSummary: "Which apps can play titles from {server}",
@@ -1206,15 +1328,17 @@ const STRINGS = {
     resultSignedOut: ["{n} device signed out", "{n} devices signed out"],
     resultNoneLeft: "No devices left",
     resultLeftLead: ["{n} device is still signed in.", "{n} devices are still signed in."],
-    resultLeftBody: "Shoal tried twice. Disable the account in Dashboard > Users, then delete its devices.",
+    resultLeftBody: "Shoal tried twice. Disable the account in Dashboard, then Users, then delete its devices.",
     resultDeleted: "Sharing account deleted",
     resultNotDeletedLead: "Shoal couldn't delete the account.",
-    resultNotDeletedBody: "Delete it in Dashboard > Users.",
+    resultNotDeletedBody: "Delete it in Dashboard, then Users.",
     twoMoreSteps: "Two more steps",
-    stopStepTailscale: "Remove {friend} from this server's Tailscale sharing: Tailscale admin console > Machines > this server > Share.",
+    stopStepTailscale: "Remove {friend} from this server's Tailscale sharing. In the Tailscale admin console, open Machines, then this server, then Share.",
     stopStepPublic: "Block {friend}'s address on your router or firewall.",
     stopDone: "Done",
-    stopStepProtect: "Protect your shared videos: {mode}.",
+    stopProtect_Enforce: "Protect your shared videos: requests without a sign in are blocked. Nothing more to do.",
+    stopProtect_LogOnly: "Protect your shared videos: Shoal only writes down requests without a sign in and blocks none. Choose Require sign in in Settings to block them.",
+    stopProtect_Off: "Protect your shared videos: protection is off. Choose Require sign in in Settings to turn it on.",
     stopStepProtectWarn: "Without it, a server that kept old links can still play your shared videos until you remove its network access.",
     createInvite: "Create invite",
     newInvite: "Create a new invite"
@@ -1246,7 +1370,8 @@ const APPS_ROWS = [
 ];
 const APPS_VERIFIED = { web: false, moonfinIos: false, moonfinOther: false, jmp: false, android: false };
 
-const QC_STEPS_KEY = 'shoal.qcStepsSeen';
+/** Where the plugin is installed from: the link a friend gets when their server has no Shoal. */
+const INSTALL_URL = 'https://github.com/Ninkxz/jellyfin-plugin-shoal';
 
 const VIEWS = ['overview', 'libraries', 'settings', 'pair', 'server', 'overlap', 'friend'];
 const TOP_VIEWS = ['overview', 'libraries', 'settings'];
@@ -1678,6 +1803,62 @@ function initialOf(name) {
  * Only the status, Retry-After and a whitelisted error kind survive: peer error bodies and
  * server messages are never shown (ui-spec 11).
  */
+/** What the server said, from the text the client hands back: nothing is null, JSON is parsed, anything else is an error the page can name. */
+function readAnswer(answer, noBody) {
+    if (answer === undefined || answer === null) {
+        return null;
+    }
+
+    if (typeof answer !== 'string') {
+        return answer; // a client that already parsed it
+    }
+
+    const text = answer.trim();
+    if (text === '') {
+        return noBody ? '' : null;
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch {
+        const e = new Error('Shoal admin answer was not JSON');
+        e.status = 0;
+        e.retryAfter = 0;
+        e.kind = 'unreadable';
+        e.detail = '';
+        throw e;
+    }
+}
+
+/** Dotted version numbers compared by number: 1.0.10.0 is newer than 1.0.9.0. */
+function compareVersions(a, b) {
+    const pa = String(a).split('.').map((x) => Number(x) || 0);
+    const pb = String(b).split('.').map((x) => Number(x) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+        const d = (pa[i] || 0) - (pb[i] || 0);
+        if (d !== 0) {
+            return d;
+        }
+    }
+
+    return 0;
+}
+
+/** The version line and, when the catalog has a newer one, the update hint. Fills a host node; never fails the page. */
+function fillVersion(ctx, host) {
+    ctx.api.pluginVersion().then((v) => {
+        if (!ctx.alive || !v || !v.installed) {
+            return;
+        }
+
+        clear(host);
+        host.append(el('span', { class: 'shoal-meta shoal-version__line', text: t('versionLine', { version: v.installed }) }));
+        if (v.latest && compareVersions(v.latest, v.installed) > 0) {
+            host.append(hint('info', 'info', t('versionNewer', { latest: v.latest })));
+        }
+    }).catch(() => {});
+}
+
 async function toApiError(err) {
     const status = err && typeof err.status === 'number' ? err.status : 0;
     let retryAfter = 0;
@@ -1707,7 +1888,7 @@ async function toApiError(err) {
  * PairingSessionInfo (K5) to what the pairing screen works with. The server says where it is in `step` and whether it is
  * running, confirmed or aborted in `state`; the screen's own words are gettingCode, waiting, awaitingConfirm, done and failed.
  */
-const REAL_STEPS = { preflight: 'gettingCode', initiating: 'gettingCode', gettingCode: 'gettingCode', awaitingApproval: 'waiting', redeeming: 'waiting', validating: 'waiting', awaitingConfirm: 'awaitingConfirm', confirmed: 'done' };
+const REAL_STEPS = { preflight: 'waiting', initiating: 'waiting', awaitingApproval: 'waiting', validating: 'waiting', confirmed: 'done' };
 
 function sessionFromServer(r) {
     if (!r || typeof r !== 'object') {
@@ -1722,7 +1903,7 @@ function sessionFromServer(r) {
 function probeFromServer(r) {
     if (r && r.ok === false) {
         const kind = { WrongNetwork: 'wrongNetwork', ProxyNotAllowed: 'proxyNotAllowed', ProxyInvalid: 'proxyNotAllowed' }[r.addressProblem]
-            || (r.addressProblem && r.addressProblem !== 'None' ? 'blocked' : { notJellyfin: 'notJellyfin', unreachable: 'unreachable', certificate: 'certificate', inviteWrongServer: 'inviteWrongServer', inviteInvalid: 'inviteWrongServer', inviteLanHttp: 'inviteLanHttp' }[r.failure] || 'unreachable');
+            || (r.addressProblem && r.addressProblem !== 'None' ? 'blocked' : { notJellyfin: 'notJellyfin', unreachable: 'unreachable', certificate: 'certificate', inviteWrongServer: 'inviteWrongServer', inviteInvalid: 'inviteGone', inviteExpired: 'inviteGone', inviteUsed: 'inviteGone', inviteLanHttp: 'inviteLanHttp' }[r.failure] || 'unreachable');
         const e = new Error('Shoal admin request failed');
         e.status = 400;
         e.retryAfter = 0;
@@ -1736,15 +1917,16 @@ function probeFromServer(r) {
 
 /** The only code that talks to the server. client is Jellyfin's ApiClient. */
 function createApi(client) {
-    // noBody: the server answers 204 with nothing to parse (ConfirmRestore, cancelling a pairing), so the client must not ask for JSON.
+    // The page always asks for text and reads the answer itself: a 200 or 204 with an empty body is a success, whatever a browser's JSON parser
+    // says about an empty string (a rejected parse used to make a call that worked look like a failure; Firefox owner report). noBody is kept for the callers.
     function call(method, path, body, noBody) {
-        const request = { type: method, url: client.getUrl(API_PREFIX + path), dataType: noBody ? 'text' : 'json' };
+        const request = { type: method, url: client.getUrl(API_PREFIX + path), dataType: 'text' };
         if (body !== undefined) {
             request.data = JSON.stringify(body);
             request.contentType = 'application/json';
         }
 
-        return client.ajax(request).catch(async (err) => {
+        return client.ajax(request).then((answer) => readAnswer(answer, noBody), async (err) => {
             throw await toApiError(err);
         });
     }
@@ -1752,6 +1934,33 @@ function createApi(client) {
     const enc = encodeURIComponent;
     return {
         status: () => call('GET', 'Status'),
+        /** The installed Shoal version, and the newest one the plugin catalog offers (both best effort: null when the client cannot say). */
+        pluginVersion: async () => {
+            const raw = async (path) => {
+                const answer = await client.ajax({ type: 'GET', url: client.getUrl(path), dataType: 'text' });
+                return readAnswer(answer, false);
+            };
+            let installed = null;
+            let latest = null;
+            try {
+                const plugins = await raw('Plugins');
+                const mine = Array.isArray(plugins) ? plugins.find((x) => String(x.Name || x.name || '').toLowerCase() === 'shoal') : null;
+                installed = mine ? String(mine.Version || mine.version || '') : null;
+            } catch {
+                installed = null;
+            }
+
+            try {
+                const packages = await raw('Packages');
+                const pkg = Array.isArray(packages) ? packages.find((x) => String(x.name || x.Name || '').toLowerCase() === 'shoal') : null;
+                const versions = pkg ? (pkg.versions || pkg.Versions || []).map((v) => String(v.version || v.Version || '')).filter(Boolean) : [];
+                latest = versions.sort(compareVersions).at(-1) || null;
+            } catch {
+                latest = null;
+            }
+
+            return { installed: installed || null, latest };
+        },
         syncAll: () => call('POST', 'Sync'),
         peer: (h) => call('GET', 'Peers/' + enc(h)),
         updatePeer: (h, body) => call('PUT', 'Peers/' + enc(h), body),
@@ -1765,6 +1974,8 @@ function createApi(client) {
         addLibrary: (h, list) => call('POST', 'Peers/' + enc(h) + '/Libraries', list),
         removeLibrary: (h, m) => call('DELETE', 'Peers/' + enc(h) + '/Libraries/' + enc(m)),
         hold: (h, kind, action) => call('POST', 'Peers/' + enc(h) + '/Holds/' + enc(kind) + '/' + enc(action)),
+        releaseSeries: (h, kind, series) => call('POST', 'Peers/' + enc(h) + '/Holds/' + enc(kind) + '/' + enc('Release') + '?series=' + enc(series)),
+        holds: (h) => call('GET', 'Peers/' + enc(h) + '/Holds'),
         overlap: (h) => call('GET', 'Peers/' + enc(h) + '/Overlap'),
         speed: (h, range) => call('GET', 'Peers/' + enc(h) + '/Speed?range=' + enc(range)),
         speedTest: (h, deep) => call('POST', 'Peers/' + enc(h) + '/SpeedTest', { deep: !!deep }),
@@ -1779,16 +1990,16 @@ function createApi(client) {
         deleteAll: (confirmName) => call('DELETE', 'All', { confirmName }),
         probe: (body) => call('POST', 'Peers/Probe', body).then(probeFromServer),
         startPairing: (body) => call('POST', 'Pairing', body).then(sessionFromServer),
-        pairing: () => call('GET', 'Pairing').then(sessionFromServer).catch((e) => {
+        pairing: () => call('GET', 'Pairing').then((r) => (r && typeof r === 'object' ? sessionFromServer(r) : null)).catch((e) => {
             if (e.status === 404) {
                 return null;
             }
 
             throw e;
         }),
-        confirmPairing: (match) => call('POST', 'Pairing/Confirm', { match: !!match }).then(sessionFromServer),
         cancelPairing: () => call('DELETE', 'Pairing', undefined, true),
         shares: () => call('GET', 'Shares'),
+        shareReach: () => call('GET', 'Shares/Reach'),
         share: (id) => call('GET', 'Shares/' + enc(id)),
         createShare: (body) => call('POST', 'Shares', body),
         updateShare: (id, body) => call('PUT', 'Shares/' + enc(id), body),
@@ -1818,7 +2029,7 @@ function createApi(client) {
 /* ---------- pairing outcomes (ui-spec 7, 8.2.5, 8.2.9): one table for the card, the pairing page and the stored view ---------- */
 
 /** The five kinds that stop a pairing for safety (DESIGN 4.2a "Two kinds"); everything else is an ordinary stop. */
-const SAFETY_KINDS = ['requestReplaced', 'codesDidNotMatch', 'serverChanged', 'adminAccount', 'badPeerResponse'];
+const SAFETY_KINDS = ['serverChanged', 'adminAccount', 'badPeerResponse'];
 
 /**
  * How each kind looks (icon, token) and which actions it offers. Texts live in STRINGS under out_<kind>_title / _body.
@@ -1830,18 +2041,18 @@ const OUTCOME_KINDS = {
     denied: { icon: 'x', tone: 'off', actions: ['start', 'dismiss'] },
     codeMismatch: { icon: 'x', tone: 'warn', actions: ['start', 'dismiss'] },
     inviteInvalid: { icon: 'x', tone: 'bad', actions: ['start'] },
+    inviteReplaced: { icon: 'x', tone: 'warn', actions: ['start', 'dismiss'] },
+    inviteCancelled: { icon: 'x', tone: 'warn', actions: ['start', 'dismiss'] },
+    tokenNotCollected: { icon: 'clock', tone: 'warn', actions: ['start', 'dismiss'] },
     adminAccount: { icon: 'shield', tone: 'bad', actions: ['start', 'dismiss'] },
     serverChanged: { icon: 'shield', tone: 'bad', actions: ['start', 'dismiss'] },
-    codesDidNotMatch: { icon: 'shield', tone: 'bad', actions: ['start', 'dismiss'] },
-    requestReplaced: { icon: 'shield', tone: 'bad', actions: ['start', 'dismiss'] },
     badPeerResponse: { icon: 'shield', tone: 'bad', actions: ['start', 'dismiss'] },
-    quickConnectOff: { icon: 'warn', tone: 'warn', actions: ['start', 'dismiss'] },
-    sessionLimitBlocked: { icon: 'lock', tone: 'warn', actions: ['start', 'dismiss'] },
-    quickConnectUnreachable: { icon: 'offline', tone: 'off', actions: ['change', 'dismiss'] },
     interrupted: { icon: 'clock', tone: 'warn', actions: ['start', 'dismiss'] },
     rateLimited: { icon: 'clock', tone: 'warn', actions: ['again'] },
     network: { icon: 'offline', tone: 'off', actions: ['start', 'dismiss'] },
-    server: { icon: 'x', tone: 'bad', actions: ['start'] }
+    server: { icon: 'x', tone: 'bad', actions: ['start'] },
+    // A stored kind this version does not know (an old file): a calm generic card, never a crash.
+    unknown: { icon: 'x', tone: 'off', actions: ['start', 'dismiss'] }
 };
 
 /**
@@ -1849,17 +2060,14 @@ const OUTCOME_KINDS = {
  * Returns { kind, safety, icon, tone, title, body, actions } or null for an unknown kind.
  */
 function outcomeInfo(kind, o) {
-    const known = OUTCOME_KINDS[kind] ? kind : kind === 'likelySessionLimit' ? 'sessionLimitBlocked' : 'server';
+    const known = OUTCOME_KINDS[kind] ? kind : 'unknown';
     const def = OUTCOME_KINDS[known];
     const p = o || {};
-    // Section 8.2.5: "interrupted" and "expired" read by method and phase; with no method known, Quick Connect's copy is used
-    // because it gives the friend something to check.
-    const invite = p.method === 'invite';
     let key = known;
     if (known === 'expired') {
-        key = p.afterApproval ? 'expiredConfirm' : invite ? 'expiredInvite' : 'expired';
+        key = 'expiredInvite';
     } else if (known === 'interrupted') {
-        key = p.phase === 'awaitingConfirm' ? 'interruptedConfirm' : invite ? 'interruptedInvite' : 'interruptedBefore';
+        key = 'interruptedInvite';
     }
 
     const vars = { server: p.server || t('thisServer'), home: p.home || '', code: p.code || '', m: p.minutes || 1 };
@@ -1869,7 +2077,7 @@ function outcomeInfo(kind, o) {
         icon: def.icon,
         tone: def.tone,
         title: t('out_' + key + '_title', vars),
-        body: t('out_' + (known === 'requestReplaced' && !p.code ? 'requestReplacedStored' : key) + '_body', vars),
+        body: t('out_' + key + '_body', vars),
         actions: def.actions
     };
 }
@@ -1887,7 +2095,9 @@ const SERVER_STATES = {
     certChanged: { tone: 'bad', icon: 'shield', chip: 'chipDifferentServer', hint: 'hintCertChanged', hintTone: 'bad', action: 'review' },
     pairing: { tone: 'info', icon: 'clock', chip: 'chipPairing', action: 'continuePair' },
     pairingSafety: { tone: 'bad', icon: 'shield', chip: 'chipPairingSafety', hintTone: 'bad', action: 'seeWhat' },
-    pairingStopped: { tone: 'warn', icon: 'pause', chip: 'chipPairingStopped', hintTone: 'warn', action: 'seeWhat' }
+    pairingStopped: { tone: 'warn', icon: 'pause', chip: 'chipPairingStopped', hintTone: 'warn', action: 'seeWhat' },
+    repairBlocked: { tone: 'warn', icon: 'keyoff', chip: 'repairBlockedChip', hint: 'repairBlockedHint', hintTone: 'warn', action: 'openRepair', dim: true },
+    needsRepair: { tone: 'warn', icon: 'keyoff', chip: 'chipNeedsRepair', hint: 'hintNeedsRepair', hintTone: 'warn', action: 'repairInvite', dim: true }
 };
 
 const ACTION_LABELS = {
@@ -1897,10 +2107,17 @@ const ACTION_LABELS = {
     repair: 'pairAgain',
     review: 'reviewCertificate',
     continuePair: 'continuePairing',
-    seeWhat: 'seeWhatToDo'
+    seeWhat: 'seeWhatToDo',
+    repairInvite: 'repairWithInvite',
+    openRepair: 'removeOrChangeAddress'
 };
 
 function serverStateKey(s) {
+    // A server paired the old way (Quick Connect) is not run any more: it needs a new pairing by invite (D17).
+    if ((s.needsRepair === true || s.pairingMethod === 'qc') && s.status !== 'Pairing' && s.status !== 'PairingAborted') {
+        return s.repairBlockedByHttp === true ? 'repairBlocked' : 'needsRepair';
+    }
+
     switch (s.status) {
         case 'Online':
             return s.path === 'derp' ? 'relayed' : s.path === 'derp?' ? 'maybeRelayed' : 'online';
@@ -2081,6 +2298,11 @@ function describeLinkStatus(word) {
 }
 
 function describeFriend(f) {
+    // A share nobody has connected to yet is not "Active" (Pilot 07 D2): it is waiting for the friend.
+    if (f.status === 'Active' && (f.deviceCount || 0) === 0) {
+        return { tone: 'info', icon: 'clock', text: t('friendWaiting') };
+    }
+
     const def = FRIEND_STATES[f.status] || FRIEND_STATES.Paused;
     return { tone: def.tone, icon: def.icon, text: t(def.text) };
 }
@@ -2095,8 +2317,15 @@ function summarizeServers(servers, fmt, friends) {
         attention: servers.filter((s, i) => states[i].attention).map((s) => s.handle),
         attentionFriends: flaggedFriends,
         // Titles of servers that are in use now (ui-spec 0.3 #9): an offline or paused server is not counted.
-        titles: servers.reduce((sum, s, i) => sum + (states[i].online ? s.titleCount || 0 : 0), 0)
+        titles: servers.reduce((sum, s, i) => sum + (states[i].online ? s.titleCount || 0 : 0), 0),
+        titlesOffline: servers.reduce((sum, s, i) => sum + (states[i].online || isPausedKey(states[i].key) ? 0 : s.titleCount || 0), 0),
+        titlesPaused: servers.reduce((sum, s, i) => sum + (isPausedKey(states[i].key) ? s.titleCount || 0 : 0), 0)
     };
+}
+
+/** A server paused until it is paired again by invite is paused, not offline (N16). */
+function isPausedKey(key) {
+    return key === 'needsRepair' || key === 'repairBlocked';
 }
 
 /** Default selection (ui-spec 8.1.3): first online server by name, else the first. */
@@ -2204,11 +2433,29 @@ function button(opts) {
                 return;
             }
 
-            o.onClick(ev, node);
+            try {
+                const result = o.onClick(ev, node);
+                if (result && typeof result.catch === 'function') {
+                    result.catch((err) => reportUnexpected(err));
+                }
+            } catch (err) {
+                reportUnexpected(err);
+            }
         });
     }
 
     return node;
+}
+
+/** The page that is mounted now, so a click handler that throws can still say so on screen (set by mount). */
+let activeReporter = null;
+
+/** An error nobody planned for becomes visible text with its name, not a button that does nothing. */
+function reportUnexpected(err) {
+    const detail = (err && (err.name ? err.name + ': ' : '') + (err.message || err)) || 'unknown';
+    if (activeReporter) {
+        activeReporter(t('unexpectedError', { detail: String(detail).slice(0, 200) }));
+    }
 }
 
 /** Busy state (6.2): label becomes the progress text, icon spins, stays focusable, clicks ignored. */
@@ -2474,17 +2721,15 @@ function spellOut(chars) {
 function codeBox(kind, value) {
     const raw = String(value).replace(/[\s-]/g, '');
     let groups;
-    if (kind === 'qc') {
-        groups = [raw.slice(0, 3), raw.slice(3)];
-    } else if (kind === 'safety') {
+    if (kind === 'safety') {
         groups = [raw.slice(0, 4), raw.slice(4)];
     } else {
         groups = [raw];
     }
 
-    const label = kind === 'qc' ? t('codeLabel', { code: spellOut(raw) }) : t('safetyCodeLabel', { code: groups.map(spellOut).join(', ') });
+    const label = t('safetyCodeLabel', { code: groups.map(spellOut).join(', ') });
     const visible = el('span', { 'aria-hidden': 'true' }, groups.filter(Boolean).map((g) => el('span', { class: 'shoal-code__group', text: g })));
-    return el('div', { class: 'shoal-code shoal-code--' + (kind === 'qc' ? 'lg' : 'md'), role: 'group', 'aria-label': label, dataset: { copy: raw } }, visible);
+    return el('div', { class: 'shoal-code shoal-code--md', role: 'group', 'aria-label': label, dataset: { copy: raw } }, visible);
 }
 
 /** A code box with its small label above it ("Safety code"). */
@@ -2544,9 +2789,9 @@ function approvalCard(ctx, o) {
         class: 'emby-input shoal-input shoal-input--code', id: inputId, type: 'text', autocomplete: 'off', autocapitalize: 'characters',
         spellcheck: 'false', inputmode: 'text', maxlength: '11', 'aria-describedby': helpId + ' ' + errId
     });
-    const help = el('div', { class: 'fieldDescription shoal-help', id: helpId, text: t('codeInputHelp') });
+    const help = el('div', { class: 'fieldDescription shoal-help', id: helpId, text: t('pv2ShCodeHelp', { friend: o.friend }) });
     const err = el('p', { class: 'shoal-fieldError', id: errId, hidden: true }, icon('x', true), el('span', { class: 'shoal-fieldError__text' }));
-    const field = el('div', { class: 'inputContainer shoal-field' }, el('label', { class: 'inputLabel shoal-label', for: inputId, text: t('codeInputLabel', { friend: o.friend }) }), input, help, err);
+    const field = el('div', { class: 'inputContainer shoal-field' }, el('label', { class: 'inputLabel shoal-label', for: inputId, text: t('pv2ShCodeLabel', { friend: o.friend }) }), input, help, err);
     const reason = el('p', { class: 'shoal-meta shoal-approval__reason', text: t('approveReason') });
     const approve = button({ label: t('approve'), variant: 'primary', disabled: true, onClick: (ev, btn) => submit(btn) });
     const deny = button({ label: t('deny'), onClick: (ev, btn) => runAction(ctx, btn, { busyText: t('denying'), run: () => o.onDeny(), onDone: (r) => o.onResolved(r || { state: 'denied' }), onError: (e) => ctx.alertMessage(failureMessage(e)) }) });
@@ -2584,15 +2829,19 @@ function approvalCard(ctx, o) {
         setError('');
         sync();
     });
+    // 7.1: a Quick Connect code, or something that is not 8 letters and numbers, gets a sentence that says what it is.
+    const wrongKind = () => classifyCode(input.value, 'safety');
     input.addEventListener('blur', () => {
-        if (input.value.trim() !== '' && !validCode(input.value)) {
-            setError(t('codeFormatError'));
+        const c = wrongKind();
+        if (input.value.trim() !== '' && (c || !validCode(input.value))) {
+            setError(t(c ? c.key : 'pv2CodeSafetyShape'));
         }
     });
 
     async function submit(btn) {
         if (!validCode(input.value)) {
-            setError(t('codeFormatError'));
+            const c = wrongKind();
+            setError(t(c ? c.key : 'pv2CodeSafetyShape'));
             input.focus();
             return;
         }
@@ -2623,10 +2872,11 @@ function approvalCard(ctx, o) {
 
     const facts = factList([[t('factServerId'), serverIdText(a.homeServerIdPrefix)], [t('factFrom'), t('addr_' + a.addressClass)]]);
     const root = el('section', { class: 'shoal-panel shoal-approval', 'aria-labelledby': titleId },
-        el('h2', { class: 'shoal-h2', id: titleId, text: t('approvalTitle', { home: a.homeName }) }),
+        el('p', { class: 'shoal-h3 shoal-approval__home', id: titleId, text: t('approvalTitle', { home: a.homeName }) }),
         facts,
         el('p', { class: 'shoal-body-text', text: t('approvalCall', { friend: o.friend }) }),
         o.reconnect ? el('p', { class: 'shoal-meta', text: t('approvalReconnect', { friend: o.friend }) }) : null,
+        a.restarted === true ? el('p', { class: 'shoal-meta shoal-approval__restarted', text: t('pv2ShRestarted', { friend: o.friend }) }) : null,
         field,
         el('div', { class: 'shoal-step__actions' }, approve, deny),
         reason);
@@ -2718,80 +2968,214 @@ function copyButton(ctx, value, labelKey, doneKey) {
     return btn;
 }
 
-/* ---------- steps for your friend (ui-spec 8.2.8): the stock-Jellyfin checklist, on screen and as plain text ---------- */
+/* ---------- pairing v2 helpers (docs/ui-spec-pairing-v2.md, sections 6 and 7) ---------- */
 
-/**
- * Builds the nine steps with {home} and the check code filled in. only: an inclusive range [from, to] to show a part
- * (steps 8 and 9 in Server detail, 7 to 9 in the success hint). Returns { node, text } where text is the "Copy steps" output.
- */
-function friendSteps(o) {
-    const vars = { home: o.home || t('thisServer'), code: o.code || '' };
-    const range = o.range || [1, 9];
-    const step6Key = o.code ? 'fs_6' : 'fs_6_nocode';
-    const items = [];
-    const plain = [];
-    for (let n = range[0]; n <= range[1]; n += 1) {
-        if (n === 3) {
-            const groups = ['on', 'off', 'leave'].map((g) => ({ lead: t('fs_3_' + g + '_lead'), text: t('fs_3_' + g) }));
-            const note = el('div', { class: 'shoal-hint shoal-hint--info shoal-friendsteps__note', role: 'note' }, icon('info', true),
-                el('div', { class: 'shoal-hint__body' }, el('p', { class: 'shoal-hint__title', text: t('fs_3_noteTitle') }), el('p', { text: t('fs_3_note') })));
-            const body = el('span', { class: 'shoal-friendsteps__groups' },
-                el('span', { text: t('fs_3_intro') }),
-                el('ul', { class: 'shoal-friendsteps__list' }, groups.map((g) => el('li', {}, el('strong', { text: g.lead + ' ' }), g.text))),
-                note);
-            items.push({ state: 'todo', n, text: body });
-            plain.push(n + '. ' + t('fs_3_intro'));
-            groups.forEach((g) => plain.push('   - ' + g.lead + ' ' + g.text));
-            plain.push('   ' + t('fs_3_noteTitle') + ': ' + t('fs_3_note'));
-            continue;
-        }
+const PV2_NETWORK_OF = { tailnet: 'Tailnet', lan: 'LAN', public: 'Public' };
 
-        const text = t(n === 6 ? step6Key : 'fs_' + n, vars);
-        items.push({ state: 'todo', n, text });
-        plain.push(n + '. ' + text);
+/** Is this host a Tailscale one: a .ts.net name, or an address from 100.64.0.0 to 100.127.255.255. */
+function isTailscaleHost(host) {
+    if (/\.ts\.net$/i.test(host)) {
+        return true;
     }
 
-    const tail = [];
-    if (range[0] === 1 && range[1] === 9) {
-        for (const k of ['stop', 'pause', 'again']) {
-            tail.push({ lead: t('fs_' + k + '_lead'), text: t('fs_' + k) });
-        }
+    const m = /^100\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+    return !!m && Number(m[1]) >= 64 && Number(m[1]) <= 127;
+}
+
+/** Is this host a private (RFC1918) address, or a name that only means something inside a network (.local, .lan). */
+function isPrivateHost(host) {
+    if (/\.(local|lan)$/i.test(host)) {
+        return true;
     }
 
-    const node = el('div', { class: 'shoal-friendsteps' }, stepChecklist(items),
-        tail.length ? el('div', { class: 'shoal-friendsteps__tail' }, tail.map((x) => el('p', { class: 'shoal-meta shoal-friendsteps__p' }, el('strong', { text: x.lead + ' ' }), x.text))) : null);
-    const text = plain.join('\n') + (tail.length ? '\n\n' + tail.map((x) => x.lead + ' ' + x.text).join('\n\n') : '');
-    return { node, text };
+    const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+    if (!m) {
+        return false;
+    }
+
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 }
 
 /**
- * Soft warnings about a typed server address (not errors, Shoal still checks it): a private home network address can't be reached from
- * another house, and https on Jellyfin's plain http port is unusual. Returns string keys. Tailscale addresses (100.64 to 100.127, .ts.net) are fine.
+ * The live address reader (6.1): what the typed address looks like, which network it suggests, and what to say. Client only, nothing is sent.
+ * Returns null for an empty or still incomplete address, else { network (Tailnet | LAN | Public | null), msgs: [{ tone, key, vars?, quickFix? }], trimmed (the
+ * address without a /web/index.html tail, or null) }. A real base path such as /jellyfin is kept. ownHost is this server's own host name.
  */
-function addressNotes(value) {
-    let u;
-    try {
-        u = new URL(String(value).trim());
-    } catch {
-        return [];
+function readAddress(value, ownHost) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        return null;
     }
 
-    const host = u.hostname.replace(/^\[|\]$/g, '');
-    const notes = [];
-    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-    if (m) {
-        const a = Number(m[1]);
-        const b = Number(m[2]);
-        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
-            notes.push('addrPrivate');
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+        const low = raw.toLowerCase();
+        if ('http://'.startsWith(low) || 'https://'.startsWith(low) || !/[.:/]/.test(raw)) {
+            return null;
+        }
+
+        return { network: null, msgs: [{ tone: 'warn', key: 'pv2AddrNoScheme', quickFix: 'http://' + raw }], trimmed: null };
+    }
+
+    let u;
+    try {
+        u = new URL(raw);
+    } catch {
+        return null;
+    }
+
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return { network: null, msgs: [{ tone: 'warn', key: 'pv2AddrNoScheme' }], trimmed: null };
+    }
+
+    const msgs = [];
+    let trimmed = null;
+    const tail = /\/web(\/.*)?$/i.exec(u.pathname);
+    if (tail) {
+        const removed = u.pathname.slice(tail.index) + u.search + u.hash;
+        const base = u.origin + u.pathname.slice(0, tail.index);
+        trimmed = base;
+        msgs.push({ tone: 'info', key: 'pv2AddrTrimmed', vars: { path: removed } });
+    }
+
+    const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const https = u.protocol === 'https:';
+    const numeric = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+    let network = null;
+    if (isTailscaleHost(host)) {
+        network = 'Tailnet';
+        msgs.push({ tone: 'ok', key: 'pv2AddrTailscale' });
+    } else if (isPrivateHost(host)) {
+        network = 'LAN';
+        msgs.push({ tone: 'warn', key: 'pv2AddrPrivate' });
+    } else if (host === 'localhost' || /^127\./.test(host) || host === '::1' || (ownHost && host === String(ownHost).toLowerCase())) {
+        msgs.push({ tone: 'bad', key: 'pv2AddrSelf' });
+    } else if (https && numeric) {
+        network = 'Public';
+        msgs.push({ tone: 'warn', key: 'pv2AddrHttpsNumbers' });
+    } else if (https && u.port === '8096') {
+        network = 'Public';
+        msgs.push({ tone: 'warn', key: 'pv2AddrHttps8096' });
+    } else if (!https && (numeric || host.includes('.'))) {
+        network = 'Public';
+        msgs.push({ tone: 'bad', key: 'pv2AddrHttpPublic' });
+    } else if (https && /\.[a-z]{2,}$/.test(host)) {
+        network = 'Public';
+        msgs.push({ tone: 'info', key: 'pv2AddrInternet' });
+    }
+
+    // An https address on Jellyfin's plain http port is odd whatever else it is (a private address with it gets both notes).
+    if (https && u.port === '8096' && !msgs.some((m) => m.key === 'pv2AddrHttps8096')) {
+        const first = msgs.find((m) => m.key !== 'pv2AddrTrimmed');
+        if (first) {
+            first.extra = 'pv2AddrHttps8096';
+            first.tone = first.tone === 'ok' ? 'warn' : first.tone;
+        } else {
+            msgs.push({ tone: 'warn', key: 'pv2AddrHttps8096' });
         }
     }
 
-    if (u.protocol === 'https:' && u.port === '8096') {
-        notes.push('addrHttps8096');
+    return { network, msgs, trimmed };
+}
+
+/**
+ * What a typed or pasted code is, for the boxes that expect something else (7.1). where: 'invite' (the Invite box), 'address' (the address
+ * field), 'safety' (the share side's safety code box). Returns null when the text is what the box wants, else { kind, key, alert?, action? }.
+ */
+function classifyCode(value, where) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        return null;
     }
 
-    return notes;
+    const compact = raw.replace(/\s+/g, '');
+    const six = /^\d{6}$/.test(compact);
+    const invite = /^shoal1/i.test(compact);
+    if (where === 'safety') {
+        return /^[A-Za-z0-9]{8}$/.test(compact) ? null : { kind: 'shape', key: 'pv2CodeSafetyShape' };
+    }
+
+    if (where === 'address') {
+        if (six) {
+            return { kind: 'number', key: 'pv2CodeNumber', alert: true };
+        }
+
+        return invite ? { kind: 'invite', key: 'pv2CodeInviteElsewhere', action: 'move' } : null;
+    }
+
+    if (six) {
+        return { kind: 'number', key: 'pv2CodeNumber', alert: true, action: 'codes' };
+    }
+
+    if (invite) {
+        return looksLikeInvite(raw) ? null : { kind: 'cut', key: 'pv2CodeCutOff' };
+    }
+
+    if (/^https?:/i.test(raw) || (raw.includes('.') && raw.includes('/'))) {
+        return { kind: 'address', key: 'pv2CodeAddress', action: 'address' };
+    }
+
+    if (/^[A-Za-z0-9]{8}$/.test(compact)) {
+        return { kind: 'safety', key: 'pv2CodeSafety' };
+    }
+
+    return { kind: 'other', key: 'pv2CodeOther' };
+}
+
+/** A safety code in two groups of four: K7QM2XA4 reads "K7QM 2XA4". */
+function inFours(value) {
+    return String(value || '').replace(/\s+/g, '').replace(/(.{4})(?=.)/g, '$1 ');
+}
+
+/* ---------- pairing v2 components (docs/ui-spec-pairing-v2.md, section 3) ---------- */
+
+const WHO_KINDS = { you: ['user', 'pv2WhoYou'], friend: ['users', 'pv2WhoFriend'], wait: ['sync', 'pv2WhoWait'] };
+
+/** A radio group is named by the step heading above it (no second, hidden legend that reads the same twice). */
+function labelByHeading(wrap, fieldset) {
+    const h = wrap.querySelector('h2');
+    if (h) {
+        if (!h.id) {
+            h.id = uid('shoal-h');
+        }
+
+        fieldset.setAttribute('aria-labelledby', h.id);
+    }
+}
+
+/** The Who label (3.1): a pill that says who acts on this step. Icon plus text, never colour alone. */
+function whoLabel(kind) {
+    const def = WHO_KINDS[kind];
+    return el('p', { class: 'shoal-who', 'data-who': kind, id: uid('shoal-who') }, icon(def[0], true), el('span', { text: t(def[1]) }));
+}
+
+/** The Say box (3.2): one or two sentences to read aloud, with a Copy message button. lead defaults to "Say to your friend:". */
+function sayBox(ctx, text, lead) {
+    return el('div', { class: 'shoal-say' },
+        el('p', { class: 'shoal-say__text' }, el('strong', { text: (lead || t('pv2SayLead')) + ' ' }), text),
+        copyButton(ctx, text, 'pv2CopyMessage', 'pv2Copied'));
+}
+
+/**
+ * "Where each code goes" (3.3). side: 'watch' | 'share'. route: 'invite' | 'qc' | null (all four watch rows). Rows are definition lists, which
+ * read well on a phone and on a desktop alike.
+ */
+function codesCard(ctx, side, route, open) {
+    const rows = side === 'share'
+        ? [['pv2CodeRowInvite', 'pv2LooksInvite', 'pv2MadeByYouHere', 'pv2TypedByFriend', 'pv2GoesFriendInviteBox'], ['pv2CodeRowSafety8', 'pv2LooksSafety8', 'pv2MadeByFriendShoalShows', 'pv2TypedByYou', 'pv2GoesApproveBox']]
+        : [['pv2CodeRowInvite', 'pv2LooksInvite', 'pv2MadeByFriendShoal', 'pv2TypedByYou', 'pv2GoesInviteBox'],
+            ['pv2CodeRowSafety8', 'pv2LooksSafety8', 'pv2MadeByThisPage', 'pv2TypedByFriend', 'pv2GoesFriendApprove']];
+    const shown = rows;
+    const content = el('div', { class: 'shoal-codesguide' },
+        shown.map((r) => el('dl', { class: 'shoal-codesguide__row' },
+            el('dt', { class: 'shoal-codesguide__name' }, el('strong', { text: t(r[0]) }), ' ', el('span', { class: 'shoal-meta', text: t(r[1]) })),
+            el('dd', { text: t('pv2WhoMakes') + ' ' + t(r[2]) }),
+            el('dd', { text: t('pv2WhoTypes') + ' ' + t(r[3]) }),
+            el('dd', { text: t('pv2WhereGoes') + ' ' + t(r[4]) }))));
+    const card = collapse(t('pv2CodesTitle'), content, open);
+    card.classList.add('shoal-codescard');
+    return card;
 }
 
 /** The invite input's client check (ui-spec 6.10): after removing spaces and hyphens it starts with shoal1 and is long enough. */
@@ -2815,12 +3199,21 @@ function validCode(value) {
  * Shows "Expires in 9:41" with a thin bar. Visual updates every second; screen readers only get the
  * page's polite region at 5 min, 1 min and expiry.
  */
-function countdown(ctx, expiresUtc, onExpire, kind) {
+function countdown(ctx, expiresUtc, onExpire, kind, vars) {
     const end = toMs(expiresUtc);
+    if (end === null) {
+        // No expiry sent yet: unknown is not expired. Show nothing and never fire onExpire (N11).
+        return { root: el('div', { class: 'shoal-countdown', hidden: true }), stop: () => {} };
+    }
+
     const total = Math.max(1, end - ctx.now());
     const text = el('span', { class: 'shoal-meta shoal-countdown__text' });
     const fill = el('span', { class: 'shoal-countdown__fill' });
-    const root = el('div', { class: 'shoal-countdown' }, text, el('span', { class: 'shoal-countdown__bar', 'aria-hidden': 'true' }, fill));
+    // Under 3 minutes (pairing v2 3.4): words, not just a colour, and what to do if the time is not enough.
+    const helperKey = kind === 'shareInvite' ? 'pv2Under3Share' : kind === 'invite' ? 'pv2Under3Invite' : 'pv2Under3Code';
+    const warn = el('span', { class: 'shoal-countdown__warn shoal-tone--warn', hidden: true }, icon('warn', true), el('span', { text: t('pv2Under3') + ' ' + t(helperKey, vars) }));
+    const root = el('div', { class: 'shoal-countdown' }, text, el('span', { class: 'shoal-countdown__bar', 'aria-hidden': 'true' }, fill), warn);
+    let announced3 = false;
     let announced5 = false;
     let announced1 = false;
     let done = false;
@@ -2828,9 +3221,25 @@ function countdown(ctx, expiresUtc, onExpire, kind) {
         const left = Math.max(0, end - ctx.now());
         text.textContent = t(kind === 'confirm' ? 'confirmWithin' : 'expiresIn', { time: ctx.fmt.clock(left / 1000) });
         setVar(fill, '--shoal-progress', Math.round((left / total) * 100) + '%');
+        let spoke = false;
+        if (left > 0 && left <= 180000) {
+            root.classList.add('is-warn');
+            warn.hidden = false;
+            if (!announced3 && total > 180000) {
+                announced3 = true;
+                spoke = true;
+                announced5 = true;
+                ctx.announce(t('pv2Under3'));
+            }
+        }
+
+        if (spoke) {
+            return;
+        }
+
         if (left <= 0 && !done) {
             done = true;
-            ctx.announce(t(kind === 'invite' ? 'announceInviteExpired' : 'announceCodeExpired'));
+            ctx.announce(t(kind === 'invite' || kind === 'shareInvite' ? 'announceInviteExpired' : 'announceCodeExpired'));
             if (onExpire) {
                 onExpire();
             }
@@ -2986,17 +3395,34 @@ async function confirmDialog(ctx, o) {
             if (o.typed) {
                 typed = textField({ id: uid('shoal-typed'), label: o.typed.label, help: t('typedHelp'), required: true });
                 body.append(typed.root);
-                typed.input.addEventListener('input', () => {
+                const recheck = () => {
                     const ok = typed.input.value.trim() === o.typed.expected;
                     dlg.buttons.confirm.disabled = !ok;
-                });
+                };
+                // input, change, keyup and paste: whichever the browser fires for typing, pasting or autofill wakes the button.
+                for (const name of ['input', 'change', 'keyup', 'paste']) {
+                    typed.input.addEventListener(name, name === 'paste' ? () => ctx.later(recheck, 0) : recheck);
+                }
             }
 
             return null;
         },
         buttons: [
             { label: o.cancelLabel || t('cancel'), key: 'cancel', close: undefined },
-            { label: o.confirmLabel, key: 'confirm', variant: o.danger ? 'danger' : 'primary', disabled: !!o.typed || !!o.requireChecked, close: 'confirm' }
+            o.run
+                ? { label: o.confirmLabel, key: 'confirm', variant: o.danger ? 'danger' : 'primary', disabled: !!o.typed || !!o.requireChecked, onClick: async (dlg, btn) => {
+                    dlg.setError('');
+                    btn.disabled = true;
+                    try {
+                        await o.run({ checked: checkbox ? checkbox.input.checked : false });
+                        dlg.close('confirm');
+                    } catch (err) {
+                        // The dialog stays, with the reason in words: the admin can wait and press the button again, or cancel.
+                        dlg.setError(o.errorText ? o.errorText(err) : failureMessage(err));
+                        btn.disabled = false;
+                    }
+                } }
+                : { label: o.confirmLabel, key: 'confirm', variant: o.danger ? 'danger' : 'primary', disabled: !!o.typed || !!o.requireChecked, close: 'confirm' }
         ]
     });
     return { confirmed: result === 'confirm', checked: checkbox ? checkbox.input.checked : false };
@@ -3517,6 +3943,37 @@ function createContext(page, params, deps) {
                 lastAnnounce = '';
             }, LIVE_CLEAR_MS);
         },
+        /** A short visible message for what a click did (6 s), so "nothing happened" is never the answer. The live region says it aloud. */
+        toast(message) {
+            const old = root.querySelector('.shoal-toast');
+            if (old) {
+                old.remove();
+            }
+
+            const node = el('div', { class: 'shoal-toast', 'aria-hidden': 'true' }, icon('ok', true), el('span', { text: message }));
+            root.append(node);
+            ctx.later(() => node.remove(), 6000);
+        },
+        /** A failure of something the admin did: spoken like alertMessage, and kept on screen as a bar until it is dismissed (never a 5 second whisper). */
+        fail(message) {
+            ctx.alertMessage(message);
+            let host = root.querySelector('.shoal-errors');
+            if (!host) {
+                host = el('div', { class: 'shoal-errors' });
+                root.append(host);
+            }
+
+            for (const old of host.querySelectorAll('.shoal-errorbar')) {
+                if (old.dataset.text === message) {
+                    old.remove();
+                }
+            }
+
+            const bar = el('div', { class: 'shoal-errorbar shoal-hint shoal-hint--bad', role: 'alert', 'data-text': message }, icon('x', true),
+                el('div', { class: 'shoal-hint__body', text: message }),
+                button({ label: t('dismiss'), small: true, onClick: () => bar.remove() }));
+            host.prepend(bar);
+        },
         alertMessage(message) {
             alertRegion.textContent = message;
             ctx.later(() => {
@@ -3668,6 +4125,15 @@ function failureMessage(err, fallbackKey) {
         return t('tooManyTries');
     }
 
+    if (err && err.kind === 'unreadable') {
+        return t('unreadableAnswer');
+    }
+
+    // The admin API answers its own refusals with a word in the body; a bare 404 or 405 means the route does not exist: an older Shoal is installed.
+    if (err && (err.status === 404 || err.status === 405) && !err.kind) {
+        return t('needsNewerShoal');
+    }
+
     return t(fallbackKey || 'genericFailure');
 }
 
@@ -3702,26 +4168,50 @@ async function runAction(ctx, btn, o) {
     }
 
     setBusy(btn, true, o.busyText);
+    let finished = false;
+    let watchdog = null;
     try {
-        const result = await o.run();
+        // A call that never answers must not leave the button dead: after 45 seconds it is a visible failure.
+        const stalled = new Promise((resolve, reject) => {
+            watchdog = setTimeout(() => {
+                if (!finished) {
+                    const e = new Error('no answer');
+                    e.status = 0;
+                    e.kind = 'noAnswer';
+                    reject(e);
+                }
+            }, 45000);
+        });
+        const result = await Promise.race([Promise.resolve().then(() => o.run()), stalled]);
+        finished = true;
         if (o.onDone) {
-            o.onDone(result);
+            try {
+                o.onDone(result);
+            } catch (inner) {
+                reportUnexpected(inner);
+            }
         }
 
         return result;
     } catch (err) {
+        finished = true;
         if (err && err.status === 429 && o.cooldownKey) {
             ctx.setCooldown(o.cooldownKey, err.retryAfter || 60);
         }
 
-        if (o.onError) {
-            o.onError(err);
-        } else {
-            ctx.alertMessage(failureMessage(err, o.failKey));
+        try {
+            if (o.onError) {
+                o.onError(err);
+            } else {
+                ctx.fail(failureMessage(err, o.failKey));
+            }
+        } catch (inner) {
+            reportUnexpected(inner);
         }
 
         return null;
     } finally {
+        clearTimeout(watchdog);
         setBusy(btn, false);
         if (o.afterBusy) {
             o.afterBusy();
@@ -3790,22 +4280,70 @@ function loadImageChain(img, chain, onFail) {
 /* Overlap panel (ui-spec 6.14, 8.1)                                                      */
 /* ====================================================================================== */
 
+/** Why a library cannot be picked: TV shows have their own switch in Settings, everything else is not supported yet. */
+function libCountNote(ctx, lib) {
+    if (lib.type === 'tvshows' && typeof lib.seriesCount === 'number') {
+        return t('libMetaTv', { type: t('type_tvshows'), series: ctx.fmt.num(lib.seriesCount), episodes: ctx.fmt.num(lib.episodeCount || 0) });
+    }
+
+    if (typeof lib.remoteCount === 'number') {
+        return t('libMetaRemote', { type: t('type_' + lib.type), count: ctx.fmt.num(lib.remoteCount) });
+    }
+
+    return t('libMeta', { type: t('type_' + lib.type), count: ctx.fmt.num(lib.count), n: lib.count });
+}
+
+/** True when the friend lists more titles than this server has stubs for, so both numbers are told (N2). */
+function countsDiffer(m) {
+    return typeof m.remoteCount === 'number' && typeof m.localCount === 'number' && m.remoteCount !== m.localCount;
+}
+
+/** "N titles come from X instead": a server whose titles another server (or this one) carries says so, and how to change it (K43 dedup). */
+function dedupNote(s) {
+    const n = s && s.hiddenByDedup;
+    if (!(n > 0)) {
+        return null;
+    }
+
+    return el('span', { class: 'shoal-meta shoal-card__dedup', text: ' ' + t(s.dedupWinner ? 'dedupNote' : 'dedupNoteHome', { n, count: new Intl.NumberFormat().format(n), winner: s.dedupWinner || '' }) });
+}
+
+function libLaterNote(type) {
+    return type === 'tvshows' ? t('libTvOff') : t('libLater', { type: t('type_' + type) });
+}
+
+/** The TV line of an overlap report (GET Overlap tv), or null when the server sent none. */
+function overlapTvLine(ctx, serverName, ov) {
+    const tv = ov && ov.tv;
+    if (!tv) {
+        return null;
+    }
+
+    return t('ovTv', { a: ctx.fmt.num(tv.sharedSeries || 0), b: ctx.fmt.num(tv.sharedSeriesEpisodes || 0), server: serverName, c: ctx.fmt.num(tv.gainSeries || 0), d: ctx.fmt.num(tv.gainEpisodes || 0) });
+}
+
 function overlapSentences(ctx, serverName, ov) {
     const both = ov.both || { count: 0, localBytes: 0 };
     const gain = ov.gain || { count: 0, peerBytes: 0 };
+    // With TV in the report the counts are movies plus episodes, so they are called items and the TV line says what they hold (D14).
+    const word = (n) => (ov.tv ? t('itemWord', { n }) : t('titleWord', { n }));
     return {
         text: tRich('overlapSentence', {
             both: ctx.fmt.num(both.count),
+            bothWord: word(both.count),
             bothSize: ctx.fmt.bytes(both.localBytes),
             server: serverName,
             gain: ctx.fmt.num(gain.count),
+            gainWord: word(gain.count),
             gainSize: ctx.fmt.bytes(gain.peerBytes)
         }),
         plain: t('overlapAria', {
             both: ctx.fmt.num(both.count),
+            bothWord: word(both.count),
             bothSize: ctx.fmt.bytes(both.localBytes),
             server: serverName,
             gain: ctx.fmt.num(gain.count),
+            gainWord: word(gain.count),
             gainSize: ctx.fmt.bytes(gain.peerBytes)
         })
     };
@@ -3845,6 +4383,11 @@ function fillOverlap(ctx, host, serverName, ov, linkTo) {
 
     const sentence = overlapSentences(ctx, serverName, ov);
     const text = el('div', { class: 'shoal-overlap__text' }, el('p', { class: 'shoal-lead' }, sentence.text));
+    const tvLine = overlapTvLine(ctx, serverName, ov);
+    if (tvLine) {
+        text.append(el('p', { class: 'shoal-body-text shoal-overlap__tv', text: tvLine }));
+    }
+
     if (linkTo) {
         text.append(ctx.linkEl(linkTo.view, linkTo.query, 'shoal-link', t('fullReport')));
     }
@@ -3972,14 +4515,17 @@ function createSpeedPanel(ctx, o) {
         sub.textContent = t('speedSub_' + rangeKey, { tests, plays: samples.length - tests });
         const k = data.kpis || {};
         const offline = model.key === 'offline';
-        const nowValue = !offline && typeof k.nowMbps === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.mbpsValue(k.nowMbps) })] : [unknownValue(), offline ? el('span', { class: 'shoal-kpi__offline', text: t('offlineWord') }) : null];
+        // "Speed now" is the newest point of the chart, so the card and the chart never give two different latest speeds.
+        const newest = samples.filter((x) => typeof x.mbps === 'number' && !x.error).reduce((m, x) => (!m || (toMs(x.t) || 0) >= (toMs(m.t) || 0) ? x : m), null);
+        const nowMbps = newest ? newest.mbps : k.nowMbps;
+        const nowValue = !offline && typeof nowMbps === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.mbpsValue(nowMbps) })] : [unknownValue(), offline ? el('span', { class: 'shoal-kpi__offline', text: t('offlineWord') }) : null];
         const kpiNodes = [
-            kpi(t('kpiNow'), nowValue, !offline && typeof k.nowMbps === 'number' ? t('unitMbpsShort') : null),
-            kpi(t('kpiLatency'), typeof k.latencyMs === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.num(Math.round(k.latencyMs)) })] : unknownValue(), typeof k.latencyMs === 'number' ? t('unitMsShort') : null)
+            kpi(t('kpiNow'), nowValue, !offline && typeof nowMbps === 'number' ? t('unitMbpsShort') : null),
+            kpi(t('kpiLatency'), !offline && typeof k.latencyMs === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.num(Math.round(k.latencyMs)) })] : unknownValue(), !offline && typeof k.latencyMs === 'number' ? t('unitMsShort') : null)
         ];
         if (o.detail) {
             const unstable = (k.jitterMs || 0) > 30 || (k.lossPct || 0) > 2;
-            kpiNodes.push(kpi(t('kpiStability'), el('span', { class: 'shoal-kpi__word' + (unstable ? ' is-warn' : ''), text: unstable ? t('stabilityBad', { jitter: Math.round(k.jitterMs || 0), loss: k.lossPct || 0 }) : t('stabilityGood') })));
+            kpiNodes.push(kpi(t('kpiStability'), offline ? unknownValue() : el('span', { class: 'shoal-kpi__word' + (unstable ? ' is-warn' : ''), text: unstable ? t('stabilityBad', { jitter: Math.round(k.jitterMs || 0), loss: k.lossPct || 0 }) : t('stabilityGood') })));
         }
 
         kpiNodes.push(kpi(t('kpiLowest_' + rangeKey), typeof k.lowestMbps === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.mbpsValue(k.lowestMbps) })] : unknownValue(), typeof k.lowestMbps === 'number' ? t('unitMbpsShort') : null));
@@ -4119,6 +4665,9 @@ function scrollToNode(node) {
 
 function overviewScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="overview"]');
+    const versionHost = el('div', { class: 'shoal-version' });
+    view.append(versionHost);
+    fillVersion(ctx, versionHost);
     const blocks = {};
     for (const name of ['loading', 'error', 'empty', 'content']) {
         blocks[name] = q(view, '[data-state-block="' + name + '"]');
@@ -4130,6 +4679,7 @@ function overviewScreen(ctx) {
     syncNote.id = uid('shoal-sn');
     const actionError = slot(view, 'actionerror');
     const cardsHost = slot(view, 'cards');
+    let legacyNode = null;
     const noServers = slot(view, 'noservers');
     const serversNote = slot(view, 'serversnote');
     const speedHost = slot(view, 'speedhost');
@@ -4228,10 +4778,32 @@ function overviewScreen(ctx) {
             }, 'shoal-status__link'));
         }
 
-        items.push(sep(), el('span', { class: 'shoal-status__item', text: t('titlesSharedWithYou', { n: sum.titles, count: ctx.fmt.num(sum.titles) }) }));
+        const off = sum.titlesOffline || 0;
+        const paused = sum.titlesPaused || 0;
+        const titlesText = paused > 0 && off === 0 && sum.titles === 0
+            ? t('titlesOnlyPaused', { n: paused, count: ctx.fmt.num(paused) })
+            : off > 0 && sum.titles === 0
+            ? t('titlesOnlyOffline', { n: off, off: ctx.fmt.num(off) })
+            : off > 0 ? t('titlesOfflineToo', { n: sum.titles, count: ctx.fmt.num(sum.titles), off: ctx.fmt.num(off) }) : t('titlesSharedWithYou', { n: sum.titles, count: ctx.fmt.num(sum.titles) });
+        items.push(sep(), el('span', { class: 'shoal-status__item', text: titlesText }));
         const syncing = servers.some((s) => s.syncing);
         const last = servers.reduce((m, s) => Math.max(m, toMs(s.lastSync && s.lastSync.atUtc) || 0), 0);
         items.push(sep(), el('span', { class: 'shoal-status__item' }, icon('clock', true), syncing ? t('syncingNow') : last ? t('lastSync', { when: ctx.fmt.relative(last) }) : t('notSyncedYet')));
+        // Servers paired the old way (D17): one calm banner above the cards, with the way forward on each card.
+        const legacy = servers.filter((x) => x.needsRepair === true || x.pairingMethod === 'qc').length;
+        if (legacyNode) {
+            legacyNode.remove();
+            legacyNode = null;
+        }
+
+        if (legacy > 0 && cardsHost.parentNode) {
+            legacyNode = hint('warn', 'keyoff', t('legacyBanner', { n: legacy }));
+            legacyNode.classList.add('shoal-legacybanner');
+            cardsHost.parentNode.insertBefore(legacyNode, cardsHost);
+        }
+
+        // What counts as a title, in plain sight (Lumen 04): touch and keyboard users never see a tooltip.
+        items.push(el('span', { class: 'shoal-status__note shoal-meta', text: t('titlesCounted') }));
         replaceKids(statusLine, items);
     }
 
@@ -4299,8 +4871,7 @@ function overviewScreen(ctx) {
         pill.hidden = false;
         const pillIcon = q(pill, 'svg');
         if (model.key === 'offline' || model.key === 'paused') {
-            replaceIcon(pillIcon, model.key === 'offline' ? 'offline' : 'pause');
-            slot(pill, 'pilltext').textContent = t(model.key === 'offline' ? 'pillOffline' : 'pillPaused');
+            pill.hidden = true; // the status chip beside the name says it; a second "Offline" on the picture only repeats it
         } else if (s.latest && s.latest.title) {
             replaceIcon(pillIcon, 'play');
             slot(pill, 'pilltext').textContent = t('pillLatest', { server: s.displayName, title: s.latest.title });
@@ -4361,7 +4932,7 @@ function overviewScreen(ctx) {
         } else if (model.key === 'pairing' || ((model.key === 'pairingStopped' || model.key === 'pairingSafety') && model.neverPaired)) {
             titles.textContent = model.key === 'pairing' ? '' : t('notPaired');
         } else {
-            replaceKids(titles, tRich('titlesShared', { n: s.titleCount || 0, count: ctx.fmt.num(s.titleCount || 0) }));
+            replaceKids(titles, [tRich('titlesShared', { n: s.titleCount || 0, count: ctx.fmt.num(s.titleCount || 0) }), dedupNote(s)]);
         }
 
         const actionHost = slot(node, 'action');
@@ -4399,11 +4970,16 @@ function overviewScreen(ctx) {
 
     function scrollToSpeed() {
         if (st.speed) {
+            const shown = serversOf().find((x) => x.handle === st.selected);
+            ctx.toast(t('announceShowingSpeed', { server: shown ? shown.displayName : '' }));
             scrollToNode(st.speed.root);
             const h = q(st.speed.root, 'h2');
             if (h) {
                 h.focus({ preventScroll: true });
             }
+
+            st.speed.root.classList.add('is-flash');
+            ctx.later(() => st.speed.root.classList.remove('is-flash'), 1600);
         }
     }
 
@@ -4415,7 +4991,12 @@ function overviewScreen(ctx) {
                     busyText: t(kind === 'test' ? 'testing' : 'retrying'),
                     cooldownKey: 'test:' + handle,
                     run: () => ctx.api.speedTest(handle, false),
-                    onDone: () => ctx.later(() => poller.runNow(), 1500),
+                    onDone: () => {
+                        const said = t(kind === 'test' ? 'announceTestStarted' : 'announceRetryStarted');
+                        ctx.announce(said);
+                        ctx.toast(said);
+                        ctx.later(() => poller.runNow(), 1500);
+                    },
                     onError: (err) => {
                         if (err.status === 429) {
                             ctx.setCooldown('test:' + handle, err.retryAfter || 60);
@@ -4433,7 +5014,10 @@ function overviewScreen(ctx) {
                     failKey: 'genericFailure'
                 });
             case 'repair':
+            case 'repairInvite':
                 return ctx.navigate('pair', { dir: 'watch', again: handle });
+            case 'openRepair':
+                return ctx.navigate('server', { id: handle });
             case 'review':
                 return ctx.navigate('server', { id: handle, focus: 'alerts' });
             case 'continuePair':
@@ -4491,6 +5075,7 @@ function overviewScreen(ctx) {
         if (announce) {
             const s = serversOf().find((x) => x.handle === handle);
             ctx.announce(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
+ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         }
     }
 
@@ -4690,7 +5275,7 @@ function overviewScreen(ctx) {
             ctx.announce(t('announceOrphanDeleted', { name: account.name }));
         } catch (err) {
             if (!err || err.status !== 404) {
-                ctx.alertMessage(failureMessage(err));
+                ctx.fail(failureMessage(err));
                 return;
             }
         }
@@ -4990,11 +5575,11 @@ function admittedUsers(mapping, users) {
 }
 
 function currentUserId(ctx, data) {
-    if (ctx.client && typeof ctx.client.getCurrentUserId === 'function') {
-        return ctx.client.getCurrentUserId();
-    }
-
-    return data && data.currentUserId;
+    const raw = ctx.client && typeof ctx.client.getCurrentUserId === 'function' ? ctx.client.getCurrentUserId() : data && data.currentUserId;
+    // Jellyfin's client writes ids without dashes, the list of users may write them with: the picker compares them as the users are written (Pilot 07 D4).
+    const plain = (x) => String(x || '').replace(/-/g, '').toLowerCase();
+    const match = raw && data && Array.isArray(data.users) ? data.users.find((u) => plain(u.id) === plain(raw)) : null;
+    return match ? match.id : raw;
 }
 
 /** Notes under a name in the picker, in the order of ui-spec 8.4.3. */
@@ -5399,7 +5984,9 @@ function librariesScreen(ctx) {
 
         const main = el('div', { class: 'shoal-libblock__main' },
             el('span', { class: 'shoal-row__title', id: titleId, text: mapping.localLibraryName }),
-            el('span', { class: 'shoal-row__meta shoal-meta', text: t('libraryMeta', { count: ctx.fmt.num(mapping.count), n: mapping.count, when: mapping.lastSync ? ctx.fmt.relative(mapping.lastSync.atUtc) : t('never') }) }),
+            el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(mapping)
+                ? t('libraryMetaSplit', { remote: ctx.fmt.num(mapping.remoteCount), local: ctx.fmt.num(mapping.localCount), when: mapping.lastSync ? ctx.fmt.relative(mapping.lastSync.atUtc) : t('never') })
+                : t('libraryMeta', { count: ctx.fmt.num(mapping.count), n: mapping.count, when: mapping.lastSync ? ctx.fmt.relative(mapping.lastSync.atUtc) : t('never') }) }),
             holds.length ? el('span', { class: 'shoal-row__holds' }, holds) : null);
 
         const savedCount = users.filter((u) => a.selectedUserIds.includes(u.id)).length;
@@ -5582,7 +6169,7 @@ const SPEED_HOURS = [3, 6, 12, 24];
 const KEY_SOURCE_WORDS = { env: 'keyWordEnv', envFile: 'keyWordEnvFile', dpapi: 'keyWordDpapi', file: 'keyWordFile' };
 
 function numberField(o) {
-    return textField({ ...o, type: 'number', inputmode: 'numeric', value: String(o.value), min: o.min, max: o.max, step: '1', cls: 'shoal-input--num' });
+    return textField({ ...o, type: 'number', inputmode: o.step ? 'decimal' : 'numeric', value: String(o.value), min: o.min, max: o.max, step: o.step || '1', cls: 'shoal-input--num' });
 }
 
 /**
@@ -5623,6 +6210,9 @@ function numberBox(o) {
 function settingsScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="settings"]');
     const body = slot(view, 'body');
+    const versionHost = el('div', { class: 'shoal-version' });
+    body.before(versionHost);
+    fillVersion(ctx, versionHost);
     const st = { settings: null, hardening: null, state: null, hasFriends: false, loaded: false, dirty: false, networkRoot: null };
     const f = {};
     let saveBtn = null;
@@ -5672,7 +6262,7 @@ function settingsScreen(ctx) {
             onError: (err) => ctx.alertMessage(failureMessage(err))
         }) });
         clearBtn.setAttribute('aria-label', t('trickplayClearLabel'));
-        f.trickUsed.append(el('p', { class: 'shoal-meta', text: t('trickplayUsed', { size }) }), bytes > 0 ? clearBtn : null);
+        appendKids(f.trickUsed, [el('p', { class: 'shoal-meta', text: t('trickplayUsed', { size }) }), bytes > 0 ? clearBtn : null]);
     }
 
     // The state of the picture check: running (full or limited), off, or not available and why.
@@ -5729,8 +6319,9 @@ function settingsScreen(ctx) {
         // 3. Playback
         f.autoFit = checkRow({ id: uid('shoal-f'), label: t('fAutoFit'), note: t('fAutoFitNote'), checked: d.autoFitQualityToLink });
         f.maxStreams = numberField({ id: uid('shoal-f'), label: t('fMaxStreams'), help: t('fMaxStreamsHelp'), value: d.maxStreamsPerUser, min: 1, max: 4 });
+        f.bufferAhead = numberField({ id: uid('shoal-f'), label: t('fBufferAhead'), help: t('fBufferAheadHelp'), value: d.hlsBufferAhead ?? 6, min: 2, max: 20 });
         f.hlsSubs = checkRow({ id: uid('shoal-f'), label: t('fHlsSubs'), note: t('fHlsSubsNote'), checked: d.hlsSubtitlesEnabled });
-        form.append(settingsPanel(t('sPlayback'), f.autoFit.root, f.maxStreams.root, f.hlsSubs.root, ctx.features && ctx.features.appsWork ? appsWorkBlock(ctx, '') : null));
+        form.append(settingsPanel(t('sPlayback'), f.autoFit.root, f.maxStreams.root, f.bufferAhead.root, f.hlsSubs.root, ctx.features && ctx.features.appsWork ? appsWorkBlock(ctx, '') : null));
 
         // 3b. Extra features (alternate versions, preview pictures, fonts, picture check)
         f.altVersions = checkRow({ id: uid('shoal-f'), label: t('fAltVersions'), note: t('fAltVersionsNote'), checked: !!d.alternateVersionsEnabled });
@@ -5743,10 +6334,15 @@ function settingsScreen(ctx) {
         f.trickUsed = el('div', { class: 'shoal-trickcache' });
         renderTrickCache(d.trickplayCacheBytes);
         f.attachments = checkRow({ id: uid('shoal-f'), label: t('fAttachments'), note: t('fAttachmentsNote'), checked: d.attachmentsEnabled !== false });
+        f.tvShows = checkRow({ id: uid('shoal-f'), label: t('fTvShows'), note: t('fTvShowsNote'), checked: !!d.tvShowsEnabled });
+        f.tvThumbs = checkRow({ id: uid('shoal-f'), label: t('fTvThumbs'), note: t('fTvThumbsNote'), checked: d.tvEpisodeThumbs !== false, disabled: !d.tvShowsEnabled });
+        f.tvShows.input.addEventListener('change', () => {
+            f.tvThumbs.input.disabled = !f.tvShows.input.checked;
+        });
         f.reencode = checkRow({ id: uid('shoal-f'), label: t('fReencode'), note: t('fReencodeNote'), checked: d.reencodeImages !== false });
         f.sandbox = el('div', { class: 'shoal-sandbox' });
         renderSandbox(d.imageSandbox);
-        form.append(settingsPanel(t('sFeatures'), f.altVersions.root, f.trickplay.root, f.trickGb.root, f.trickUsed, f.attachments.root, f.reencode.root, f.sandbox));
+        form.append(settingsPanel(t('sFeatures'), f.altVersions.root, f.tvShows.root, f.tvThumbs.root, f.trickplay.root, f.trickGb.root, f.trickUsed, f.attachments.root, f.reencode.root, f.sandbox));
 
         // 4. Speed tests
         f.speedEvery = selectField({ id: uid('shoal-f'), label: t('fSpeedEvery'), options: SPEED_HOURS.map((h) => ({ value: String(h), label: t('everyHours', { n: h }) })), value: String(d.speedTestIntervalHours) });
@@ -5755,12 +6351,15 @@ function settingsScreen(ctx) {
         // 5. Offline servers
         f.notify = checkRow({ id: uid('shoal-f'), label: t('fNotify'), note: t('fNotifyNote'), checked: d.notifyClientsWhenOffline });
         f.park = checkRow({ id: uid('shoal-f'), label: t('fPark'), checked: d.parkOfflinePeers });
-        f.parkHours = numberField({ id: uid('shoal-f'), label: t('fParkHours'), value: d.parkAfterHours, min: 1, max: 8760 });
+        f.parkHours = numberField({ id: uid('shoal-f'), label: t('fParkHours'), help: t('fParkHoursHelp'), value: d.parkAfterHours, min: 0.1, max: 8760, step: '0.1' });
         f.parkHours.input.disabled = !d.parkOfflinePeers;
         f.park.input.addEventListener('change', () => {
             f.parkHours.input.disabled = !f.park.input.checked;
         });
-        form.append(settingsPanel(t('sOffline'), f.notify.root, f.park.root, f.parkHours.root, hint('warn', 'warn', t('fParkWarn'))));
+        f.offlineCard = checkRow({ id: uid('shoal-f'), label: t('fOfflineCard'), note: t('fOfflineCardNote'), checked: d.offlineCardEnabled !== false });
+        f.reqName = textField({ id: uid('shoal-f'), label: t('fRequestName'), help: t('fRequestNameHelp'), value: d.requestServiceName ?? 'Seerr', maxlength: 40 });
+        f.reqUrl = textField({ id: uid('shoal-f'), label: t('fRequestUrl'), help: t('fRequestUrlHelp'), value: d.requestServiceUrl || '', type: 'url', inputmode: 'url', autocapitalize: 'off', spellcheck: false });
+        form.append(settingsPanel(t('sOffline'), f.notify.root, f.park.root, f.parkHours.root, hint('warn', 'warn', t('fParkWarn')), f.offlineCard.root, f.reqName.root, f.reqUrl.root));
 
         // 6. Tailscale
         const ts = d.tailscaleSocket === 'auto' || d.tailscaleSocket === 'off' ? d.tailscaleSocket : 'custom';
@@ -5800,6 +6399,7 @@ function settingsScreen(ctx) {
             artQuality: f.art.select.value,
             autoFitQualityToLink: f.autoFit.input.checked,
             maxStreamsPerUser: Number(f.maxStreams.input.value),
+            hlsBufferAhead: Number(f.bufferAhead.input.value),
             hlsSubtitlesEnabled: f.hlsSubs.input.checked,
             speedTestIntervalHours: Number(f.speedEvery.select.value),
             notifyClientsWhenOffline: f.notify.input.checked,
@@ -5807,10 +6407,15 @@ function settingsScreen(ctx) {
             parkAfterHours: Number(f.parkHours.input.value),
             tailscaleSocket: tsMode === 'custom' ? f.tsPath.value() : tsMode,
             alternateVersionsEnabled: f.altVersions.input.checked,
+            tvShowsEnabled: f.tvShows.input.checked,
+            tvEpisodeThumbs: f.tvThumbs.input.checked,
             trickplayEnabled: f.trickplay.input.checked,
             trickplayCacheGb: Number(f.trickGb.input.value),
             attachmentsEnabled: f.attachments.input.checked,
-            reencodeImages: f.reencode.input.checked
+            reencodeImages: f.reencode.input.checked,
+            offlineCardEnabled: f.offlineCard.input.checked,
+            requestServiceName: f.reqName.value(),
+            requestServiceUrl: f.reqUrl.value()
         };
     }
 
@@ -5840,7 +6445,9 @@ function settingsScreen(ctx) {
         pair(f.add, f.addMin, f.addPct, t('fAddLegend'), [[1, 100000], [1, 100]]);
         flag(f.quota, t('fQuota'), f.quota.input, whole(v.diskQuotaGbPerPeer, 1, 50), 'errWholeNumber', 1, 50);
         flag(f.maxStreams, t('fMaxStreams'), f.maxStreams.input, whole(v.maxStreamsPerUser, 1, 4), 'errWholeNumber', 1, 4);
-        flag(f.parkHours, t('fParkHours'), f.parkHours.input, whole(v.parkAfterHours, 1, 8760), 'errWholeNumber', 1, 8760);
+        flag(f.bufferAhead, t('fBufferAhead'), f.bufferAhead.input, whole(v.hlsBufferAhead, 2, 20), 'errWholeNumber', 2, 20);
+        flag(f.reqUrl, t('fRequestUrl'), f.reqUrl.input, v.requestServiceUrl === '' || /^https?:\/\/\S+$/i.test(v.requestServiceUrl), 'errRequestUrl');
+        flag(f.parkHours, t('fParkHours'), f.parkHours.input, Number.isFinite(v.parkAfterHours) && v.parkAfterHours >= 0.1 && v.parkAfterHours <= 8760, 'errHoursNumber', 0.1, 8760);
         flag(f.trickGb, t('fTrickplayGb'), f.trickGb.input, whole(v.trickplayCacheGb, 1, 20), 'errWholeNumber', 1, 20);
         if (f.tsMode.select.value === 'custom') {
             flag(f.tsPath, t('fTsPath'), f.tsPath.input, !!v.tailscaleSocket, 'errEnterPath');
@@ -5878,6 +6485,7 @@ function settingsScreen(ctx) {
                 dirtyNote.hidden = true;
                 savedNote.hidden = false;
                 ctx.announce(t('settingsSaved'));
+ctx.toast(t('settingsSaved'));
                 if (result) {
                     st.settings = Object.assign({}, st.settings, result);
                     if (result.imageSandbox) {
@@ -6075,7 +6683,16 @@ function settingsScreen(ctx) {
 
         const findings = s.findings || [];
         if (findings.length) {
-            p.body.append(el('ul', { class: 'shoal-list' }, findings.map((x) => el('li', { class: 'shoal-row' }, icon('warn', true), el('span', { class: 'shoal-tone--warn' }, ' '), el('span', { class: 'shoal-row__main', text: t('finding_' + x.kind, { server: x.serverName || '', library: x.library || '' }) })))));
+            // The same sentence 25 times is noise: folders and keys that belong to no server are counted once, with the folder names.
+            const grouped = ['orphanFolder', 'orphanSecret'].map((kind) => [kind, findings.filter((x) => x.kind === kind)]).filter((g) => g[1].length > 0);
+            const single = findings.filter((x) => x.kind !== 'orphanFolder' && x.kind !== 'orphanSecret');
+            const rows = grouped.map(([kind, list]) => {
+                const names = list.map((x) => x.library).filter(Boolean).map((n) => String(n).slice(0, 8));
+                return el('li', { class: 'shoal-row' }, icon('warn', true), el('span', { class: 'shoal-tone--warn' }, ' '),
+                    el('span', { class: 'shoal-row__main' }, t(kind === 'orphanFolder' ? 'finding_orphanFolders' : 'finding_orphanSecrets', { n: list.length }),
+                        names.length ? el('span', { class: 'shoal-meta shoal-row__sub', text: ' ' + t('findingFolderNames', { names: names.join(', ') }) }) : null));
+            }).concat(single.map((x) => el('li', { class: 'shoal-row' }, icon('warn', true), el('span', { class: 'shoal-tone--warn' }, ' '), el('span', { class: 'shoal-row__main', text: t('finding_' + x.kind, { server: x.serverName || '', library: x.library || '' }) }))));
+            p.body.append(el('ul', { class: 'shoal-list' }, rows));
         } else {
             p.body.append(el('p', { class: 'shoal-checkline shoal-tone--ok' }, icon('ok', true), el('span', { text: t('stateClean') })));
         }
@@ -6100,7 +6717,7 @@ function settingsScreen(ctx) {
                         ctx.announce(t('announceDeletedAll'));
                         ctx.navigate('overview');
                     } catch (err) {
-                        ctx.alertMessage(failureMessage(err));
+                        ctx.fail(failureMessage(err));
                     }
                 }
             }
@@ -6162,10 +6779,8 @@ function settingsScreen(ctx) {
 /* ====================================================================================== */
 
 const PROBE_FIELD_ERRORS = {
-    blocked: ['url', 'errBlocked'], wrongNetwork: ['url', 'errWrongNetwork'], proxyNotAllowed: ['proxy', 'errProxyNotAllowed'],
-    inviteWrongServer: ['invite', 'errInviteWrongServer'], inviteLanHttp: ['url', 'errInviteLanHttp']
+    blocked: ['url', 'errBlocked'], wrongNetwork: ['url', 'errWrongNetwork'], proxyNotAllowed: ['proxy', 'errProxyNotAllowed']
 };
-const PROBE_FORM_ERRORS = { unreachable: 'errUnreachable', certificate: 'errCertificate', notJellyfin: 'errNotJellyfin' };
 const NETWORKS = ['Tailnet', 'LAN', 'Public'];
 
 function stepsIndicator(labels, current, doneAll) {
@@ -6198,29 +6813,41 @@ function markSvg() {
 function pairScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="pair"]');
     const host = slot(view, 'body');
-    const wiz = {
+    const freshWizard = () => ({
         dir: ctx.params.dir === 'share' ? 'share' : ctx.params.dir === 'watch' ? 'watch' : null,
         step: 'direction',
-        form: { method: null, name: '', url: '', network: 'Tailnet', proxy: '', invite: '', lanAck: false },
+        form: { method: null, name: '', url: '', network: 'Tailnet', netTouched: false, proxy: '', invite: '', lanAck: true },
+        inviteLeftMin: null,
+        reach: null,
+        reachLoaded: false,
         probe: null,
         session: null,
         outcome: null,
         stored: null,
         peerHandle: null,
         known: null,
-        newAccount: false,
-        newAccountAck: false,
         resume: false,
         remote: null,
         libs: null,
         added: null,
         // share direction
-        shareForm: { name: '', libraries: new Set(), limit: '', transcodes: 4, transport: null },
+        shareForm: { name: '', libraries: new Set(), limit: '', transcodes: 4, transport: null, address: '', addressEdited: false },
         share: null,
         invite: null,
         approval: null,
         shareOutcome: null
-    };
+    });
+    const wiz = freshWizard();
+    function restartWizard() {
+        poller.stop();
+        for (const key of Object.keys(wiz)) {
+            delete wiz[key];
+        }
+
+        Object.assign(wiz, freshWizard());
+        init();
+    }
+
     let countdownRef = null;
     let progressTimer = null;
     const poller = createPoller(ctx, poll, PAIRING_POLL_MS);
@@ -6268,17 +6895,62 @@ function pairScreen(ctx) {
     }
 
     function labels() {
-        return wiz.dir === 'share'
-            ? [t('stepWho'), t('stepInvite'), t('stepApprove')]
-            : [t('stepConnect'), t('stepCheck'), t('stepPair'), t('stepChoose')];
+        if (wiz.dir === 'share') {
+            return [t('stepWho'), t('pv2StepReach'), t('pv2StepWait'), t('stepApprove')];
+        }
+
+        return [t('pv2StepAddress'), t('stepCheck'), t('pv2StepInvite'), t('pv2StepCode'), t('stepChoose')];
     }
 
     function stepIndex() {
         if (wiz.dir === 'share') {
-            return { who: 0, invite: 1, approve: 2, done: 2 }[wiz.step] ?? 0;
+            return { who: 0, reach: 1, wait: 2, approve: 3, done: 3 }[wiz.step] ?? 0;
         }
 
-        return { connect: 0, check: 1, pair: 2, choose: 3, done: 3 }[wiz.step] ?? 0;
+        return { connect: 0, check: 1, invite: 2, pair: 3, choose: 4, done: 4 }[wiz.step] ?? 0;
+    }
+
+    /** The head of a step (3.1): the Who label(s), then the h2 that is described by them. */
+    function head(title, ...kinds) {
+        const pills = kinds.map((k) => whoLabel(k));
+        const h = stepTitle(title);
+        h.setAttribute('aria-describedby', pills.map((p) => p.id).join(' '));
+        return el('div', { class: 'shoal-stephead' }, el('div', { class: 'shoal-whos' }, pills), h);
+    }
+
+    /** "Where each code goes" in a dialog, for the steps that only link to it. */
+    function showCodes(side, route) {
+        return openDialog(ctx, {
+            title: t('pv2CodesTitle'),
+            wide: true,
+            build(body) {
+                body.append(codesCard(ctx, side, route, true));
+                return null;
+            },
+            buttons: [{ label: t('close'), close: undefined }]
+        });
+    }
+
+    /** Opens and scrolls to the codes card when the page has one, else shows it in a dialog. */
+    function revealCodes(side, route) {
+        const card = q(host, '.shoal-codescard');
+        if (card) {
+            card.open = true;
+            card.scrollIntoView({ block: 'nearest' });
+            const sum = q(card, 'summary');
+            if (sum) {
+                sum.focus({ preventScroll: true });
+            }
+
+            return;
+        }
+
+        showCodes(side, route);
+    }
+
+    function keptLine() {
+        const f = wiz.form;
+        return el('p', { class: 'shoal-meta shoal-recover__kept', text: t('pv2Kept', { what: f.url ? t('pv2KeptWatch', { name: f.name || serverName(), url: f.url }) : t('pv2KeptWatchNoUrl') }) });
     }
 
     function indicator() {
@@ -6294,8 +6966,8 @@ function pairScreen(ctx) {
         return el('p', { class: 'shoal-pairstatus shoal-tone--' + tone, role: 'status', id }, icon(iconName), el('span', { text }));
     }
 
-    function countdownNode(expiresUtc, onExpire, key) {
-        const cd = countdown(ctx, expiresUtc, onExpire, key);
+    function countdownNode(expiresUtc, onExpire, key, vars) {
+        const cd = countdown(ctx, expiresUtc, onExpire, key, vars);
         countdownRef = cd;
         return cd.root;
     }
@@ -6313,6 +6985,11 @@ function pairScreen(ctx) {
     function render() {
         stopTimers();
         clear(host);
+        const pageTitle = q(view, 'h1');
+        if (pageTitle) {
+            pageTitle.textContent = t(wiz.dir === 'share' ? 'pv2PageShare' : 'pairServer');
+        }
+
         const wrap = el('div', { class: 'shoal-wizard' });
         host.append(wrap);
         if (wiz.outcome) {
@@ -6339,9 +7016,9 @@ function pairScreen(ctx) {
         const panelNode = el('section', { class: 'shoal-panel shoal-step' });
         wrap.append(panelNode);
         const table = wiz.dir === 'watch'
-            ? { connect: renderConnect, check: renderCheck, pair: renderPair, choose: renderChoose, done: renderDone }
-            : { who: renderShareWho, invite: renderShareInvite, approve: renderShareApprove, done: renderShareDone };
-        panelNode.append((table[wiz.step] || renderConnect)());
+            ? { connect: renderConnect, check: renderCheck, invite: renderInviteStep, pair: renderPair, choose: renderChoose, done: renderDone }
+            : { who: renderShareWho, reach: renderShareReach, wait: renderShareWait, approve: renderShareApprove, done: renderShareDone };
+        panelNode.append((table[wiz.step] || (wiz.dir === 'watch' ? renderConnect : renderShareWho))());
     }
 
     function renderResume() {
@@ -6364,58 +7041,91 @@ function pairScreen(ctx) {
             wiz.dir = chosen;
             go(chosen === 'share' ? 'who' : 'connect');
         } });
-        const why = el('span', { class: 'shoal-meta shoal-step__why', text: t('chooseOne') });
+        const why = el('span', { class: 'shoal-meta shoal-step__why', text: t('pv2ChooseOne') });
         const pick = (v) => {
             chosen = v;
             next.disabled = false;
             why.hidden = true;
         };
         return el('section', { class: 'shoal-panel shoal-step' },
-            stepTitle(t('directionTitle')),
+            stepTitle(t('pv2DirTitle')),
             el('fieldset', { class: 'shoal-choices' },
-                el('legend', { class: 'shoal-sr', text: t('directionTitle') }),
-                choiceCard({ name, value: 'watch', title: t('dirWatch'), body: t('dirWatchBody'), onChange: pick }).root,
-                choiceCard({ name, value: 'share', title: t('dirShare'), body: t('dirShareBody'), onChange: pick }).root),
-            paragraph(t('dirBoth'), 'shoal-meta'),
+                el('legend', { class: 'shoal-sr', text: t('pv2DirTitle') }),
+                choiceCard({ name, value: 'watch', title: t('pv2DirWatch'), body: t('pv2DirWatchBody'), onChange: pick }).root,
+                choiceCard({ name, value: 'share', title: t('pv2DirShare'), body: t('pv2DirShareBody'), onChange: pick }).root),
+            paragraph(t('pv2DirBoth'), 'shoal-meta'),
             actions(next, why));
     }
 
-    /* ----- outcome (8.2.5), live or stored (8.2.9) ----- */
+    /* ----- outcome (8.2.5, pairing v2 8.3), live or stored (8.2.9): the recovery card (3.5) ----- */
+
+    /**
+     * What the recovery card says for a stopped watch pairing: who acts, the words, and the one step the primary button returns to.
+     * Returns { info, who: [kinds], title, body, next: 'invite' | 'prepare' | 'connect' | 'again', label }.
+     */
+    function recoverySpec(o) {
+        const server = serverName();
+        const info = outcomeInfo(o.kind, { server, home: homeName(), code: o.code, method: 'invite', phase: o.phase, afterApproval: o.afterApproval, minutes: o.minutes });
+        const spec = { info, who: ['friend'], title: info.title, body: info.body, next: 'invite', label: t('pv2PasteNewInvite') };
+        switch (info.kind) {
+            case 'expired':
+            case 'interrupted':
+                return Object.assign(spec, { title: t('pv2RanOutInviteTitle'), body: info.kind === 'expired' ? t('pv2RanOutInviteBody') : info.body });
+            case 'inviteInvalid':
+                return Object.assign(spec, { title: t('pv2InviteDidntTitle'), body: t('pv2InviteDidntBody') });
+            case 'denied':
+                return Object.assign(spec, { title: t('pv2DeniedTitle'), body: t('pv2DeniedBody') });
+            case 'codeMismatch':
+                return Object.assign(spec, { who: ['you', 'friend'], title: t('pv2MismatchTitle'), body: t('pv2MismatchBody') });
+            case 'serverChanged':
+            case 'badPeerResponse':
+            case 'adminAccount':
+                return Object.assign(spec, { who: ['you'], next: 'connect', label: t('pv2ChangeAddress') });
+            case 'rateLimited':
+                return Object.assign(spec, { who: ['you'], next: 'again', label: t('tryAgain') });
+            case 'network':
+            case 'server':
+                return Object.assign(spec, { who: ['you'], label: t('startAgain') });
+            default:
+                return spec;
+        }
+    }
 
     function renderOutcome() {
         const o = wiz.outcome;
-        const info = outcomeInfo(o.kind, { server: serverName(), home: homeName(), code: o.code, method: o.method, phase: o.phase, afterApproval: o.afterApproval, minutes: o.minutes });
+        const spec = recoverySpec(o);
+        const info = spec.info;
         const stored = !!wiz.peerHandle;
         const btns = [];
-        for (const a of info.actions) {
-            if (a === 'start') {
-                btns.push(button({ label: t('startAgain'), variant: 'primary', onClick: () => startAgain(info.kind) }));
-            } else if (a === 'change') {
-                btns.push(button({ label: t('changeAddress'), variant: 'primary', onClick: () => {
-                    wiz.outcome = null;
-                    go('connect');
-                } }));
-            } else if (a === 'again') {
-                const again = button({ label: t('tryAgain'), variant: 'primary', onClick: () => {
-                    wiz.outcome = null;
-                    go(wiz.session ? 'check' : 'connect');
-                } });
-                const note = el('span', { class: 'shoal-meta shoal-action__note', id: uid('shoal-note'), hidden: true });
-                ctx.setCooldown('pair-rate', o.retryAfter || 60);
-                cooldownNote(ctx, 'pair-rate', note, again);
-                btns.push(el('span', { class: 'shoal-action' }, again, note));
-            } else if (a === 'dismiss' && stored) {
-                btns.push(button({ label: t('dismiss'), onClick: (ev, btn) => dismiss(btn) }));
-            }
+        if (spec.next === 'again') {
+            const again = button({ label: spec.label, variant: 'primary', onClick: () => {
+                wiz.outcome = null;
+                go(wiz.session ? 'check' : 'connect');
+            } });
+            const note = el('span', { class: 'shoal-meta shoal-action__note', id: uid('shoal-note'), hidden: true });
+            ctx.setCooldown('pair-rate', o.retryAfter || 60);
+            cooldownNote(ctx, 'pair-rate', note, again);
+            btns.push(el('span', { class: 'shoal-action' }, again, note));
+        } else {
+            btns.push(button({ label: spec.label, variant: 'primary', onClick: () => startAgain(info.kind, spec.next) }));
+        }
+
+        if (stored && info.actions.includes('dismiss')) {
+            btns.push(button({ label: t('dismiss'), onClick: (ev, btn) => dismiss(btn) }));
         }
 
         const failure = info.tone === 'bad';
-        const node = el('section', { class: 'shoal-panel shoal-step shoal-outcome shoal-outcome--' + info.tone, role: failure || info.safety ? 'alert' : null },
+        const cancelled = false;
+        const node = el('section', { class: 'shoal-panel shoal-step shoal-outcome shoal-recover shoal-outcome--' + info.tone, role: failure || info.safety ? 'alert' : null },
             el('div', { class: 'shoal-outcome__icon shoal-tone--' + info.tone }, icon(info.icon)),
-            stepTitle(info.title),
+            stepTitle(spec.title),
             o.stoppedUtc ? el('p', { class: 'shoal-meta', text: t('stoppedAgo', { when: ctx.fmt.relative(o.stoppedUtc) }) }) : null,
-            paragraph(info.body, 'shoal-lead'),
-            actions(...btns));
+            paragraph(spec.body, 'shoal-lead'),
+            cancelled ? paragraph(t('pv2CodeCancelled'), 'shoal-meta') : null,
+            el('div', { class: 'shoal-whos' }, spec.who.map((k) => whoLabel(k))),
+            spec.next === 'invite' && spec.who.length === 1 && spec.who[0] === 'friend' ? paragraph(t('pv2WhoLineInvite'), 'shoal-meta') : null,
+            actions(...btns),
+            keptLine());
         return node;
     }
 
@@ -6425,7 +7135,7 @@ function pairScreen(ctx) {
         render();
         focusStep();
         const info = outcomeInfo(kind, { server: serverName() });
-        ctx.alertMessage(info.title);
+        ctx.alertMessage(recoverySpec(wiz.outcome).title || info.title);
     }
 
     async function dismiss(btn) {
@@ -6441,219 +7151,342 @@ function pairScreen(ctx) {
     }
 
     /**
-     * "Start again" (8.2.5): back to the check, with the earlier answers kept, never a new pairing on its own. After a safety stop
-     * that left the sharing account suspect, the check asks for a new account first. The invite path starts at step 1 because
-     * every attempt needs a new invite.
+     * The recovery card's one primary button: back to the step that fixes it, with the name, the address and the route kept, never a new pairing
+     * on its own. The invite and any code are never kept (single use). After a safety stop that left the sharing account suspect, the Quick
+     * Connect step asks for a new account first.
      */
-    async function startAgain(kind) {
-        wiz.newAccount = kind === 'requestReplaced' || kind === 'codesDidNotMatch';
-        wiz.newAccountAck = false;
+    async function startAgain(kind, next) {
         wiz.session = wiz.session && wiz.session.state === 'failed' ? null : wiz.session;
         wiz.outcome = null;
-        if (wiz.form.method === 'invite') {
-            wiz.form.invite = '';
-            go('connect');
-            return;
-        }
-
-        const f = wiz.form;
-        try {
-            wiz.probe = await ctx.api.probe({ url: f.url, network: f.network, proxyUrl: f.proxy || null, lanAck: f.lanAck });
-            go('check');
-        } catch {
-            go('connect');
+        wiz.form.invite = '';
+        go(next === 'connect' ? 'connect' : 'invite');
+        if (next !== 'connect') {
+            // After "The invite ran out" the empty invite box is ready for the new one (3.5, 8.3).
+            const box = q(host, '.shoal-invitefield input');
+            if (box) {
+                box.focus();
+            }
         }
     }
 
-    /* ----- watch: step 1 connect ----- */
+    /* ----- watch: the address ----- */
 
     function networkHelp(value) {
-        return t(value === 'Tailnet' ? 'netHelpTailnet' : value === 'LAN' ? 'netHelpLan' : 'netHelpPublic');
+        return t(value === 'Tailnet' ? 'netHelpTailnet' : value === 'LAN' ? 'pv2NetHelpPrivate' : 'netHelpPublic');
+    }
+
+    /* ----- watch: the address (pairing v2 5.3, 6) ----- */
+
+    /**
+     * The connection helper (6.2): four setups with the address to use and the network to choose. o: { share, friend, onUse(network, focusAddress) }.
+     * Watch side words are about the friend's server, share side words about yours.
+     */
+    function addressHelper(o) {
+        const vars = { friend: o.friend || t('yourFriend') };
+        const keys = o.share
+            ? [['pv2ShSetup1Title', 'pv2ShSetup1Body'], ['pv2ShSetup2Title', 'pv2ShSetup2Body'], ['pv2ShSetup3Title', 'pv2ShSetup3Body'], ['pv2ShSetup4Title', 'pv2ShSetup4Body']]
+            : [['pv2Setup1Title', 'pv2Setup1Body'], ['pv2Setup2Title', 'pv2Setup2Body'], ['pv2Setup3Title', 'pv2Setup3Body'], ['pv2Setup4Title', 'pv2Setup4Body']];
+        const cards = keys.map(([title, body], i) => {
+            const n = i + 1;
+            const network = n === 1 ? 'Tailnet' : n === 2 ? 'LAN' : 'Public';
+            return el('div', { class: 'shoal-setup' },
+                el('h4', { class: 'shoal-setup__title', text: t(title, vars) }),
+                el('p', { class: 'shoal-meta', text: t(body, vars) }),
+                button({ label: t('pv2UseSetup'), small: true, onClick: () => o.onUse(network, n === 1 || n === 3) }));
+        });
+        const content = el('div', { class: 'shoal-helper' },
+            paragraph(o.share ? t('pv2ShHelperLead', vars) : t('pv2HelperLead')),
+            o.share ? null : sayBox(ctx, t('pv2HelperSay')),
+            el('div', { class: 'shoal-setups' }, cards),
+            paragraph(t(o.share ? 'pv2ShSetupClose' : 'pv2SetupClose'), 'shoal-meta'));
+        return collapse(t(o.share ? 'pv2ShHelperTitle' : 'pv2HelperTitle'), content);
+    }
+
+    /** The live address hints (6.1) as hint boxes, with the quick fix button for a missing scheme. */
+    function shareWords(reading, friend) {
+    // The share side types its own server's address: the friend's words ("inside your friend's network", "points to this server") would name the wrong owner.
+    const map = { pv2AddrPrivate: 'pv2ShAddrPrivate', pv2AddrSelf: 'pv2ShAddrSelf' };
+    return Object.assign({}, reading, { msgs: reading.msgs.map((m) => (map[m.key] ? Object.assign({}, m, { key: map[m.key], vars: Object.assign({}, m.vars, { friend }) }) : m)) });
+}
+
+function addressHints(reading, onFix) {
+        const nodes = [];
+        for (const m of reading.msgs) {
+            const tone = m.tone === 'bad' ? 'bad' : m.tone;
+            const node = hint(tone, tone === 'bad' ? 'x' : tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : 'info', t(m.key, m.vars) + (m.extra ? ' ' + t(m.extra) : ''));
+            if (m.quickFix) {
+                node.querySelector('.shoal-hint__body').append(' ', linkButton(t('pv2AddHttp'), () => onFix(m.quickFix)));
+            }
+
+            nodes.push(node);
+        }
+
+        return nodes;
     }
 
     function renderConnect() {
         const f = wiz.form;
-        const wrap = el('div', { class: 'shoal-step__body' }, stepTitle(t('connectTitle')));
-        const name = 'shoal-method-' + ctx.instance;
-        const formHost = el('div', { class: 'shoal-step__form' });
-        const choose = (v) => {
-            f.method = v;
-            buildForm();
-        };
-        wrap.append(el('fieldset', { class: 'shoal-choices' },
-            el('legend', { class: 'shoal-sr', text: t('connectTitle') }),
-            choiceCard({ name, value: 'invite', title: t('methodInvite'), body: t('methodInviteBody'), checked: f.method === 'invite', onChange: choose }).root,
-            choiceCard({ name, value: 'qc', title: t('methodAddress'), body: t('methodAddressBody'), checked: f.method === 'qc', onChange: choose }).root), formHost);
+        const wrap = el('div', { class: 'shoal-step__body' }, head(t('pv2AddrTitle'), 'you'));
+        const errorHost = el('div', { class: 'shoal-formerror' });
+        const fields = {};
+        fields.name = textField({ id: uid('shoal-pf'), label: t('fServerName'), help: t('pv2NameHelp'), value: f.name, maxlength: 64, required: true });
+        fields.url = textField({ id: uid('shoal-pf'), label: t('fServerAddress'), help: t('pv2AddrHelp'), value: f.url, type: 'url', inputmode: 'url', autocapitalize: 'off', spellcheck: false, required: true });
+        const hintHost = el('div', { class: 'shoal-addrhints', 'aria-live': 'polite' });
+        fields.network = selectField({
+            id: uid('shoal-pf'),
+            label: t('fReach'),
+            options: [{ value: 'Tailnet', label: t('reachTailnet') }, { value: 'LAN', label: t('pv2ReachPrivate') }, { value: 'Public', label: t('reachPublic') }],
+            value: f.network,
+            help: networkHelp(f.network)
+        });
+        fields.proxy = textField({ id: uid('shoal-pf'), label: t('fProxy'), help: t('fProxyHelp'), value: f.proxy, mono: true, spellcheck: false });
+        const advanced = collapse(t('advanced'), fields.proxy.root);
+        let touched = !!f.netTouched;
+        let auto = false;
+        let timer = null;
+        const helper = addressHelper({
+            share: false,
+            onUse: (network, focusAddress) => {
+                touched = true;
+                f.netTouched = true;
+                fields.network.select.value = network;
+                fields.network.setHelp(networkHelp(network));
+                sync();
+                if (focusAddress) {
+                    fields.url.input.focus();
+                } else {
+                    fields.network.select.focus();
+                }
+            }
+        });
 
-        function buildForm() {
-            clear(formHost);
-            if (!f.method) {
+        const blockHost = el('div', { class: 'shoal-addrblock', 'aria-live': 'polite' });
+        const sync = () => {
+            const net = fields.network.select.value;
+            const http = /^http:/i.test(fields.url.input.value.trim());
+            clear(blockHost);
+            if (http && net !== 'Tailnet') {
+                blockHost.append(hint('warn', 'warn', t('pv2ErrInviteLan')));
+            }
+
+            advanced.hidden = net !== 'Tailnet';
+        };
+        const read = () => {
+            ctx.clearTimer(timer);
+            clear(hintHost);
+            const misplaced = classifyCode(fields.url.input.value, 'address');
+            if (misplaced) {
+                // 7.1: an invite in the address field moves to the Invite box on the invite step.
+                const note = hint('warn', 'warn', t(misplaced.key), ' ', misplaced.action === 'move' ? linkButton(t('pv2MoveInvite'), () => {
+                    f.invite = fields.url.input.value.trim();
+                    fields.url.input.value = '';
+                    read();
+                    fields.url.input.focus();
+                }) : null);
+                if (misplaced.alert) {
+                    note.setAttribute('role', 'alert');
+                }
+
+                hintHost.append(note);
                 return;
             }
 
-            const invite = f.method === 'invite';
-            const errorHost = el('div', { class: 'shoal-formerror' });
-            const fields = {};
-            fields.invite = invite ? textField({ id: uid('shoal-pf'), label: t('fInvite'), help: t('fInviteHelp'), value: f.invite, mono: true, spellcheck: false, autocapitalize: 'characters', required: true }) : null;
-            fields.name = textField({ id: uid('shoal-pf'), label: t('fServerName'), help: t('fServerNameHelp'), value: f.name, maxlength: 64, required: true });
-            fields.url = textField({ id: uid('shoal-pf'), label: t('fServerAddress'), help: t('fServerAddressHelp') + (invite ? ' ' + t('fServerAddressInvite') + ' ' + t('fServerAddressInviteNet') : ''), value: f.url, type: 'url', inputmode: 'url', spellcheck: false, required: true });
-            fields.network = selectField({
-                id: uid('shoal-pf'),
-                label: t('fReach'),
-                options: [{ value: 'Tailnet', label: t('reachTailnet') }, { value: 'LAN', label: t('reachLan') }, { value: 'Public', label: t('reachPublic') }],
-                value: f.network,
-                help: networkHelp(f.network)
-            });
-            fields.proxy = textField({ id: uid('shoal-pf'), label: t('fProxy'), help: t('fProxyHelp'), value: f.proxy, mono: true, spellcheck: false });
-            fields.lanAck = checkRow({ id: uid('shoal-pf'), label: t('fLanAck'), note: t('fLanAckNote'), checked: f.lanAck });
-            const advanced = collapse(t('advanced'), fields.proxy.root);
-            const notesHost = el('div', { class: 'shoal-addrnotes' });
-            const sync = () => {
-                clear(notesHost);
-                for (const key of addressNotes(fields.url.input.value)) {
-                    notesHost.append(hint('warn', 'warn', t(key)));
-                }
-
-                const net = fields.network.select.value;
-                const http = /^http:/i.test(fields.url.input.value.trim());
-                fields.lanAck.root.hidden = invite || !(net === 'LAN' && http);
-                advanced.hidden = net !== 'Tailnet';
-                // An invite is never sent unencrypted outside Tailscale (DESIGN 4.2 step 1): said as soon as all three are set.
-                fields.url.setError(invite && net === 'LAN' && http ? t('errInviteLanHttp') : '');
-            };
-            fields.network.select.addEventListener('change', () => {
+            const r = readAddress(fields.url.input.value, window.location.hostname);
+            auto = false;
+            if (!r) {
                 fields.network.setHelp(networkHelp(fields.network.select.value));
                 sync();
-            });
-            fields.url.input.addEventListener('input', sync);
-            fields.name.input.addEventListener('input', () => {
-                const left = 64 - fields.name.input.value.length;
-                fields.name.setHelp(left <= 14 ? t('charsLeft', { n: left }) : t('fServerNameHelp'));
-            });
-            const checkBtn = button({ label: t('checkServer'), variant: 'primary', type: 'submit' });
-            const form = el('form', { class: 'shoal-form', novalidate: true },
-                errorHost,
-                fields.invite ? fields.invite.root : null,
-                fields.name.root,
-                fields.url.root,
-                notesHost,
-                fields.network.root,
-                fields.lanAck.root,
-                advanced,
-                actions(checkBtn));
-            sync();
-
-            form.addEventListener('submit', async (ev) => {
-                ev.preventDefault();
-                clear(errorHost);
-                for (const fld of Object.values(fields)) {
-                    if (fld && fld.setError) {
-                        fld.setError('');
-                    }
-                }
-
-                f.name = fields.name.value();
-                f.url = fields.url.value();
-                f.network = fields.network.select.value;
-                f.proxy = f.network === 'Tailnet' ? fields.proxy.value() : '';
-                f.invite = fields.invite ? fields.invite.value() : '';
-                f.lanAck = fields.lanAck.input.checked;
-                const problems = [];
-                const bad = (fld, key) => {
-                    fld.setError(t(key));
-                    problems.push(fld);
-                };
-                if (fields.invite && !f.invite) {
-                    bad(fields.invite, 'errEnterInvite');
-                } else if (fields.invite && !looksLikeInvite(f.invite)) {
-                    bad(fields.invite, 'errInviteShape');
-                }
-
-                if (!f.name) {
-                    bad(fields.name, 'errEnterName');
-                }
-
-                if (!f.url) {
-                    bad(fields.url, 'errEnterAddress');
-                } else if (!/^https?:\/\//i.test(f.url)) {
-                    bad(fields.url, 'errScheme');
-                } else if (f.network === 'Public' && !/^https:/i.test(f.url)) {
-                    bad(fields.url, 'errHttpsOnly');
-                } else if (invite && f.network === 'LAN' && /^http:/i.test(f.url)) {
-                    bad(fields.url, 'errInviteLanHttp');
-                }
-
-                if (!invite && f.network === 'LAN' && /^http:/i.test(f.url) && !f.lanAck) {
-                    problems.push(fields.lanAck);
-                    ctx.alertMessage(t('errLanAck'));
-                    errorHost.append(formHint(t('errLanAck')));
-                }
-
-                if (problems.length) {
-                    if (problems.some((p) => p.setError)) {
-                        errorHost.append(el('div', { class: 'shoal-hint shoal-hint--bad', role: 'alert' }, icon('warn', true), el('div', { class: 'shoal-hint__body', text: t('fixFields', { n: problems.length }) })));
-                    }
-
-                    const first = problems[0];
-                    (first.input || fields.lanAck.input).focus();
-                    return;
-                }
-
-                await runAction(ctx, checkBtn, {
-                    busyText: t('checking'),
-                    run: () => ctx.api.probe({ url: f.url, network: f.network, proxyUrl: f.proxy || null, invite: invite ? f.invite : null, lanAck: invite ? undefined : f.lanAck }),
-                    onDone: (probe) => {
-                        wiz.probe = probe;
-                        go('check');
-                    },
-                    onError: (err) => {
-                        if (err.status === 429) {
-                            errorHost.append(formHint(t('rateLimitedIn', { n: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) })));
-                            return;
-                        }
-
-                        const fieldErr = PROBE_FIELD_ERRORS[err.kind];
-                        if (fieldErr && fields[fieldErr[0]]) {
-                            // 8.2.3: the wrong-network line is adapted to the class the admin chose.
-                            const key = fieldErr[1] === 'errWrongNetwork' && wiz.form.network === 'LAN' ? 'errWrongNetworkLan' : fieldErr[1] === 'errWrongNetwork' && wiz.form.network === 'Public' ? 'errWrongNetworkPublic' : fieldErr[1];
-                            fields[fieldErr[0]].setError(t(key));
-                            fields[fieldErr[0]].input.focus();
-                            return;
-                        }
-
-                        errorHost.append(formHint(t(PROBE_FORM_ERRORS[err.kind] || 'errUnreachable')));
-                    }
-                });
-            });
-            if (!invite) {
-                // The address path is the harder one for both sides: say so, and give the friend what they need (ui copy, no dashes).
-                const steps = friendSteps({ home: homeName(), code: '' });
-                formHost.append(hint('info', 'info', t('inviteNudge')), form, collapse(t('sendToFriend'), el('div', {},
-                    paragraph(t('sendToFriendIntro')), steps.node,
-                    copyButton(ctx, t('sendToFriendIntro') + '\n\n' + steps.text, 'copySteps', 'announceStepsCopied'))));
                 return;
             }
 
-            formHost.append(form);
+            if (r.trimmed) {
+                fields.url.input.value = r.trimmed;
+                f.trimNote = r.msgs.find((m) => m.key === 'pv2AddrTrimmed') || null;
+            }
+
+            if (r.network && !touched) {
+                fields.network.select.value = r.network;
+                auto = true;
+            }
+
+            fields.network.setHelp(auto ? t('pv2NetChose') : networkHelp(fields.network.select.value));
+            const shown = r.msgs.some((m) => m.key === 'pv2AddrTrimmed') || !f.trimNote ? r : Object.assign({}, r, { msgs: [f.trimNote, ...r.msgs] });
+            hintHost.append(...addressHints(shown, (fixed) => {
+                fields.url.input.value = fixed;
+                f.trimNote = null;
+                read();
+                fields.url.input.focus();
+            }));
+            if (r.msgs.some((m) => m.tone === 'warn' || m.tone === 'bad')) {
+                helper.open = true;
+            }
+
+            sync();
+        };
+        fields.network.select.addEventListener('change', () => {
+            touched = true;
+            f.netTouched = true;
+            auto = false;
+            fields.network.setHelp(networkHelp(fields.network.select.value));
+            sync();
+        });
+        // The hints appear while typing, never on blur: a hint that arrives on blur moves the Check server button between press and release and the click is lost.
+        let lastRead = null;
+        const readIfChanged = () => {
+            if (fields.url.input.value !== lastRead) {
+                read();
+                lastRead = fields.url.input.value;
+            }
+        };
+        fields.url.input.addEventListener('input', () => {
+            ctx.clearTimer(timer);
+            readIfChanged();
+        });
+        fields.url.input.addEventListener('blur', readIfChanged);
+        fields.url.input.addEventListener('change', readIfChanged);
+        fields.name.input.addEventListener('input', () => {
+            const left = 64 - fields.name.input.value.length;
+            fields.name.setHelp(left <= 14 ? t('charsLeft', { n: left }) : t('pv2NameHelp'));
+        });
+
+        const checkBtn = button({ label: t('checkServer'), variant: 'primary', type: 'submit' });
+        const form = el('form', { class: 'shoal-form', novalidate: true },
+            errorHost,
+            fields.name.root,
+            fields.url.root,
+            hintHost,
+            fields.network.root,
+            blockHost,
+            advanced,
+            helper,
+            actions(checkBtn, ctx.params.dir ? null : button({ label: t('back'), onClick: () => {
+                wiz.dir = null;
+                render();
+                focusStep();
+            } })));
+        wrap.append(form);
+        sync();
+        if (f.url) {
+            read();
         }
 
-        buildForm();
+        form.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            clear(errorHost);
+            for (const fld of Object.values(fields)) {
+                if (fld && fld.setError) {
+                    fld.setError('');
+                }
+            }
+
+            read();
+            f.name = fields.name.value();
+            f.url = fields.url.value();
+            f.network = fields.network.select.value;
+            f.proxy = f.network === 'Tailnet' ? fields.proxy.value() : '';
+            const problems = [];
+            const bad = (fld, key) => {
+                fld.setError(t(key));
+                problems.push(fld);
+            };
+            if (!f.name) {
+                bad(fields.name, 'errEnterName');
+            }
+
+            const reading = readAddress(f.url, window.location.hostname);
+            if (!f.url) {
+                bad(fields.url, 'errEnterAddress');
+            } else if (!/^https?:\/\//i.test(f.url)) {
+                bad(fields.url, 'pv2AddrNoScheme');
+            } else if (f.network === 'Public' && !/^https:/i.test(f.url)) {
+                bad(fields.url, 'pv2ErrHttpsOnly');
+            } else if (reading && reading.msgs.some((m) => m.key === 'pv2AddrSelf')) {
+                bad(fields.url, 'pv2AddrSelf');
+            }
+
+            for (const old of form.querySelectorAll('.shoal-ackerror')) {
+                old.remove();
+            }
+
+            if (problems.length) {
+                if (problems.some((p) => p.setError)) {
+                    errorHost.append(el('div', { class: 'shoal-hint shoal-hint--bad', role: 'alert' }, icon('warn', true), el('div', { class: 'shoal-hint__body', text: t('fixFields', { n: problems.length }) })));
+                }
+
+                const first = problems[0];
+                (first.input || first.select || first.root).focus();
+                return;
+            }
+
+            await runAction(ctx, checkBtn, {
+                busyText: t('checking'),
+                run: () => ctx.api.probe({ url: f.url, network: f.network, proxyUrl: f.proxy || null, lanAck: f.lanAck }),
+                onDone: (probe) => {
+                    wiz.probe = probe;
+                    go('check');
+                },
+                onError: (err) => {
+                    if (err.status === 429) {
+                        errorHost.append(formHint(t('rateLimitedIn', { n: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) })));
+                        return;
+                    }
+
+                    const fieldErr = PROBE_FIELD_ERRORS[err.kind];
+                    if (fieldErr && fields[fieldErr[0]]) {
+                        // 8.2.3: the wrong-network line is adapted to the class the admin chose.
+                        const key = fieldErr[1] === 'errWrongNetwork' && f.network === 'LAN' ? 'errWrongNetworkLan' : fieldErr[1] === 'errWrongNetwork' && f.network === 'Public' ? 'errWrongNetworkPublic' : fieldErr[1];
+                        fields[fieldErr[0]].setError(t(key));
+                        fields[fieldErr[0]].input.focus();
+                        return;
+                    }
+
+                    if (err.kind === 'certificate') {
+                        errorHost.append(formHint(t('pv2ErrCert')));
+                    } else if (err.kind === 'notJellyfin') {
+                        errorHost.append(formHint(t('pv2ErrNotJellyfin')));
+                    } else {
+                        errorHost.append(el('div', { class: 'shoal-hint shoal-hint--bad', role: 'alert' }, icon('warn', true), el('div', { class: 'shoal-hint__body' },
+                            el('p', { text: t('pv2ErrUnreachable') }),
+                            el('ul', { class: 'shoal-bullets' }, [1, 2, 3, 4].map((n) => el('li', { text: t('pv2Unreach_' + n) }))),
+                            button({ label: t('pv2OpenHelper'), small: true, onClick: () => {
+                                helper.open = true;
+                                if (helper.scrollIntoView) {
+                                    helper.scrollIntoView({ block: 'nearest' });
+                                }
+
+                                const sum = q(helper, 'summary');
+                                if (sum) {
+                                    sum.focus({ preventScroll: true });
+                                }
+                            } }))));
+                    }
+                }
+            });
+        });
         return wrap;
     }
 
-    /* ----- watch: step 2 check ----- */
+    /* ----- watch: the check (pairing v2 5.4) ----- */
 
     function renderCheck() {
         const p = wiz.probe;
         const f = wiz.form;
-        const wrap = el('div', { class: 'shoal-step__body' }, stepTitle(t('checkTitle')));
+        const wrap = el('div', { class: 'shoal-step__body' }, head(t('pv2CheckTitle'), 'you'));
+        // Both servers need Shoal (D17). A definite "no Shoal" blocks with the way forward; a throttled or unknown answer never blocks.
+        const noShoal = p.shoalPingThrottled !== true && p.hasShoal === false;
+        if (p.shoalPingThrottled === true) {
+            wrap.append(hint('info', 'info', t('pv2PingThrottled')));
+        } else if (p.hasShoal === true) {
+            wrap.append(hint('ok', 'ok', t('pv2HasShoalYes')));
+        }
+
         wrap.append(factList([
             [t('factName'), p.serverName],
             [t('factVersion'), p.version],
             [t('factAddress'), f.url],
             [t('factLatency'), ctx.fmt.ms(p.rttMs)],
             [t('factServerId'), serverIdText(p.serverIdPrefix)]
-        ]), paragraph(t('serverIdHelp'), 'shoal-meta'));
+        ]), paragraph(t('pv2ServerIdNote'), 'shoal-meta'));
         if (p.versionTested === false) {
             wrap.append(hint('warn', 'warn', t('warnUntested', { version: p.version })));
         }
@@ -6666,198 +7499,207 @@ function pairScreen(ctx) {
             wrap.append(hint('warn', 'warn', t('warnLanClear')));
         }
 
-        if (f.network === 'Public' && f.method === 'qc') {
-            wrap.append(hint('warn', 'warn', t('warnPublicQc')));
+        if (noShoal) {
+            const message = t('installMessage', { url: INSTALL_URL, home: homeName() });
+            const box = el('textarea', { class: 'emby-textarea shoal-input shoal-message', readonly: true, rows: '5', 'aria-label': t('installMessageLabel') });
+            box.value = message;
+            wrap.append(el('div', { class: 'shoal-hint shoal-hint--warn shoal-install', role: 'alert' }, icon('warn', true), el('div', { class: 'shoal-hint__body' },
+                el('p', { class: 'shoal-hint__title', text: t('installTitle') }),
+                el('p', { text: t('installBody') }),
+                el('p', {}, el('a', { class: 'shoal-link', href: INSTALL_URL, target: '_blank', rel: 'noopener noreferrer', text: INSTALL_URL })),
+                box,
+                copyButton(ctx, message, 'pv2CopyMessage', 'pv2Copied'))));
+            wrap.append(actions(
+                button({ label: t('checkAgain'), variant: 'primary', onClick: (ev, btn) => recheck(btn) }),
+                button({ label: t('pv2ChangeAddress'), onClick: () => go('connect') })));
+            return wrap;
         }
 
-        if (f.method === 'qc') {
-            wrap.append(paragraph(t('qcStartNote')));
-            if (wiz.known && wiz.known.paired !== false) {
-                wrap.append(hint('info', 'info', t('repairNote')));
-            }
+        // An invite never travels over plain http outside Tailscale: a dead end with the reason, and the way forward is a different address.
+        const inviteBlocked = /^http:/i.test(f.url) && f.network !== 'Tailnet';
+        if (inviteBlocked) {
+            wrap.append(hint('warn', 'warn', t('pv2ErrInviteLan')));
+            wrap.append(actions(button({ label: t('pv2ChangeAddress'), variant: 'primary', onClick: () => go('connect') })));
+            return wrap;
         }
 
-        const startBtn = button({ label: t('startPairing'), variant: 'primary', disabled: wiz.newAccount && !wiz.newAccountAck, onClick: (ev, btn) => begin(btn, wrap) });
-        const why = el('span', { class: 'shoal-meta shoal-step__why', text: t('newAccountWhy'), hidden: !(wiz.newAccount && !wiz.newAccountAck) });
-        if (wiz.newAccount) {
-            const box = checkRow({ id: uid('shoal-na'), label: t('newAccountBox'), note: t('newAccountNote'), checked: wiz.newAccountAck, onChange: (c) => {
-                wiz.newAccountAck = c;
-                startBtn.disabled = !c;
-                why.hidden = c;
-            } });
-            const show = linkButton(t('showSteps'), () => showStepsDialog(), 'shoal-newaccount__link');
-            wrap.append(hint('warn', 'warn', t('newAccountWarn')), box.root, show);
-        }
-
-        wrap.append(actions(startBtn, button({ label: t('back'), onClick: () => go('connect') }), why));
+        wrap.append(actions(button({ label: t('pv2YesThisIsIt'), variant: 'primary', onClick: () => go('invite') }), button({ label: t('pv2NoChangeAddress'), onClick: () => go('connect') })));
         return wrap;
     }
 
-    async function showStepsDialog() {
-        const steps = friendSteps({ home: homeName(), code: '', range: [2, 3] });
-        await openDialog(ctx, {
-            title: t('stepsForFriend'),
-            wide: true,
-            build(body) {
-                body.append(steps.node);
-                return null;
-            },
-            buttons: [{ label: t('close'), close: undefined }, { label: t('copySteps'), key: 'copy', onClick: async (dlg, btn) => {
-                await copyText(steps.text);
-                ctx.announce(t('announceStepsCopied'));
-            } }]
-        });
-    }
-
-    async function begin(btn, wrap) {
+    async function recheck(btn) {
         const f = wiz.form;
-        const p = wiz.probe;
         await runAction(ctx, btn, {
-            busyText: t('starting'),
-            run: () => ctx.api.startPairing({ probeHandle: p.probeHandle, displayName: f.name, method: f.method }),
-            onDone: (session) => {
-                wiz.session = session;
-                wiz.peerHandle = session.peerHandle || wiz.peerHandle;
-                ctx.announce(t('announcePairingStarted', { server: f.name }));
-                go('pair');
-            },
-            onError: async (err) => {
-                const old = q(wrap, '.shoal-startfail');
-                if (old) {
-                    old.remove();
-                }
-
-                if (err.status === 409 && err.kind === 'probeExpired') {
-                    wrap.append(el('div', { class: 'shoal-startfail' }, formHint(t('probeExpiredNote'), 'info')));
-                    try {
-                        wiz.probe = await ctx.api.probe({ url: f.url, network: f.network, proxyUrl: f.proxy || null, lanAck: f.lanAck });
-                        go('check', true);
-                    } catch {
-                        go('connect');
-                    }
-
-                    return;
-                }
-
-                if (err.status === 409) {
-                    const note = el('div', { class: 'shoal-startfail shoal-hint shoal-hint--bad', role: 'alert' }, icon('warn', true),
-                        el('div', { class: 'shoal-hint__body' }, el('p', { text: t('alreadyPairing') }), linkButton(t('goToIt'), () => {
-                            wiz.resume = false;
-                            init(true);
-                        })));
-                    wrap.append(note);
-                    return;
-                }
-
-                if (err.status === 429) {
-                    wrap.append(el('div', { class: 'shoal-startfail' }, formHint(t('rateLimitedWait', { n: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) }))));
-                    return;
-                }
-
-                wiz.outcome = { kind: 'server' };
+            busyText: t('checking'),
+            run: () => ctx.api.probe({ url: f.url, network: f.network, proxyUrl: f.proxy || null, lanAck: f.lanAck }),
+            onDone: (probe) => {
+                wiz.probe = probe;
                 render();
                 focusStep();
             }
         });
     }
 
-    /* ----- watch: step 3 pair ----- */
+    /* ----- invite route: ask for the invite, then start (pairing v2 5.5) ----- */
+
+    function renderInviteStep() {
+        const f = wiz.form;
+        const wrap = el('div', { class: 'shoal-step__body' }, stepTitle(t('pv2InviteTitle')));
+        const blockA = el('div', { class: 'shoal-block' }, whoLabel('friend'),
+            el('ol', { class: 'shoal-numbered' }, [1, 2, 3, 4, 5].map((n) => el('li', { text: t('pv2InviteStep_' + n) }))),
+            sayBox(ctx, t('pv2InviteSay')));
+        const errorHost = el('div', { class: 'shoal-formerror' });
+        const field = textField({ id: uid('shoal-pi'), label: t('pv2InviteLabel'), help: t('pv2InviteHelp'), value: f.invite, mono: true, spellcheck: false, autocapitalize: 'off', required: true });
+        field.root.classList.add('shoal-invitefield');
+        const noteHost = el('div', { class: 'shoal-invitenote', 'aria-live': 'polite' });
+        const forLine = el('p', { class: 'shoal-meta', hidden: true });
+        const startBtn = button({ label: t('startPairing'), variant: 'primary', disabled: !looksLikeInvite(f.invite), onClick: (ev, btn) => start(btn) });
+        const why = el('span', { class: 'shoal-meta shoal-step__why', text: t('pv2PasteToContinue'), hidden: looksLikeInvite(f.invite) });
+        const blockB = el('div', { class: 'shoal-block' }, whoLabel('you'), field.root, forLine, noteHost, errorHost, actions(startBtn, button({ label: t('back'), onClick: () => go('check') }), why));
+        wrap.append(blockA, blockB, el('p', {}, linkButton(t('pv2WhereLink'), () => showCodes('watch', 'invite'))));
+
+        const reflect = () => {
+            clear(noteHost);
+            field.setError('');
+            const value = field.input.value;
+            const ok = looksLikeInvite(value);
+            startBtn.disabled = !ok;
+            why.hidden = ok;
+            forLine.hidden = !ok;
+            forLine.textContent = ok ? t('pv2InviteFor', { address: f.url }) : '';
+            const c = classifyCode(value, 'invite');
+            if (!c) {
+                return;
+            }
+
+            const note = hint('bad', 'x', t(c.key));
+            if (c.alert) {
+                note.setAttribute('role', 'alert');
+            } else {
+                ctx.announce(t(c.key));
+            }
+
+            const body = note.querySelector('.shoal-hint__body');
+            if (c.action === 'codes') {
+                body.append(' ', linkButton(t('pv2ShowCodes'), () => showCodes('watch', 'invite')));
+            } else if (c.action === 'address') {
+                body.append(' ', linkButton(t('pv2GoToAddress'), () => go('connect')));
+            }
+
+            noteHost.append(note);
+        };
+        field.input.addEventListener('input', reflect);
+        field.input.addEventListener('blur', reflect);
+        if (f.invite) {
+            reflect();
+        }
+
+        async function start(btn) {
+            f.invite = field.value();
+            clear(errorHost);
+            field.setError('');
+            if (!f.invite) {
+                field.setError(t('pv2ErrInviteEmpty'));
+                field.input.focus();
+                return;
+            }
+
+            await runAction(ctx, btn, {
+                busyText: t('starting'),
+                run: async () => {
+                    // The cheap re-check that confirms the invite belongs to this server, then the pairing itself.
+                    const probe = await ctx.api.probe({ url: f.url, network: f.network, proxyUrl: f.proxy || null, invite: f.invite, lanAck: f.lanAck });
+                    wiz.probe = probe;
+                    wiz.inviteLeftMin = probe.inviteExpiresUtc ? Math.max(0, Math.round((toMs(probe.inviteExpiresUtc) - ctx.now()) / 60000)) : null;
+                    return ctx.api.startPairing({ probeHandle: probe.probeHandle, displayName: f.name, method: 'invite' });
+                },
+                onDone: (session) => {
+                    f.invite = '';
+                    wiz.session = session;
+                    wiz.peerHandle = session.peerHandle || wiz.peerHandle;
+                    ctx.announce(t('announcePairingStarted', { server: f.name }));
+                    go('pair');
+                },
+                onError: (err) => {
+                    if (err.kind === 'inviteWrongServer') {
+                        field.setError(t('pv2ErrInviteOther'));
+                        errorHost.append(el('p', {}, linkButton(t('pv2ChangeAddress'), () => go('connect'))));
+                        field.input.focus();
+                    } else if (err.kind === 'inviteGone') {
+                        field.input.value = '';
+                        f.invite = '';
+                        reflect();
+                        field.setError(t('pv2ErrInviteGone'));
+                        field.input.focus();
+                    } else if (err.kind === 'inviteLanHttp') {
+                        field.setError(t('pv2ErrInviteLan'));
+                    } else if (err.kind === 'certificate') {
+                        errorHost.append(formHint(t('pv2ErrCert')));
+                    } else if (err.kind === 'notJellyfin') {
+                        errorHost.append(formHint(t('pv2ErrNotJellyfin')));
+                    } else if (err.kind === 'unreachable' || err.kind === 'blocked' || err.kind === 'wrongNetwork' || err.kind === 'proxyNotAllowed') {
+                        errorHost.append(formHint(t('pv2ErrUnreachable')));
+                    } else {
+                        startError(err, errorHost);
+                    }
+                }
+            });
+        }
+
+        return wrap;
+    }
+
+    /** The failures every start shares: the check ran out, another pairing is live, too many tries, or the server broke. */
+    function startError(err, host2) {
+        const old = q(host2, '.shoal-startfail');
+        if (old) {
+            old.remove();
+        }
+
+        if (err.status === 409 && err.kind !== 'probeExpired') {
+            host2.append(el('div', { class: 'shoal-startfail shoal-hint shoal-hint--bad', role: 'alert' }, icon('warn', true),
+                el('div', { class: 'shoal-hint__body' }, el('p', { text: t('alreadyPairing') }), linkButton(t('goToIt'), () => {
+                    wiz.resume = false;
+                    init(true);
+                }))));
+            return;
+        }
+
+        if (err.status === 429) {
+            host2.append(el('div', { class: 'shoal-startfail' }, formHint(t('rateLimitedWait', { n: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) }))));
+            return;
+        }
+
+        wiz.outcome = { kind: 'server' };
+        render();
+        focusStep();
+    }
+
+    /* ----- watch: read the safety code to your friend ----- */
 
     function renderPair() {
         const s = wiz.session;
         const server = serverName();
         const wrap = el('div', { class: 'shoal-step__body' });
-        const isInvite = s.method === 'invite';
         poller.start();
-        if (isInvite) {
-            wrap.append(
-                stepTitle(t('inviteCodeTitle')),
-                paragraph(t('inviteCodeBody', { server })),
-                el('div', { class: 'shoal-codeblock' }, labelledCode('safety', s.safetyCode, 'safetyCodeWord'), copyButton(ctx, () => normalizeCode(s.safetyCode), 'copyCode', 'announceCodeCopied')),
-                countdownNode(s.expiresUtc, () => showOutcome('expired', { method: 'invite' }), 'invite'),
-                statusRow('info', 'clock', t('waitingForFriend', { server }), 'shoal-pairwait'),
-                el('p', { class: 'shoal-meta', text: t('inviteNoRequest', { home: homeName() }) }),
-                actions(linkButton(t('cancelPairing'), () => cancelSession())));
-            return wrap;
-        }
-
-        if (s.state === 'awaitingConfirm' || s.state === 'approved') {
-            const device = 'Shoal: ' + homeName() + ' (' + s.safetyCode + ')';
-            wrap.append(
-                statusRow('ok', 'ok', t('qcApproved', { server })),
-                countdownNode(s.expiresUtc, () => showOutcome('expired', { method: 'qc', afterApproval: true }), 'confirm'),
-                stepTitle(t('compareTitle')),
-                el('p', { class: 'shoal-body-text' }, tRich('compareBody', { server, device })),
-                el('div', { class: 'shoal-codeblock' }, labelledCode('check', s.safetyCode, 'safetyCodeWord')),
-                paragraph(t('lockBody')),
-                actions(
-                    button({ label: t('codesMatch'), variant: 'primary', onClick: (ev, btn) => confirmMatch(true, btn) }),
-                    button({ label: t('codesDontMatch'), onClick: (ev, btn) => confirmMatch(false, btn) })));
-            return wrap;
-        }
-
-        if (!s.code) {
-            // Not shown until Shoal confirmed the code with the friend's server, so nobody relays a code that was never real.
-            wrap.setAttribute('aria-busy', 'true');
-            wrap.append(
-                stepTitle(t('qcTitle')),
-                el('div', { class: 'shoal-skel__panel shoal-skel__panel--code' }),
-                statusRow('info', 'sync', t('gettingCode', { server }), 'shoal-pairwait'),
-                actions(linkButton(t('cancelPairing'), () => cancelSession())));
-            return wrap;
-        }
-
-        const silent = !!s.peerSilent;
-        const seen = ctx.storage.get(QC_STEPS_KEY);
-        const steps = friendSteps({ home: homeName(), code: s.safetyCode });
-        const details = collapse(t('stepsForFriend'), [steps.node, button({ label: t('copySteps'), small: true, icon: 'copy', onClick: async () => {
-            await copyText(steps.text);
-            ctx.announce(t('announceStepsCopied'));
-        } })], !seen);
-        ctx.storage.set(QC_STEPS_KEY, '1');
+        const approved = s.state === 'approved' || s.state === 'awaitingConfirm';
         appendKids(wrap, [
-            stepTitle(t('qcTitle')),
-            el('div', { class: 'shoal-codes' },
-                el('div', { class: 'shoal-codewrap' }, labelledCode('qc', s.code, 'qcCodeWord'), copyButton(ctx, () => normalizeCode(s.code), 'copyCode', 'announceCodeCopied')),
-                labelledCode('check', s.safetyCode, 'safetyCodeWord')),
-            countdownNode(s.expiresUtc, () => showOutcome('expired', { method: 'qc' }), 'qc'),
-            el('p', { class: 'shoal-meta', text: t('qcCheckLine', { home: homeName(), code: s.safetyCode }) }),
-            details,
-            silent ? statusRow('warn', 'warn', t('waitingToAnswer', { server }), 'shoal-pairwait') : statusRow('info', 'clock', t('waitingForApprove', { server }), 'shoal-pairwait'),
-            silent ? el('p', { class: 'shoal-meta', text: t('keepsTrying') }) : null,
-            s.paired ? el('p', { class: 'shoal-meta', text: t('repairLimitLine') }) : null,
+            head(t('pv2CodeTitle'), 'you'),
+            paragraph(t('pv2CodeBody')),
+            el('div', { class: 'shoal-codeblock' }, labelledCode('safety', s.safetyCode, 'safetyCodeWord'), copyButton(ctx, () => normalizeCode(s.safetyCode), 'copyCode', 'announceCodeCopied')),
+            sayBox(ctx, t('pv2CodeSay', { home: homeName(), code: inFours(s.safetyCode) })),
+            approved ? statusRow('ok', 'ok', t('pv2ApprovedConnecting'), 'shoal-pairwait') : statusRow('info', 'clock', t('waitingForFriend', { server }), 'shoal-pairwait'),
+            countdownNode(s.expiresUtc, () => showOutcome('expired', { method: 'invite' }), 'invite'),
+            typeof wiz.inviteLeftMin === 'number' ? paragraph(t('pv2InviteLeft', { m: wiz.inviteLeftMin, n: wiz.inviteLeftMin }), 'shoal-meta') : null,
+            el('p', {}, linkButton(t('pv2WhereLink'), () => showCodes('watch', 'invite'))),
+            collapse(t('pv2NoRequestTitle'), paragraph(t('pv2NoRequestBody', { server, home: homeName() }), 'shoal-meta')),
             actions(linkButton(t('cancelPairing'), () => cancelSession()))]);
         return wrap;
     }
 
-    async function confirmMatch(match, btn) {
-        await runAction(ctx, btn, {
-            busyText: t('saving'),
-            run: () => ctx.api.confirmPairing(match),
-            onDone: (s) => {
-                poller.stop();
-                if (!match || (s && s.error)) {
-                    wiz.session = s;
-                    showOutcome((s && s.error) || 'codesDidNotMatch', { method: 'qc', code: s && s.code });
-                    return;
-                }
-
-                wiz.session = s;
-                wiz.peerHandle = s.peerHandle || wiz.peerHandle;
-                ctx.announce(t('announcePaired', { server: serverName() }));
-                go('choose');
-            },
-            onError: async (err) => {
-                if (err.status === 409) {
-                    // The session is no longer waiting for this: show whatever the server says it is now.
-                    wiz.session = await ctx.api.pairing().catch(() => null);
-                    await poll();
-                    return;
-                }
-
-                showOutcome(err.status === 429 ? 'rateLimited' : 'server', { retryAfter: err.retryAfter, minutes: Math.max(1, Math.ceil((err.retryAfter || 60) / 60)) });
-            }
-        });
+    function closeFinishedPairing() {
+        poller.stop();
+        ctx.api.cancelPairing().catch(() => {});
     }
 
     async function cancelSession() {
@@ -6932,7 +7774,7 @@ function pairScreen(ctx) {
             wiz.form.url = peer.url;
             wiz.form.network = peer.network || 'Tailnet';
             wiz.form.proxy = peer.proxy ? '' : '';
-            wiz.form.method = peer.pairingMethod || 'qc';
+            wiz.form.method = 'invite';
             wiz.dir = 'watch';
             wiz.known = peer;
             if (peer.pairingError) {
@@ -6967,7 +7809,7 @@ function pairScreen(ctx) {
 
         function showAddError(err) {
             const noRoot = !!err && err.kind === 'noStubRoot';
-            const kids = [el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: noRoot ? t('noStubRootAdd') : failureMessage(err, 'addFailed') }))];
+            const kids = [el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: noRoot ? t('noStubRootAdd') : err && err.status === 409 ? t('addConflict') : failureMessage(err, 'addFailed') }))];
             if (noRoot) {
                 kids.push(button({ label: t('openSettings'), small: true, onClick: () => ctx.navigate('settings') }));
             }
@@ -7018,10 +7860,18 @@ function pairScreen(ctx) {
                 clear(listHost);
                 const youId = currentUserId(ctx, libs);
                 const users = (libs.users || []).filter((u) => !u.isShareUser);
-                for (const lib of remote) {
+                let have = new Set();
+                try {
+                    const known = await ctx.api.peer(wiz.peerHandle);
+                    have = new Set((known.libraries || []).map((m) => m.mappingKey));
+                } catch {
+                    /* the picker then offers everything and the server refuses a duplicate in words */
+                }
+
+                for (const lib of remote.filter((r) => !r.added && !have.has(r.mappingKey))) {
                     const block = el('div', { class: 'shoal-libpick__item' });
                     const detail = el('div', { class: 'shoal-libpick__detail', hidden: true });
-                    const note = lib.selectable ? t('libMeta', { type: t('type_' + lib.type), count: ctx.fmt.num(lib.count), n: lib.count }) : t('libLater', { type: t('type_' + lib.type) });
+                    const note = lib.selectable ? libCountNote(ctx, lib) : libLaterNote(lib.type);
                     const row = checkRow({
                         id: uid('shoal-rl'),
                         label: lib.name,
@@ -7050,8 +7900,22 @@ function pairScreen(ctx) {
                     block.append(row.root, detail);
                     listHost.append(block);
                 }
-            } catch {
-                replaceKids(listHost, loadErrorBox(() => build()));
+            } catch (err) {
+                if (err && err.status === 404) {
+                    // The server this pairing was for is gone (a pairing that was left behind): say so and give a way out.
+                    replaceKids(listHost, [formHint(t('ghostPairing'), 'warn'), button({ label: t('startOver'), variant: 'primary', onClick: async () => {
+                        try {
+                            await ctx.api.cancelPairing();
+                        } catch {
+                            /* nothing to cancel */
+                        }
+
+                        restartWizard();
+                    } })]);
+                    return;
+                }
+
+                replaceKids(listHost, err && err.status === 502 ? [formHint(t('remoteUnreachable', { server }), 'warn'), loadErrorBox(() => build())] : loadErrorBox(() => build()));
             }
         }
 
@@ -7106,6 +7970,8 @@ function pairScreen(ctx) {
                 onDone: (result) => {
                     wiz.added = result || {};
                     wiz.step = 'done';
+                    // The pairing is finished: close it on the server so "Pair a server" does not offer to resume it (N13).
+                    closeFinishedPairing();
                     render();
                     focusStep();
                 },
@@ -7129,16 +7995,6 @@ function pairScreen(ctx) {
             wrap.append(hint('warn', 'eyeoff', t('noOneCanSee', { library: lib })));
         }
 
-        if (wiz.form.method === 'qc') {
-            const tail = friendSteps({ home: homeName(), code: (wiz.session && wiz.session.safetyCode) || '', range: [7, 9] });
-            wrap.append(el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true),
-                el('div', { class: 'shoal-hint__body' }, el('p', { text: t('finishRemind', { server }) }),
-                    button({ label: t('copySteps'), small: true, icon: 'copy', onClick: async () => {
-                        await copyText(tail.text);
-                        ctx.announce(t('announceStepsCopied'));
-                    } }))));
-        }
-
         wrap.append(actions(
             button({ label: t('goToOverview'), variant: 'primary', onClick: () => ctx.navigate('overview') }),
             button({ label: t('openServer', { server }), onClick: () => ctx.navigate('server', { id: wiz.peerHandle }) })));
@@ -7149,7 +8005,7 @@ function pairScreen(ctx) {
             try {
                 const peer = await ctx.api.peer(wiz.peerHandle);
                 const sp = peer.syncProgress || { done: 0, total: 0 };
-                text.textContent = t('addingProgress', { done: ctx.fmt.num(sp.done), total: ctx.fmt.num(sp.total) });
+                text.textContent = sp.total > 0 ? t('addingProgress', { done: ctx.fmt.num(sp.done), total: ctx.fmt.num(sp.total) }) : '';
                 bar.setAttribute('aria-valuemax', String(sp.total || 1));
                 bar.setAttribute('aria-valuenow', String(sp.done || 0));
                 setVar(fillNode, '--shoal-progress', Math.round(((sp.done || 0) / Math.max(1, sp.total || 1)) * 100) + '%');
@@ -7169,7 +8025,7 @@ function pairScreen(ctx) {
 
     function renderShareWho() {
         const f = wiz.shareForm;
-        const wrap = el('div', { class: 'shoal-step__body' }, stepTitle(t('shareWhoTitle')));
+        const wrap = el('div', { class: 'shoal-step__body' }, head(t('pv2ShWhoTitle'), 'you'));
         const nameField = textField({ id: uid('shoal-sw'), label: t('fFriendName'), help: t('fFriendNameHelp'), value: f.name, maxlength: 64, required: true });
         const watched = ((ctx.status && ctx.status.servers) || []).filter((s) => s && typeof s.displayName === 'string' && s.displayName).slice(0, 6);
         const prefill = watched.length
@@ -7189,9 +8045,9 @@ function pairScreen(ctx) {
         const next = button({ label: t('continue'), variant: 'primary', type: 'submit' });
         const form = el('form', { class: 'shoal-form', novalidate: true },
             nameField.root, prefill, libsHost, limit.root, transcodes.root,
-            el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('shareAccountNote', { friend: f.name || t('yourFriend') }) })),
+            el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('pv2ShNote', { friend: f.name || t('yourFriend') }) })),
             actions(next));
-        wrap.append(form);
+        wrap.append(form, codesCard(ctx, 'share', null, false));
 
         ctx.api.shares().then((data) => {
             if (!ctx.alive) {
@@ -7206,7 +8062,7 @@ function pairScreen(ctx) {
                 const row = checkRow({
                     id: uid('shoal-sl'),
                     label: lib.name,
-                    note: fromFriend ? t('libFromFriend') : selectable ? t('libMeta', { type: t('type_' + lib.type), count: ctx.fmt.num(lib.count), n: lib.count }) : t('libLater', { type: t('type_' + lib.type) }),
+                    note: fromFriend ? t('libFromFriend') : selectable ? (typeof lib.count === 'number' ? t('libMeta', { type: t('type_' + lib.type), count: ctx.fmt.num(lib.count), n: lib.count }) : null) : libLaterNote(lib.type),
                     disabled: !selectable,
                     checked: f.libraries.has(lib.id),
                     onChange: (checked) => (checked ? f.libraries.add(lib.id) : f.libraries.delete(lib.id))
@@ -7245,7 +8101,7 @@ function pairScreen(ctx) {
                 run: () => ctx.api.createShare({ friendName: f.name, libraryIds: Array.from(f.libraries), maxBitrateMbps: f.limit ? Number(f.limit) : null, maxConcurrentTranscodes: f.transcodes }),
                 onDone: (share) => {
                     wiz.share = Object.assign({ handle: share.handle, name: f.name, libraryIds: Array.from(f.libraries) }, share);
-                    go('invite');
+                    go('reach');
                 },
                 onError: (err) => ctx.alertMessage(failureMessage(err, 'saveFailed'))
             });
@@ -7253,27 +8109,184 @@ function pairScreen(ctx) {
         return wrap;
     }
 
-    function renderShareInvite() {
+    /* ----- share: step 2, how your friend reaches you, with the address to send (pairing v2 9.2) ----- */
+
+    const TRANSPORT_NETWORK = { tailnet: 'Tailnet', home: 'LAN', public: 'Public' };
+
+    /** Shoal's best guess for the address to send, from GET Shares/Reach. Returns '' when there is none or the field is missing. */
+    function guessAddress(transport) {
+        const r = wiz.reach;
+        if (!r || typeof r !== 'object') {
+            return '';
+        }
+
+        if (transport === 'tailnet' && r.tailscale && r.tailscale.dnsName) {
+            return 'http://' + String(r.tailscale.dnsName).replace(/\.$/, '') + ':8096';
+        }
+
+        if (transport === 'public' && r.https && r.https.url) {
+            return String(r.https.url);
+        }
+
+        if (transport === 'home') {
+            // Never the container's own address: the one the admin used to open this page, else a listed one that matches it.
+            const here = window.location.hostname;
+            const urls = Array.isArray(r.lan) ? r.lan.map((x) => String(x.url || '')).filter(Boolean) : [];
+            const match = urls.find((u) => hostOf(u) === here);
+            if (match) {
+                return match;
+            }
+
+            return isPrivateHost(here) ? window.location.origin : '';
+        }
+
+        return '';
+    }
+
+    function renderShareReach() {
         const f = wiz.shareForm;
         const share = wiz.share;
         const friend = share.name || share.friendName;
-        const wrap = el('div', { class: 'shoal-step__body' }, stepTitle(t('shareInviteTitle', { friend })));
+        const wrap = el('div', { class: 'shoal-step__body' }, head(t('pv2ShReachTitle', { friend }), 'you'));
         const name = 'shoal-transport-' + ctx.instance;
-        const inviteHost = el('div', { class: 'shoal-invite' });
+        const errorHost = el('div', { class: 'shoal-formerror' });
+        const hintHost = el('div', { class: 'shoal-addrhints', 'aria-live': 'polite' });
+        const address = textField({ id: uid('shoal-sa'), label: t('pv2ShAddrLabel'), help: t('pv2ShAddrHelpEmpty', { friend }), value: f.address || '', type: 'url', inputmode: 'url', autocapitalize: 'off', spellcheck: false, required: true, mono: true });
         const makeBtn = button({ label: t('createInvite'), variant: 'primary', disabled: !f.transport, onClick: (ev, btn) => create(btn) });
         const why = el('span', { class: 'shoal-meta shoal-step__why', text: t('transportWhy'), hidden: !!f.transport });
+        const readAddr = () => {
+            clear(hintHost);
+            const r = readAddress(address.input.value, null);
+            if (f.transport === 'home' && /^http:/i.test(address.input.value.trim())) {
+                hintHost.append(hint('warn', 'warn', t('pv2ShHomeHttp', { friend })));
+            }
+
+            if (r) {
+                if (r.trimmed) {
+                    address.input.value = r.trimmed;
+                }
+
+                hintHost.append(...addressHints(shareWords(r, friend), (fixed) => {
+                    address.input.value = fixed;
+                    readAddr();
+                }));
+            }
+        };
+        const fillGuess = () => {
+            if (f.addressEdited && address.input.value) {
+                return;
+            }
+
+            const guess = guessAddress(f.transport);
+            address.input.value = guess;
+            address.setHelp(guess ? t('pv2ShAddrHelp', { friend }) : t('pv2ShAddrHelpEmpty', { friend }));
+            readAddr();
+        };
         const pickT = (v) => {
             f.transport = v;
             makeBtn.disabled = false;
             why.hidden = true;
+            fillGuess();
         };
+        const choose = (value, titleKey, hintKey) => choiceCard({ name, value, title: t(titleKey, { friend }), body: t(hintKey, { friend }), checked: f.transport === value, onChange: pickT }).root;
+        const helper = addressHelper({
+            share: true,
+            friend,
+            onUse: (network, focusAddress) => {
+                const value = network === 'Tailnet' ? 'tailnet' : network === 'LAN' ? 'home' : 'public';
+                const input = q(wrap, `input[type="radio"][value="${value}"]`);
+                if (input) {
+                    input.checked = true;
+                    pickT(value);
+                }
+
+                if (focusAddress) {
+                    address.input.focus();
+                }
+            }
+        });
+        address.input.addEventListener('input', () => {
+            f.addressEdited = true;
+            readAddr();
+        });
+        address.input.addEventListener('blur', readAddr);
+        const reachSet = el('fieldset', { class: 'shoal-choices' },
+            choose('tailnet', 'pv2ShTs', 'pv2ShTsHint'),
+            choose('public', 'pv2ShPublic', 'pv2ShPublicHint'),
+            choose('home', 'pv2ShHome', 'pv2ShHomeHint'));
+        labelByHeading(wrap, reachSet);
         wrap.append(
-            el('fieldset', { class: 'shoal-choices' },
-                el('legend', { class: 'shoal-label', text: t('shareTransportLegend', { friend }) }),
-                choiceCard({ name, value: 'tailnet', title: t('transportTailnet', { friend }), body: t('transportTailnetBody'), checked: f.transport === 'tailnet', onChange: pickT }).root,
-                choiceCard({ name, value: 'public', title: t('transportPublic'), body: t('transportPublicBody'), checked: f.transport === 'public', onChange: pickT }).root),
-            actions(makeBtn, why),
-            inviteHost);
+            reachSet,
+            address.root,
+            hintHost,
+            helper,
+            sayBox(ctx, t('pv2ShSayMaking'), t('pv2SayLeadTo', { friend })),
+            errorHost,
+            actions(makeBtn, button({ label: t('back'), onClick: () => go('who') }), why));
+        if (f.address) {
+            readAddr();
+        } else if (f.transport) {
+            fillGuess();
+        }
+
+        // The suggestions (Shoal's own address from Tailscale and its configuration) arrive when the server knows them; without them the field is empty.
+        if (!wiz.reachLoaded) {
+            wiz.reachLoaded = true;
+            ctx.api.shareReach().then((r) => {
+                wiz.reach = r;
+                if (ctx.alive && wiz.step === 'reach' && f.transport) {
+                    fillGuess();
+                }
+            }).catch(() => {
+                wiz.reach = null;
+            });
+        }
+
+        async function create(btn) {
+            clear(errorHost);
+            address.setError('');
+            const value = address.value();
+            f.address = value;
+            if (!value) {
+                address.setError(t('errEnterAddress'));
+                address.input.focus();
+                return;
+            }
+
+            if (!/^https?:\/\//i.test(value)) {
+                address.setError(t('pv2AddrNoScheme'));
+                address.input.focus();
+                return;
+            }
+
+            await runAction(ctx, btn, {
+                busyText: t('creatingInvite'),
+                run: () => ctx.api.createInvite(share.handle),
+                onDone: (inv) => {
+                    wiz.invite = inv;
+                    wiz.shareOutcome = null;
+                    go('wait');
+                    poller.start();
+                },
+                onError: (err) => ctx.alertMessage(failureMessage(err))
+            });
+        }
+
+        return wrap;
+    }
+
+    /* ----- share: step 3, send the invite and wait (pairing v2 9.3) ----- */
+
+    function shareMessage(invite) {
+        return t('pv2ShMessage', { address: wiz.shareForm.address || '', invite });
+    }
+
+    function renderShareWait() {
+        const share = wiz.share;
+        const friend = share.name || share.friendName;
+        const wrap = el('div', { class: 'shoal-step__body' }, head(t('pv2ShSendTitle', { friend }), 'you'));
+        const host2 = el('div', { class: 'shoal-invite' });
+        wrap.append(host2);
 
         async function create(btn) {
             await runAction(ctx, btn, {
@@ -7281,29 +8294,46 @@ function pairScreen(ctx) {
                 run: () => ctx.api.createInvite(share.handle),
                 onDone: (inv) => {
                     wiz.invite = inv;
-                    renderInvite();
+                    draw();
                     poller.start();
                 },
                 onError: (err) => ctx.alertMessage(failureMessage(err))
             });
         }
 
-        function renderInvite() {
+        function draw() {
             const invite = wiz.invite;
-            clear(inviteHost);
+            clear(host2);
+            if (countdownRef) {
+                countdownRef.stop();
+                countdownRef = null;
+            }
+
             if (!invite || !invite.invite) {
                 return;
             }
 
-            if (countdownRef) {
-                countdownRef.stop();
-            }
-
-            inviteHost.append(
-                paragraph(t('inviteBody', { friend })),
+            const message = shareMessage(invite.invite);
+            const box = el('textarea', { class: 'emby-textarea shoal-input shoal-message', readonly: true, rows: '9', 'aria-label': t('pv2ShMessageLabel') });
+            box.value = message;
+            host2.append(
                 inviteBox(invite.invite),
+                el('div', { class: 'shoal-inline' }, copyButton(ctx, invite.invite, 'copyInvite', 'announceInviteCopied')),
+                countdownNode(invite.expiresUtc, () => {
+                    wiz.invite = null;
+                    ctx.announce(t('announceInviteExpired'));
+                    poller.stop();
+                    wiz.shareOutcome = { kind: 'inviteExpired' };
+                    render();
+                    focusStep();
+                }, 'shareInvite', { friend }),
+                el('div', { class: 'shoal-hint shoal-hint--warn', role: 'note' }, icon('warn', true), el('div', { class: 'shoal-hint__body' },
+                    el('p', { text: t('pv2ShSecretWarn', { friend }) }), el('p', { text: t('inviteShownOnce') }))),
+                box,
+                el('div', { class: 'shoal-inline' }, copyButton(ctx, message, 'pv2CopyMessage', 'pv2Copied')),
+                sayBox(ctx, t('pv2ShSendSay'), t('pv2SayLeadTo', { friend })),
+                statusRow('info', 'clock', t('waitingForUse', { friend }), 'shoal-pairwait'),
                 el('div', { class: 'shoal-inline' },
-                    copyButton(ctx, invite.invite, 'copyInvite', 'announceInviteCopied'),
                     button({ label: t('newInvite'), onClick: (ev, btn) => create(btn) }),
                     linkButton(t('cancelInvite'), async () => {
                         try {
@@ -7314,30 +8344,16 @@ function pairScreen(ctx) {
 
                         wiz.invite = null;
                         poller.stop();
-                        renderInvite();
-                    })),
-                countdownNode(invite.expiresUtc, () => {
-                    wiz.invite = null;
-                    ctx.announce(t('announceInviteExpired'));
-                    inviteExpired();
-                }, 'invite'),
-                el('div', { class: 'shoal-hint shoal-hint--warn', role: 'note' }, icon('warn', true), el('div', { class: 'shoal-hint__body', text: t('inviteShownOnce') })),
-                statusRow('info', 'clock', t('waitingForUse', { friend }), 'shoal-pairwait'));
+                        go('reach');
+                    })));
         }
 
-        function inviteExpired() {
-            clear(inviteHost);
-            inviteHost.append(el('div', { class: 'shoal-hint shoal-hint--warn', role: 'note' }, icon('clock', true), el('div', { class: 'shoal-hint__body' },
-                el('p', { class: 'shoal-hint__title', text: t('shareExpiredTitle') }),
-                el('p', { text: t('shareExpiredBody', { friend }) }))));
-        }
-
-        renderInvite();
+        draw();
         return wrap;
     }
 
     async function pollApproval() {
-        if (wiz.step !== 'invite' && wiz.step !== 'approve') {
+        if (wiz.step !== 'wait' && wiz.step !== 'approve') {
             return;
         }
 
@@ -7353,7 +8369,7 @@ function pairScreen(ctx) {
 
             const prev = wiz.approval;
             wiz.approval = a;
-            if (a.state === 'pending' && wiz.step === 'invite') {
+            if (a.state === 'pending' && wiz.step === 'wait') {
                 ctx.announce(t('announceApprovalWaiting', { server: a.homeName, friend: wiz.share.name }));
                 go('approve', true);
             } else if (wiz.step === 'approve' && a.state === 'pending' && wiz.approvalCard) {
@@ -7383,12 +8399,12 @@ function pairScreen(ctx) {
         const friend = share.name || share.friendName;
         const wrap = el('div', { class: 'shoal-step__body' });
         if (!a || a.state === 'none') {
-            wrap.append(stepTitle(t('approvalNoneTitle')), paragraph(t('approvalNone')), actions(button({ label: t('back'), onClick: () => go('invite') })));
+            wrap.append(head(t('approvalNoneTitle'), 'you'), paragraph(t('approvalNone')), actions(button({ label: t('back'), onClick: () => go('wait') })));
             return wrap;
         }
 
         if (a.state === 'approved') {
-            wrap.append(stepTitle(t('approvedTitle')), statusRow('info', 'clock', t('approvedWaiting', { home: a.homeName }), 'shoal-pairwait'));
+            wrap.append(head(t('approvedTitle'), 'wait'), statusRow('info', 'clock', t('approvedWaiting', { home: a.homeName }), 'shoal-pairwait'));
             poller.start();
             return wrap;
         }
@@ -7420,31 +8436,35 @@ function pairScreen(ctx) {
         });
         wiz.approvalCard = card;
         poller.start();
-        wrap.append(card.root);
+        wrap.append(head(t('pv2ShApproveTitle', { friend }), 'you'), card.root);
         return wrap;
     }
 
+    /** A stopped share pairing as a recovery card (3.5, 9.4, 9.5): who acts, one primary button, what was kept. */
     function renderShareOutcome() {
         const o = wiz.shareOutcome;
         const share = wiz.share;
         const friend = share.name || share.friendName;
         const home = (wiz.approval && wiz.approval.homeName) || '';
         const table = {
-            cancelledWrongCode: { icon: 'x', tone: 'off', title: t('shareCancelledTitle'), body: t('shareCancelledBody', { friend }) },
-            denied: { icon: 'x', tone: 'off', title: t('shareDeniedTitle'), body: t('shareDeniedBody') },
-            uncollected: { icon: 'x', tone: 'bad', title: t('shareUncollectedTitle', { home }), body: t('shareUncollectedBody') }
+            inviteExpired: { icon: 'clock', tone: 'warn', who: 'you', title: t('pv2ShRanOutTitle'), body: t('pv2ShRanOutBody', { friend }), label: t('pv2ShMakeNew') },
+            cancelledWrongCode: { icon: 'x', tone: 'off', who: 'you', title: t('shareCancelledTitle'), body: t('shareCancelledBody', { friend }), label: t('pv2ShCreateNew') },
+            denied: { icon: 'x', tone: 'off', who: 'friend', title: t('shareDeniedTitle'), body: t('shareDeniedBody'), label: t('pv2ShCreateNew') },
+            uncollected: { icon: 'x', tone: 'bad', who: 'friend', title: t('shareUncollectedTitle', { home }), body: t('shareUncollectedBody'), label: t('pv2ShCreateNew') }
         };
         const d = table[o.kind];
-        return el('section', { class: 'shoal-panel shoal-step shoal-outcome shoal-outcome--' + d.tone, role: 'alert' },
+        return el('section', { class: 'shoal-panel shoal-step shoal-outcome shoal-recover shoal-outcome--' + d.tone, role: 'alert' },
             el('div', { class: 'shoal-outcome__icon shoal-tone--' + d.tone }, icon(d.icon)),
             stepTitle(d.title),
             paragraph(d.body, 'shoal-lead'),
-            actions(button({ label: t('createInvite') + '', variant: 'primary', onClick: () => {
+            el('div', { class: 'shoal-whos' }, whoLabel(d.who)),
+            actions(button({ label: d.label, variant: 'primary', onClick: () => {
                 wiz.shareOutcome = null;
                 wiz.invite = null;
                 wiz.approval = null;
-                go('invite');
-            } })));
+                go('reach');
+            } })),
+            el('p', { class: 'shoal-meta shoal-recover__kept', text: t('pv2Kept', { what: t('pv2KeptShare', { friend }) }) }));
     }
 
     function renderShareDone() {
@@ -7483,7 +8503,7 @@ function pairScreen(ctx) {
                 wiz.form.name = peer.displayName;
                 wiz.form.url = peer.url;
                 wiz.form.network = peer.network || 'Tailnet';
-                wiz.form.method = peer.pairingMethod === 'invite' ? 'invite' : 'qc';
+                wiz.form.method = 'invite';
                 if (ctx.params.id && peer.pairingError) {
                     wiz.stored = peer;
                     wiz.outcome = { kind: peer.pairingError, method: peer.pairingMethod, phase: peer.pairingPhase, afterApproval: peer.pairingPhase === 'awaitingConfirm', stoppedUtc: peer.pairingStoppedUtc };
@@ -7492,7 +8512,6 @@ function pairScreen(ctx) {
                     return;
                 }
 
-                wiz.newAccount = peer.pairingError === 'requestReplaced' || peer.pairingError === 'codesDidNotMatch';
                 wiz.step = 'connect';
                 render();
                 focusStep();
@@ -7514,6 +8533,19 @@ function pairScreen(ctx) {
                 existing = await ctx.api.pairing();
             } catch {
                 existing = null;
+            }
+
+            if (existing && existing.direction === 'watch' && existing.state !== 'aborted' && existing.step === 'confirmed' && existing.peerHandle) {
+                // A pairing that is confirmed and whose server already has libraries is finished: close it and start fresh (N13).
+                try {
+                    const known = await ctx.api.peer(existing.peerHandle);
+                    if ((known.libraries || []).length > 0) {
+                        await ctx.api.cancelPairing();
+                        existing = null;
+                    }
+                } catch {
+                    /* keep the pairing as it is */
+                }
             }
 
             if (existing && existing.direction === 'watch') {
@@ -7560,6 +8592,19 @@ function pairScreen(ctx) {
             if (!started) {
                 started = true;
                 init();
+                return;
+            }
+
+            // Coming back to the page: an old red error and the old address do not belong to a new visit. A running pairing is kept (it lives on the server);
+            // one the server no longer has is dropped.
+            if (!wiz.session && !wiz.peerHandle && wiz.step !== 'done') {
+                restartWizard();
+            } else if (wiz.session && wiz.step !== 'done') {
+                ctx.api.pairing().then((now) => {
+                    if (!now && ctx.alive && wiz.step !== 'done') {
+                        restartWizard();
+                    }
+                }).catch(() => {});
             }
         },
         hide() {
@@ -7596,7 +8641,7 @@ function serverBanner(ctx, s, model) {
 
     const pill = el('span', { class: 'shoal-pill' });
     if (model.key === 'offline' || model.key === 'paused') {
-        pill.append(icon(model.key === 'offline' ? 'offline' : 'pause', true), el('span', { class: 'shoal-pill__text', text: t(model.key === 'offline' ? 'pillOffline' : 'pillPaused') }));
+        pill.hidden = true; // the chip in the header already says it
     } else if (l && l.title) {
         pill.append(icon('play', true), el('span', { class: 'shoal-pill__text', text: t('pillLatest', { server: s.displayName, title: l.title }) }));
     } else {
@@ -7658,6 +8703,7 @@ function serverDetailScreen(ctx) {
             onDone: (r) => {
                 if (o.announce) {
                     ctx.announce(o.announce);
+                    ctx.toast(o.announce);
                 }
 
                 if (o.after) {
@@ -7671,7 +8717,7 @@ function serverDetailScreen(ctx) {
                     ctx.setCooldown(o.cooldownKey, err.retryAfter || 60);
                     ctx.alertMessage(t('availableIn', { n: ctx.cooldownMinutes(o.cooldownKey) || 1 }));
                 } else {
-                    ctx.alertMessage(o.errorText ? o.errorText(err) : failureMessage(err));
+                    ctx.fail(o.errorText ? o.errorText(err) : failureMessage(err));
                 }
             }
         });
@@ -7690,30 +8736,26 @@ function serverDetailScreen(ctx) {
         return async () => {
             const libs = (st.data.libraries || []).map((l) => l.localLibraryName);
             const entries = st.data.usage ? st.data.usage.stubs : s.titleCount;
-            const qc = st.data.pairingMethod === 'qc';
             const res = await confirmDialog(ctx, {
                 title: t('removeTitle', { server: s.displayName }),
                 items: [t('removeItem1', { server: s.displayName }), t('removeItem2', { server: s.displayName }), t('removeItem3', { server: s.displayName })],
                 after: [
-                    el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t(qc ? 'removeNoteQc' : 'removeNoteInvite') })),
+                    el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('removeNoteInvite') })),
                     alsoWatching() ? el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('removeStillWatches', { name: s.displayName }) })) : null
                 ],
                 checkbox: libs.length ? { label: t('removeAlsoDelete', { library: libs[0], count: ctx.fmt.num(entries), n: entries }), checked: true, whenUnchecked: t('removeKeepsLibrary') } : null,
                 typed: { label: t('typeToConfirm', { text: s.displayName }), expected: s.displayName },
                 confirmLabel: t('removeConfirm'),
-                danger: true
+                danger: true,
+                run: (state) => ctx.api.removePeer(s.handle, state.checked, s.displayName),
+                errorText: (err) => (err && err.kind === 'syncing' ? t('removeBlockedSyncing', { server: s.displayName }) : err && err.kind === 'pairingActive' ? t('removeBlockedPairing', { server: s.displayName }) : failureMessage(err, 'removeFailed'))
             });
             if (!res.confirmed) {
                 return;
             }
 
-            try {
-                await ctx.api.removePeer(s.handle, res.checked, s.displayName);
-                ctx.announce(t('announceRemoved', { server: s.displayName }));
-                ctx.navigate('overview');
-            } catch (err) {
-                ctx.alertMessage(failureMessage(err));
-            }
+            ctx.announce(t('announceRemoved', { server: s.displayName }));
+            ctx.navigate('overview');
         };
     }
 
@@ -7730,36 +8772,20 @@ function serverDetailScreen(ctx) {
     function headerPanel(s, model) {
         const via = viaOf(s);
         const d = st.data;
-        const qc = d.pairingMethod === 'qc';
         const nameRow = el('div', { class: 'shoal-detail__namerow' },
             el('h1', { class: 'shoal-h1', id: h1Id, tabindex: '-1', text: s.displayName }),
             chip(model.tone, model.icon, model.chipText));
-        const lockWarn = qc && d.deviceLock === 'missing';
-        const limitWarn = qc && d.sessionLimit === 'notSet';
         const metaItems = [
             el('span', { class: 'shoal-detail__metaitem' }, icon(via.icon, true), via.text, via.host ? ' · ' : '', via.host ? el('span', { class: 'shoal-card__host', text: via.host }) : null, via.proxy),
             el('span', { class: 'shoal-detail__metaitem' }, t('serverIdLabel'), ' ', el('span', { class: 'shoal-mono', text: d.serverIdPrefix || '—' })),
-            d.pairedUtc ? el('span', { class: 'shoal-detail__metaitem', text: t(qc ? 'pairedByQc' : 'pairedByInvite', { date: ctx.fmt.date(d.pairedUtc) }) }) : null
+            d.pairedUtc ? el('span', { class: 'shoal-detail__metaitem', text: t(d.pairingMethod === 'qc' ? 'pairedByQc' : 'pairedByInvite', { date: ctx.fmt.date(d.pairedUtc) }) }) : null
         ];
-        if (qc && (d.deviceLock || d.sessionLimit)) {
-            metaItems.push(el('span', { class: 'shoal-detail__metaitem shoal-detail__checks' },
-                d.deviceLock ? checkItem(d.deviceLock === 'confirmed', 'lockConfirmed', 'lockAsk') : null,
-                d.deviceLock && d.sessionLimit ? ' · ' : '',
-                d.sessionLimit ? checkItem(d.sessionLimit === 'ok', 'limitOk', 'limitAsk') : null));
-        }
-
         const meta = el('div', { class: 'shoal-detail__meta shoal-meta' }, metaItems);
         const extras = [];
-        if (lockWarn || limitWarn) {
-            const steps = friendSteps({ home: homeName(), range: [8, 9] });
-            extras.push(el('div', { class: 'shoal-detail__how' }, collapse(t('howToFix'), el('div', {}, steps.node, copyButton(ctx, steps.text, 'copySteps', 'announceStepsCopied')))));
-        }
-
-        if (qc && (d.accountNotes || []).length) {
-            // DESIGN 4.1: userPreferenceAccess is the password note; mediaConversion, syncTranscoding and publicSharing are the three unused options.
-            const kinds = new Set(d.accountNotes.map((n) => (n === 'passwordSelfChange' || n === 'userPreferenceAccess' ? 'accountNotePassword' : 'accountNoteUnused')));
-            const notes = Array.from(kinds).sort().reverse().map((k) => el('p', { class: 'shoal-meta', text: t(k) }));
-            extras.push(el('div', { class: 'shoal-detail__notes' }, collapse(t('accountNotesTitle'), el('div', {}, notes))));
+        if (s.repairBlockedByHttp === true) {
+            extras.push(hint('warn', 'keyoff', el('strong', { text: t('repairBlockedTitle') }), el('span', { class: 'shoal-hint__line', text: t('repairBlockedBody', { server: s.displayName }) }), el('span', { class: 'shoal-hint__line', text: t('changeAddressSteps') })));
+        } else if (d.pairingMethod === 'qc') {
+            extras.push(hint('warn', 'keyoff', el('strong', { text: t('needsRepairTitle') }), el('span', { class: 'shoal-hint__line', text: t('needsRepairBody', { server: s.displayName }) })));
         }
 
         const problem = model.key === 'accessRemoved' || model.key === 'differentServer';
@@ -7779,9 +8805,10 @@ function serverDetailScreen(ctx) {
             describedby: paused ? null : pauseNote.id,
             onClick: (ev, btn) => act(btn, { busy: t(paused ? 'resuming' : 'pausing'), run: () => (paused ? ctx.api.resumePeer(s.handle) : ctx.api.pausePeer(s.handle)), announce: t(paused ? 'announceResumed' : 'announcePausedLong', { server: s.displayName }) })
         });
-        const removeBtn = button({ label: t('removeServerEllipsis'), onClick: removeDialog(s) });
+        const blocked = s.repairBlockedByHttp === true;
+        const removeBtn = button({ label: t('removeServerEllipsis'), variant: blocked ? 'primary' : 'quiet', onClick: removeDialog(s) });
         const retry = model.key === 'offline'
-            ? button({ label: t('retryNow'), variant: 'primary', onClick: (ev, btn) => act(btn, { busy: t('retrying'), cooldownKey: 'test:' + s.handle, run: () => ctx.api.speedTest(s.handle, false) }) })
+            ? button({ label: t('retryNow'), variant: 'primary', onClick: (ev, btn) => act(btn, { busy: t('retrying'), cooldownKey: 'test:' + s.handle, run: () => ctx.api.speedTest(s.handle, false), announce: t('announceRetryStarted') }) })
             : null;
         const checkCert = certProblem
             ? button({ label: t('checkCertificate'), variant: 'primary', onClick: () => {
@@ -7792,20 +8819,25 @@ function serverDetailScreen(ctx) {
             } })
             : null;
         // The fix for the state comes first, as the one primary; the quiet order after it is Sync now, Test link, Pause, Pair again, Remove.
-        const fix = locked ? pairAgain : retry || checkCert || (paused ? pauseBtn : problem ? pairAgain : null);
+        const needsRepair = d.pairingMethod === 'qc' || s.needsRepair === true;
+        const repairBtn = needsRepair && !blocked ? button({ label: t('repairWithInvite'), variant: 'primary', onClick: () => pairAgainGo(s) }) : null;
+        const fix = repairBtn || (blocked ? removeBtn : locked ? pairAgain : retry || checkCert || (paused ? pauseBtn : problem ? pairAgain : null));
         const rest = [];
-        if (!locked) {
+        if (!locked && !needsRepair) {
             rest.push(el('span', { class: 'shoal-action' }, syncBtn, syncNote), el('span', { class: 'shoal-action' }, testBtn, testNote));
             if (fix !== pauseBtn) {
                 rest.push(el('span', { class: 'shoal-action' }, pauseBtn, paused ? null : pauseNote));
             }
         }
 
-        if (fix !== pairAgain) {
+        if (fix !== pairAgain && !needsRepair) {
             rest.push(pairAgain);
         }
 
-        rest.push(removeBtn);
+        if (!blocked) {
+            rest.push(removeBtn);
+        }
+
         const actionsNode = el('div', { class: 'shoal-detail__actions' }, fix, rest);
         cooldownNote(ctx, 'peersync:' + s.handle, syncNote, syncBtn);
         cooldownNote(ctx, 'test:' + s.handle, testNote, testBtn);
@@ -7881,12 +8913,6 @@ function serverDetailScreen(ctx) {
                 case 'policy':
                     out.push(alertBox('warn', t('alertPolicyTitle'), t('alertPolicyBody', { server: sv, list: joinAnd((a.policy || []).map((p) => t('policy_' + p))) }), []));
                     break;
-                case 'sessionLimit': {
-                    const steps = friendSteps({ home: homeName(), range: [9, 9] });
-                    out.push(alertBox('warn', t('alertLimitTitle', { server: sv }), t('alertLimitBody'), [copyButton(ctx, steps.text, 'copySteps', 'announceStepsCopied', true)]));
-                    break;
-                }
-
                 case 'mergedVersion': {
                     const link = el('a', { class: 'shoal-link', text: t('openTitle', { title: a.title }) });
                     const serverId = ctx.client && typeof ctx.client.serverId === 'function' ? ctx.client.serverId() : '';
@@ -8052,12 +9078,15 @@ function serverDetailScreen(ctx) {
             const tone = r.kind === 'direct' ? 'ok' : r.kind === 'unknown' ? 'off' : 'warn';
             return el('div', { class: 'shoal-route' },
                 el('div', { class: 'shoal-route__head' }, el('span', { class: 'shoal-label', text: t('routeLabel') }), chip(tone, r.kind === 'direct' ? 'direct' : 'relay', text)),
-                el('p', { class: 'shoal-route__line' }, t('toCheck'), ' ', el('code', { class: 'shoal-inlinecode', text: 'tailscale ping ' + hostOf(s.url) }), ' ', copyButton(ctx, 'tailscale ping ' + hostOf(s.url), 'copyCommand', 'announceCommandCopied')),
-                el('p', { class: 'shoal-meta', text: t(data.localApiAvailable ? 'localApiYes' : 'localApiNo') }));
+                isTailscaleHost(hostOf(s.url).toLowerCase()) ? el('p', { class: 'shoal-route__line' }, t('toCheck'), ' ', el('code', { class: 'shoal-inlinecode', text: 'tailscale ping ' + hostOf(s.url) }), ' ', copyButton(ctx, 'tailscale ping ' + hostOf(s.url), 'copyCommand', 'announceCommandCopied')) : null,
+                isTailscaleHost(hostOf(s.url).toLowerCase()) ? el('p', { class: 'shoal-meta', text: t(data.localApiAvailable ? 'localApiYes' : 'localApiNo') }) : null);
         })();
-        host.append(route);
+        if (isTailscaleHost(hostOf(s.url).toLowerCase())) {
+            host.append(route);
+        }
 
-        const hints = (data.hints || []).map((h) => hint(h.severity === 'bad' ? 'bad' : 'warn', 'warn', t('speedHint_' + h.kind, { server: s.displayName, n: h.n })));
+        const allSmooth = (data.ladder || []).length > 0 && (data.ladder || []).every((r) => r.verdict === 'smooth');
+        const hints = (data.hints || []).map((h) => (allSmooth && h.severity !== 'bad' ? hint('info', 'info', t('speedHint_' + h.kind, { server: s.displayName, n: h.n })) : hint(h.severity === 'bad' ? 'bad' : 'warn', 'warn', t('speedHint_' + h.kind, { server: s.displayName, n: h.n }))));
         if (hints.length) {
             host.append(el('div', { class: 'shoal-hintlist' }, hints));
         }
@@ -8119,6 +9148,11 @@ function serverDetailScreen(ctx) {
 
     function librariesSection(s) {
         const sec = section(t('librariesFrom', { server: s.displayName }));
+        const dedup = dedupNote(st.data);
+        if (dedup) {
+            sec.body.append(el('p', { class: 'shoal-meta' }, dedup.textContent.trim()));
+        }
+
         const libs = st.data.libraries || [];
         if (!libs.length) {
             sec.body.append(el('p', { class: 'shoal-meta shoal-emptyline', text: t('noLibrariesFrom', { server: s.displayName }) }));
@@ -8138,7 +9172,9 @@ function serverDetailScreen(ctx) {
                 return el('li', { class: 'shoal-row shoal-row--library' },
                     el('div', { class: 'shoal-row__main' },
                         el('span', { class: 'shoal-row__title', text: m.localLibraryName }),
-                        el('span', { class: 'shoal-row__meta shoal-meta', text: t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' }) }),
+                        el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(m)
+                            ? t('libraryFromMetaSplit', { name: m.remoteName || '', remote: ctx.fmt.num(m.remoteCount), local: ctx.fmt.num(m.localCount), when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' })
+                            : t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' }) }),
                         holds),
                     el('div', { class: 'shoal-row__controls shoal-row__controls--inline' }, summary, ctx.linkEl('libraries', { focus: 'lib-' + m.mappingKey }, 'shoal-link', t('changeWhoCanSee')), rm));
             })));
@@ -8164,7 +9200,7 @@ function serverDetailScreen(ctx) {
             ctx.announce(t('announceLibraryRemoved', { library: m.localLibraryName }));
             load(false, true);
         } catch (err) {
-            ctx.alertMessage(failureMessage(err));
+            ctx.fail(failureMessage(err));
         }
     }
 
@@ -8172,13 +9208,13 @@ function serverDetailScreen(ctx) {
         let remote = [];
         try {
             remote = await ctx.api.remoteLibraries(s.handle);
-        } catch {
-            ctx.alertMessage(t('genericFailure'));
+        } catch (err) {
+            ctx.alertMessage(err && err.status === 502 ? t('remoteUnreachable', { server: s.displayName }) : t('genericFailure'));
             return;
         }
 
         const have = new Set((st.data.libraries || []).map((m) => m.mappingKey));
-        const choices = remote.filter((r) => !have.has(r.mappingKey));
+        const choices = remote.filter((r) => !r.added && !have.has(r.mappingKey));
         const ticked = new Set();
         const res = await openDialog(ctx, {
             title: t('addLibraryTitle', { server: s.displayName }),
@@ -8193,7 +9229,7 @@ function serverDetailScreen(ctx) {
                     dBody.append(checkRow({
                         id: uid('shoal-al'),
                         label: r.name,
-                        note: r.selectable ? t('libMeta', { type: t('type_' + r.type), count: ctx.fmt.num(r.count), n: r.count }) : t('libLater', { type: t('type_' + r.type) }),
+                        note: r.selectable ? libCountNote(ctx, r) : libLaterNote(r.type),
                         disabled: !r.selectable,
                         onChange: (c) => (c ? ticked.add(r.mappingKey) : ticked.delete(r.mappingKey))
                     }).root);
@@ -8207,11 +9243,42 @@ function serverDetailScreen(ctx) {
             try {
                 await ctx.api.addLibrary(s.handle, res.map((k) => ({ mappingKey: k, localLibraryName: t('defaultLocalName', { server: s.displayName, library: (remote.find((r) => r.mappingKey === k) || {}).name || '' }), selectedUserIds: [] })));
                 ctx.announce(t('announceLibraryAdded'));
+ctx.toast(t('announceLibraryAdded'));
                 load(false, true);
             } catch (err) {
-                ctx.alertMessage(failureMessage(err, 'addFailed'));
+                ctx.alertMessage(err && err.status === 409 ? t('addConflict') : failureMessage(err, 'addFailed'));
             }
         }
+    }
+
+    /* ---------- held back, by series (K40): each series is released on its own ---------- */
+
+    function holdsSection(s) {
+        const sec = section(t('heldSeriesTitle'));
+        sec.root.hidden = true;
+        const draw = (data) => {
+            clear(sec.body);
+            const groups = [['removals', 'heldRemovalsHead', 'heldSeriesRemove', data.removals || []], ['additions', 'heldAdditionsHead', 'heldSeriesAdd', data.additions || []]].filter((g) => g[3].length > 0);
+            sec.root.hidden = groups.length === 0;
+            if (!groups.length) {
+                return;
+            }
+
+            sec.body.append(el('p', { class: 'shoal-meta', text: t('heldSeriesIntro', { server: s.displayName }) }));
+            for (const [kind, headKey, buttonKey, rows] of groups) {
+                sec.body.append(el('h3', { class: 'shoal-label', text: t(headKey) }), el('ul', { class: 'shoal-list shoal-holdseries' }, rows.map((r) => el('li', { class: 'shoal-row' },
+                    el('span', { class: 'shoal-row__main', text: r.title ? t('heldSeriesRow', { title: r.title + (r.year ? ' ' + r.year : ''), count: ctx.fmt.num(r.episodes) }) : t('heldSeriesRowNoTitle', { count: ctx.fmt.num(r.episodes) }) }),
+                    button({ label: t(buttonKey), small: true, onClick: (ev, btn) => act(btn, { busy: t('applying'), run: () => ctx.api.releaseSeries(s.handle, kind, r.series), announce: t('announceSeriesReleased') }) })))));
+            }
+        };
+        ctx.api.holds(s.handle).then((data) => {
+            if (ctx.alive) {
+                draw(data || {});
+            }
+        }).catch(() => {
+            sec.root.hidden = true;
+        });
+        return sec.root;
     }
 
     /* ---------- storage (8.3.5) ---------- */
@@ -8308,6 +9375,7 @@ function serverDetailScreen(ctx) {
                 onDone: () => {
                     saved.hidden = false;
                     ctx.announce(t('saved'));
+ctx.toast(t('saved'));
                     if (confirmName) {
                         load(false, true);
                     }
@@ -8409,7 +9477,9 @@ function serverDetailScreen(ctx) {
         }
 
         if (model.stale) {
-            body.append(el('p', { class: 'shoal-meta', text: t('lastUpdated', { when: ctx.fmt.relative(s.updatedUtc) }) }));
+            if (s.updatedUtc) {
+                body.append(el('p', { class: 'shoal-meta', text: t('lastUpdated', { when: ctx.fmt.relative(s.updatedUtc) }) }));
+            }
         }
 
         // One speed panel per screen: a redraw only hands it the new server, so the range the admin picked survives.
@@ -8430,7 +9500,7 @@ function serverDetailScreen(ctx) {
         }
 
         body.append(st.speed.root);
-        body.append(librariesSection(s), storageSection(s), playingSection(s));
+        body.append(librariesSection(s), holdsSection(s), storageSection(s), playingSection(s));
         const rotation = rotationSection(s);
         if (rotation) {
             body.append(rotation);
@@ -8580,6 +9650,7 @@ function overlapReportScreen(ctx) {
             el('div', { class: 'shoal-overlap__grid' },
                 el('div', { class: 'shoal-overlap__text' },
                     el('p', { class: 'shoal-lead' }, sentence.text),
+                    overlapTvLine(ctx, cur.displayName, ov) ? el('p', { class: 'shoal-body-text shoal-overlap__tv', text: overlapTvLine(ctx, cur.displayName, ov) }) : null,
                     el('p', { class: 'shoal-meta', text: t('yourCopyPlays') })),
                 el('div', { class: 'shoal-overlap__viz' }, overlapViz(ctx, cur.displayName, ov))));
         body.append(top);
@@ -8862,7 +9933,7 @@ function friendDetailScreen(ctx) {
                             ctx.announce(t('announceDeviceRemoved'));
                             load(false, true);
                         } catch (err) {
-                            ctx.alertMessage(failureMessage(err));
+                            ctx.fail(failureMessage(err));
                         }
                     }
                 }
@@ -8889,7 +9960,7 @@ function friendDetailScreen(ctx) {
             return checkRow({
                 id: uid('shoal-fl'),
                 label: l.name,
-                note: fromFriend ? t('libFromFriend') : selectable ? null : t('libLater', { type: t('type_' + (l.type || 'movies')) }),
+                note: fromFriend ? t('libFromFriend') : selectable ? null : libLaterNote(l.type || 'movies'),
                 disabled: !selectable,
                 checked: picked.has(l.id),
                 onChange: (c) => (c ? picked.add(l.id) : picked.delete(l.id))
@@ -8918,6 +9989,7 @@ function friendDetailScreen(ctx) {
                 onDone: () => {
                     saved.hidden = false;
                     ctx.announce(t('saved'));
+ctx.toast(t('saved'));
                 },
                 onError: (err) => ctx.alertMessage(failureMessage(err, 'saveFailed'))
             });
@@ -8966,7 +10038,7 @@ function friendDetailScreen(ctx) {
                     st.invite = null;
                     renderResult();
                 } catch (err) {
-                    ctx.alertMessage(failureMessage(err));
+                    ctx.fail(failureMessage(err));
                 }
             }
         });
@@ -8986,10 +10058,9 @@ function friendDetailScreen(ctx) {
             r.deleted ? { state: 'done', text: t('resultDeleted') } : { state: 'failed', lead: t('resultNotDeletedLead'), text: t('resultNotDeletedBody') }
         ];
         const tsDone = checkRow({ id: uid('shoal-ts'), label: t('stopDone') });
-        const modeName = { Enforce: 'modeEnforce', Off: 'modeOff', LogOnly: 'modeLogOnly' }[r.mode] || 'modeLogOnly';
         const more = [
-            { state: 'todo', n: 5, text: t(r.reach === 'public' ? 'stopStepPublic' : 'stopStepTailscale', { friend: r.friend }), action: tsDone.root },
-            { state: 'todo', n: 6, text: t('stopStepProtect', { mode: t(modeName) }), action: ctx.linkEl('settings', {}, 'shoal-link', t('openSettings')) }
+            { state: 'todo', n: 1, text: t(r.reach === 'public' ? 'stopStepPublic' : 'stopStepTailscale', { friend: r.friend }), action: tsDone.root },
+            { state: 'todo', n: 2, text: t('stopProtect_' + (['Enforce', 'LogOnly', 'Off'].includes(r.mode) ? r.mode : 'LogOnly')), action: ctx.linkEl('settings', {}, 'shoal-link', t('openSettings')) }
         ];
         const panelNode = el('section', { class: 'shoal-panel shoal-result' },
             el('h1', { class: 'shoal-h1', id: h1Id, tabindex: '-1', text: t('stopResultTitle', { friend: r.friend }) }),
@@ -9233,7 +10304,7 @@ function renderBanners(ctx, host, model) {
                         ctx.announce(t('announceStartedOver'));
                         ctx.reloadPage();
                     } catch (err) {
-                        ctx.alertMessage(failureMessage(err));
+                        ctx.fail(failureMessage(err));
                     }
                 }
             } }));
@@ -9539,6 +10610,27 @@ function mount(page, params, deps) {
     page.addEventListener('viewshow', onShow);
     page.addEventListener('viewhide', onHide);
     page.addEventListener('viewdestroy', onDestroy);
+    // Errors that escape every handler (a script error, a rejected promise nobody awaited) are shown, not swallowed.
+    activeReporter = (message) => ctx.fail(message);
+    const onWindowError = (ev) => {
+        if (ctx.alive && ctx.shown) {
+            reportUnexpected(ev && (ev.error || { message: ev.message }));
+        }
+    };
+    const onRejection = (ev) => {
+        if (ctx.alive && ctx.shown) {
+            reportUnexpected(ev && ev.reason);
+        }
+    };
+    window.addEventListener('error', onWindowError);
+    window.addEventListener('unhandledrejection', onRejection);
+    page.addEventListener('viewdestroy', () => {
+        window.removeEventListener('error', onWindowError);
+        window.removeEventListener('unhandledrejection', onRejection);
+        if (activeReporter) {
+            activeReporter = null;
+        }
+    });
 
     let themeObserver = null;
     if (typeof MutationObserver !== 'undefined') {
@@ -9561,5 +10653,5 @@ export default function ShoalController(view, params) {
 export {
     mount, createApi, createContext, makeFormat, chartModel, chartSummary, niceCeil, describeServer, describeFriend,
     summarizeServers, pickSelection, sortServers, verdictLine, serverStateKey, luminanceOf, uniquify, t, STRINGS, QUALITY_LINES,
-    admittedUsers, bottleneckText, ladderRows, nameList, toApiError, bannerModel, MISSING_STRINGS, friendSteps, addressNotes, fingerprintGroups, outcomeInfo, normalizeCode, validCode, looksLikeInvite, describeLinkStatus
+    admittedUsers, bottleneckText, ladderRows, nameList, toApiError, bannerModel, MISSING_STRINGS, overlapSentences, currentUserId, readAddress, classifyCode, inFours, fingerprintGroups, outcomeInfo, normalizeCode, validCode, looksLikeInvite, describeLinkStatus
 };

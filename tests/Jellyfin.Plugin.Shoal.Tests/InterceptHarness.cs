@@ -71,6 +71,17 @@ public sealed class FakeCoreController : ControllerBase
     [HttpGet("Videos/{videoId}/{mediaSourceId}/Attachments/{index}")]
     public IActionResult CoreHls() => Core("CoreHls");
 
+    /// <summary>Core's playback report routes: while the offline card is playing, the filter answers them itself and this action must never run.</summary>
+    [Authorize]
+    [HttpPost("Sessions/Playing")]
+    [HttpPost("Sessions/Playing/Progress")]
+    [HttpPost("Sessions/Playing/Ping")]
+    [HttpPost("Sessions/Playing/Stopped")]
+    [HttpPost("PlayingItems/{itemId}")]
+    [HttpPost("PlayingItems/{itemId}/Progress")]
+    [HttpDelete("PlayingItems/{itemId}")]
+    public IActionResult PlaybackReport() => Core("PlaybackReport");
+
     [AllowAnonymous]
     [HttpGet("Audio/{itemId}/stream")]
     [HttpHead("Audio/{itemId}/stream")]
@@ -179,6 +190,12 @@ public sealed class WorldItemPaths : IItemPaths
         if (!_world.Federated.TryGetValue(itemId, out var item))
         {
             return null;
+        }
+
+        if (_world.TvPaths.TryGetValue(itemId, out var tvPath))
+        {
+            var tvSubfolder = _state.Current.Home.Peers.SelectMany(static p => p.Libraries).FirstOrDefault(l => l.MappingKey == item.MappingKey)?.Subfolder ?? "unmapped";
+            return System.IO.Path.Combine(_state.Current.StubRoot, item.PeerKey, tvSubfolder, tvPath.Replace('/', System.IO.Path.DirectorySeparatorChar));
         }
 
         var subfolder = _state.Current.Home.Peers.SelectMany(static p => p.Libraries).FirstOrDefault(l => l.MappingKey == item.MappingKey)?.Subfolder ?? "unmapped";

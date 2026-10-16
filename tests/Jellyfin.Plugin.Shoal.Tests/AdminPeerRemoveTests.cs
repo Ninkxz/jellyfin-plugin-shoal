@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Shoal.Api.Admin;
 using Jellyfin.Plugin.Shoal.Pairing;
@@ -25,9 +26,18 @@ public sealed class AdminPeerRemoveTests
     private const string Token = "9f2c4d6e8a0b1c3d5e7f9a0b2c4d6e8f";
     private const string Device = "shoal-1a2b3c4d5e6f-4b0c1d2e";
 
-    private sealed class Gate(bool live) : IPairingGate
+    private sealed class Gate(bool live, bool cancellable = false) : IPairingGate
     {
+        public int Cancels { get; private set; }
+
         public bool IsLive(string peerKey) => live;
+
+        public Task<bool> CancelAsync(string peerKey, CancellationToken cancellationToken = default)
+        {
+            Cancels++;
+            live = !cancellable && live;
+            return Task.FromResult(cancellable);
+        }
     }
 
     private sealed class Activity(params bool[] answers) : ISyncActivity
@@ -37,6 +47,14 @@ public sealed class AdminPeerRemoveTests
         public int Calls => _calls;
 
         public bool IsSyncing(string peerKey) => answers[Math.Min(_calls++, answers.Length - 1)];
+
+        public int Stops { get; private set; }
+
+        public Task StopAsync(string peerKey, TimeSpan wait)
+        {
+            Stops++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class Rig : IDisposable
@@ -49,12 +67,14 @@ public sealed class AdminPeerRemoveTests
 
         public required string StubFolder { get; init; }
 
+        public required Gate Gate { get; init; }
+
         public string PeerFolder => Pairing.Paths.PeerDir(StateSamples.PeerKeyA);
 
         public void Dispose() => Pairing.Dispose();
     }
 
-    private static async Task<Rig> SetUpAsync(bool pairingLive = false, ISyncActivity? sync = null, string? baseUrl = null, bool withCredential = true)
+    private static async Task<Rig> SetUpAsync(bool pairingLive = false, ISyncActivity? sync = null, string? baseUrl = null, bool withCredential = true, bool cancellablePairing = false)
     {
         var rig = new PairingRig();
         var stubRoot = Path.Combine(rig.Dir.Path, "stubs");
@@ -83,7 +103,7 @@ public sealed class AdminPeerRemoveTests
         File.WriteAllText(Path.Combine(folder, "stub.txt"), "x");
         Directory.CreateDirectory(rig.Paths.PeerDir(StateSamples.PeerKeyA));
         File.WriteAllText(Path.Combine(rig.Paths.PeerDir(StateSamples.PeerKeyA), "catalog.json"), "{}");
-        var gate = new Gate(pairingLive);
+        var gate = new Gate(pairingLive, cancellablePairing);
         var controller = new AdminPeerSettingsController(
             rig.State,
             new PeerDirectory(rig.State, rig.Secrets),
@@ -99,7 +119,7 @@ public sealed class AdminPeerRemoveTests
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
-        return new Rig { Pairing = rig, Libraries = libraries, Controller = controller, StubFolder = folder };
+        return new Rig { Pairing = rig, Libraries = libraries, Controller = controller, StubFolder = folder, Gate = gate };
     }
 
     private static async Task<IActionResult> RemoveAsync(Rig rig, string json, bool deleteLibrary, string handle = StateSamples.PeerKeyA)
@@ -176,15 +196,15 @@ public sealed class AdminPeerRemoveTests
     }
 
     [Fact]
-    public async Task ASyncThatStartsWhileTheServerIsBeingDisabled_StopsTheRemovalAndTheServerIsEnabledAgain()
+    public async Task ASyncThatCannotBeStopped_StopsTheRemovalAndTheServerIsEnabledAgain()
     {
-        var activity = new Activity(false, true); // idle at the first look, running at the second
+        var activity = new Activity(true, true); // still running after it was told to stop
         using var rig = await SetUpAsync(sync: activity);
 
         var body = AdminTestSupport.Body(await RemoveAsync(rig, """{"confirmName":"Hops"}""", deleteLibrary: true), 409);
 
         Assert.Equal("syncing", body.GetProperty("error").GetString());
-        Assert.Equal(2, activity.Calls);
+        Assert.Equal(1, activity.Stops);
         Assert.Contains(rig.Pairing.State.Current.Home.Peers, p => p.PeerKey == StateSamples.PeerKeyA && p.Enabled);
         Assert.NotNull(rig.Pairing.Secrets.TryGet(StateSamples.PeerKeyA));
     }
@@ -197,7 +217,7 @@ public sealed class AdminPeerRemoveTests
 
         AdminTestSupport.Body(await RemoveAsync(rig, """{"confirmName":"Hops"}""", deleteLibrary: true));
 
-        Assert.Equal(2, activity.Calls);
+        Assert.True(activity.Calls >= 1);
         Assert.DoesNotContain(rig.Pairing.State.Current.Home.Peers, p => p.PeerKey == StateSamples.PeerKeyA);
     }
 
@@ -230,6 +250,29 @@ public sealed class AdminPeerRemoveTests
     {
         using var rig = await SetUpAsync();
         AdminTestSupport.Body(await RemoveAsync(rig, """{"confirmName":"Hops"}""", true, "nope"), 404);
+    }
+
+    [Fact]
+    public async Task ARunningSyncIsStopped_AndTheRemovalGoesThrough()
+    {
+        var activity = new Activity(true, false); // running when asked, ended after the stop
+        using var rig = await SetUpAsync(sync: activity);
+
+        AdminTestSupport.Body(await RemoveAsync(rig, """{"confirmName":"Hops"}""", deleteLibrary: true));
+
+        Assert.Equal(1, activity.Stops);
+        Assert.DoesNotContain(rig.Pairing.State.Current.Home.Peers, p => p.PeerKey == StateSamples.PeerKeyA);
+    }
+
+    [Fact]
+    public async Task ALivePairing_IsCancelled_AndTheRemovalGoesThrough()
+    {
+        using var rig = await SetUpAsync(pairingLive: true, cancellablePairing: true);
+
+        AdminTestSupport.Body(await RemoveAsync(rig, """{"confirmName":"Hops"}""", true));
+
+        Assert.Equal(1, rig.Gate.Cancels);
+        Assert.DoesNotContain(rig.Pairing.State.Current.Home.Peers, p => p.PeerKey == StateSamples.PeerKeyA);
     }
 
     [Fact]

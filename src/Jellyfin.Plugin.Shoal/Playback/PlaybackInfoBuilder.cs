@@ -237,6 +237,7 @@ public static class PlaybackInfoBuilder
             LocalMediaSourceId = context.VersionItemId ?? Guid.Empty,
             SetId = context.SetId,
             CallerDeviceId = context.DeviceId,
+            SeriesKey = context.Entry.Kind == EntryKind.Episode ? context.Entry.PeerSeriesId : string.Empty,
             LocalPlaySessionId = context.LocalPlaySessionId,
             PeerKey = context.PeerKey,
             PeerItemId = context.PeerItemId,

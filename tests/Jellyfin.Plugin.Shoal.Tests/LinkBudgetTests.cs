@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using Jellyfin.Plugin.Shoal.Api.Admin;
+using Jellyfin.Plugin.Shoal.Authorization;
 using Jellyfin.Plugin.Shoal.Configuration;
 using Jellyfin.Plugin.Shoal.Diagnostics;
 using Jellyfin.Plugin.Shoal.Playback;
@@ -25,6 +27,39 @@ public sealed class LinkBudgetTests
         Assert.InRange(budget!.Value, 4_900_000, 5_300_000); // the handler passes this as MaxStreamingBitrate (PlaybackInfoTests.U9_...)
     }
 
+    // Owner's production pairing with Hops (v1.0.1, owner-feedback-01): relay-only link, manual test 6.1 Mbps (5.6 parallel), playback samples 4.6 to 6.2 Mbps.
+    private static SpeedSample[] DerpHistory() =>
+    [
+        new SpeedSample { T = Now.AddHours(-3), Kind = SpeedKinds.Manual, Mbps = 5.6, Path = "derp" },
+        new SpeedSample { T = Now.AddHours(-2), Kind = SpeedKinds.Manual, Mbps = 6.1, Path = "derp" },
+        new SpeedSample { T = Now.AddMinutes(-40), Kind = SpeedKinds.Playback, Mbps = 4.6, Path = "derp" },
+        new SpeedSample { T = Now.AddMinutes(-30), Kind = SpeedKinds.Playback, Mbps = 6.2, Path = "derp" },
+        new SpeedSample { T = Now.AddMinutes(-20), Kind = SpeedKinds.Playback, Mbps = 5.0, Path = "derp" },
+    ];
+
+    [Fact]
+    public void OnTheOwnersRelayLink_MoonfinsRequestIsCappedAtTheBudget_NotAtItsOwn120Mbps()
+    {
+        var budget = LinkBudgetLimits.BudgetOf(DerpHistory(), autoFit: true, Now);
+
+        Assert.NotNull(budget);
+        Assert.InRange(budget!.Value, 3_800_000, 4_000_000); // T is 5.85 (the playback samples are not used), 5.85 / 1.5 = 3.9 Mbps: above the 1.5 Mbps floor, so it is the budget itself
+        var limits = new BitrateLimits(0, budget);
+        var moonfin = new Caller(new CallerUser(Guid.NewGuid(), false, false, true, true, true, false, null), "token-0123456789abcdef0123456789abcdef", "device-1", false);
+        Assert.Equal(budget, PlaybackInfoBuilder.ComputeMaxStreamingBitrate(120_000_000, moonfin, limits));
+        Assert.Equal(budget, PlaybackInfoBuilder.ComputeMaxStreamingBitrate(null, moonfin, limits));
+        Assert.Equal(2_000_000, PlaybackInfoBuilder.ComputeMaxStreamingBitrate(2_000_000, moonfin, limits)); // a lower ask is kept
+    }
+
+    [Fact]
+    public void ThePlaybackSamplesOfTheRelayLink_DoNotMoveTheBudget()
+    {
+        var withPlayback = LinkBudgetLimits.BudgetOf(DerpHistory(), autoFit: true, Now);
+        var testsOnly = LinkBudgetLimits.BudgetOf([.. DerpHistory().Where(static s => s.Kind != SpeedKinds.Playback)], autoFit: true, Now);
+
+        Assert.Equal(testsOnly, withPlayback);
+    }
+
     [Fact]
     public void NoBudget_WhenAutoFitIsOff_NothingWasMeasured_OrTheLastTestIsOld()
     {
@@ -38,8 +73,10 @@ public sealed class LinkBudgetTests
     [Fact]
     public void ATinyLink_StillGetsAFloor()
     {
-        Assert.Equal(4_000_000, LinkBudgetLimits.BudgetOf([Test(1, 0.05)], autoFit: true, Now)); // never below a 720p stream
-        Assert.Equal(4_000_000, LinkBudgetLimits.BudgetOf([Test(1, 5)], autoFit: true, Now)); // 3.3 Mbps of budget is raised to the floor
+        Assert.InRange(LinkBudgetLimits.BudgetOf([Test(1, 0.05)], autoFit: true, Now)!.Value, 41_000, 42_000); // a floor, but never above what the link carries: T / 1.2 = 0.042 Mbps
+        Assert.InRange(LinkBudgetLimits.BudgetOf([Test(1, 1)], autoFit: true, Now)!.Value, 833_000, 834_000); // 0.67 Mbps of budget is raised to T / 1.2 = 0.83, not to 1.5
+        Assert.Equal(1_500_000, LinkBudgetLimits.BudgetOf([Test(1, 1.8)], autoFit: true, Now)); // the floor itself, 1.5 Mbps, once the link can carry it with 1.2 headroom
+        Assert.InRange(LinkBudgetLimits.BudgetOf([Test(1, 5)], autoFit: true, Now)!.Value, 3_300_000, 3_400_000); // 3.3 Mbps of budget is no longer raised
     }
 
     [Fact]

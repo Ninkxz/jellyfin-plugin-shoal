@@ -1,44 +1,10 @@
 #pragma warning disable SA1600 // Wire types mirror the members of Jellyfin DTOs; their names are the documentation.
 using System;
 using System.Collections.Generic;
-using System.Security.Cryptography;
-using System.Text.RegularExpressions;
 using Jellyfin.Plugin.Shoal.Peers;
 using Jellyfin.Plugin.Shoal.Security;
 
 namespace Jellyfin.Plugin.Shoal.Pairing;
-
-/// <summary>
-/// The Quick Connect state Jellyfin returns from <c>Initiate</c> and <c>Connect</c>. Only the members Home uses are read.
-/// </summary>
-internal sealed class QuickConnectWire
-{
-    public bool? Authenticated { get; set; }
-
-    public string? Secret { get; set; }
-
-    public string? Code { get; set; }
-}
-
-/// <summary>
-/// The answer of <c>AuthenticateWithQuickConnect</c>.
-/// </summary>
-internal sealed class AuthenticationWire
-{
-    public string? AccessToken { get; set; }
-
-    public string? ServerId { get; set; }
-
-    public UserRefWire? User { get; set; }
-}
-
-/// <summary>
-/// The user reference inside <see cref="AuthenticationWire"/>.
-/// </summary>
-internal sealed class UserRefWire
-{
-    public string? Id { get; set; }
-}
 
 /// <summary>
 /// <c>GET /Users/Me</c>.
@@ -98,84 +64,11 @@ internal sealed class SystemInfoWire
 /// </summary>
 internal static partial class PairingValidation
 {
-    private const string CrockfordAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-    /// <summary>The check Home puts in its device name: 4 Crockford base32 characters from <see cref="RandomNumberGenerator"/>.</summary>
-    /// <returns>For example <c>K7QM</c>.</returns>
-    public static string NewCheck()
-    {
-        Span<char> chars = stackalloc char[4];
-        for (var i = 0; i < chars.Length; i++)
-        {
-            chars[i] = CrockfordAlphabet[RandomNumberGenerator.GetInt32(CrockfordAlphabet.Length)];
-        }
-
-        return new string(chars);
-    }
-
-    public static bool IsCheck(string? value) => value is not null && CheckShape().IsMatch(value);
-
-    public static bool IsCode(string? value) => value is not null && CodeShape().IsMatch(value);
-
-    public static bool IsSecret(string? value) => value is not null && SecretShape().IsMatch(value);
-
-    /// <summary>
-    /// Checks a Quick Connect state. <paramref name="expectedSecret"/> is null for the answer of <c>Initiate</c> and the stored secret for polls.
-    /// </summary>
-    /// <param name="wire">The state.</param>
-    /// <param name="expectedSecret">The secret the poll must repeat (ordinal comparison), or null.</param>
-    /// <param name="expectedCode">The code the poll must repeat, or null.</param>
-    /// <returns>True when the values have the right shape and repeat what they must.</returns>
-    public static bool IsValid(QuickConnectWire? wire, string? expectedSecret, string? expectedCode) =>
-        wire is not null
-        && IsCode(wire.Code)
-        && IsSecret(wire.Secret)
-        && (expectedSecret is null || string.Equals(wire.Secret, expectedSecret, StringComparison.Ordinal))
-        && (expectedCode is null || string.Equals(wire.Code, expectedCode, StringComparison.Ordinal));
-
-    /// <summary>
-    /// Checks the authentication result against the pinned server id. The user id is compared with <c>/Users/Me</c> later.
-    /// </summary>
-    /// <param name="wire">The result.</param>
-    /// <param name="pinnedServerId">The pinned server id (32 hex).</param>
-    /// <param name="token">The access token when the result is <see cref="AuthRead.Ok"/>.</param>
-    /// <param name="userId">The user id when the result is <see cref="AuthRead.Ok"/>.</param>
-    /// <returns>Whether the values are well formed, and whether the server id is the pinned one.</returns>
-    public static AuthRead ReadAuthentication(AuthenticationWire? wire, string pinnedServerId, out string token, out Guid userId)
-    {
-        token = string.Empty;
-        userId = Guid.Empty;
-        if (wire is null
-            || !PeerCredential.IsValidToken(wire.AccessToken)
-            || !TryGuid(wire.User?.Id, out userId)
-            || !PeerTrust.TryNormalizeServerId(wire.ServerId, out var serverId))
-        {
-            return AuthRead.Malformed;
-        }
-
-        if (!string.Equals(serverId, pinnedServerId, StringComparison.Ordinal))
-        {
-            return AuthRead.ServerChanged;
-        }
-
-        token = wire.AccessToken!;
-        return AuthRead.Ok;
-    }
-
     public static bool TryGuid(string? value, out Guid guid)
     {
         guid = Guid.Empty;
         return value is not null && value.Length is 32 or 36 && Guid.TryParse(value, out guid);
     }
-
-    [GeneratedRegex(@"\A[0-9A-HJKMNP-TV-Z]{4}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex CheckShape();
-
-    [GeneratedRegex(@"\A[0-9]{6}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex CodeShape();
-
-    [GeneratedRegex(@"\A[0-9A-Fa-f]{64}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex SecretShape();
 }
 
 /// <summary>

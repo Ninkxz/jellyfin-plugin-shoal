@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using Jellyfin.Plugin.Shoal.Api.Admin;
+using Jellyfin.Plugin.Shoal.Authorization;
 using Jellyfin.Plugin.Shoal.Diagnostics;
 using Jellyfin.Plugin.Shoal.Playback;
 using Jellyfin.Plugin.Shoal.Storage;
@@ -45,6 +47,132 @@ public sealed class PassiveTelemetryTests : IDisposable
         _ = _telemetry.Begin(grant, 6, index);
         _telemetry.Record(grant, 6, index, ttfbMs, bytes, TimeSpan.FromSeconds(copySeconds));
         _time.Advance(TimeSpan.FromSeconds(5));
+    }
+
+    private LinkBudgetLimits Limits(double testMbps)
+    {
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = testMbps });
+        return new LinkBudgetLimits(new FixedLimits(), _history, new OnSettings(), _time, _telemetry);
+    }
+
+    private sealed class FixedLimits : ISystemLimits
+    {
+        public BitrateLimits Current() => new(0, null);
+    }
+
+    private sealed class OnSettings : ISettingsAccessor
+    {
+        public Jellyfin.Plugin.Shoal.Configuration.PluginConfiguration Current => new() { AutoFitQualityToLink = true };
+
+        public void Save(Jellyfin.Plugin.Shoal.Configuration.PluginConfiguration configuration)
+        {
+        }
+    }
+
+    [Fact]
+    public void ALinkThatDropsDuringPlayback_ShrinksTheBudgetAtOnce_WithoutANewTest_AndTheEvidenceExpires()
+    {
+        var limits = Limits(12); // the last test said 12 Mbps: a budget of 8
+        var play = NewGrant("drop");
+        Assert.Equal(8_000_000, limits.ForPeer(Peer).LinkBudget);
+
+        // The link fell to about 3 Mbps while a 6.1 Mbps stream plays: a 6 s segment is 4.6 MB and takes 12 s to copy.
+        for (var i = 0; i < 3; i++)
+        {
+            _ = _telemetry.Begin(play, 6, i);
+            _telemetry.Record(play, 6, i, 1000, 4_575_000, TimeSpan.FromSeconds(12.2));
+            _time.Advance(TimeSpan.FromSeconds(6));
+        }
+
+        var live = _telemetry.SlowLinkMbps(Peer);
+        Assert.InRange(live!.Value, 2.9, 3.1);
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000); // 3 / 1.5, not the 8 of the old test
+        Assert.True(_telemetry.TakeRemeasure(Peer)); // and a new test is wanted once nothing streams
+        Assert.False(_telemetry.TakeRemeasure(Peer));
+
+        _time.Advance(PassiveTelemetry.EvidenceWindow + TimeSpan.FromSeconds(1)); // the evidence is 30 seconds old
+        Assert.Null(_telemetry.SlowLinkMbps(Peer));
+        Assert.Equal(8_000_000, limits.ForPeer(Peer).LinkBudget);
+    }
+
+    private void SlowSegments(Grant grant, int count = 3, double copySeconds = 12.2)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            _ = _telemetry.Begin(grant, 6, i);
+            _telemetry.Record(grant, 6, i, 1000, 4_575_000, TimeSpan.FromSeconds(copySeconds));
+            _time.Advance(TimeSpan.FromSeconds(2));
+        }
+    }
+
+    [Fact]
+    public void OneSlowPlayOfFour_CannotLowerTheBudget_TwoCan()
+    {
+        var limits = Limits(12);
+        var plays = Enumerable.Range(0, 4).Select(i => NewGrant("four" + i)).ToList();
+        foreach (var play in plays)
+        {
+            Assert.True(_slots.TryTakeHls(play, 6, 6, out _)); // four streams run through the peer
+        }
+
+        SlowSegments(plays[0]);
+        Assert.Null(_telemetry.SlowLinkMbps(Peer)); // one of four
+        Assert.Equal(8_000_000, limits.ForPeer(Peer).LinkBudget);
+
+        SlowSegments(plays[1]);
+        Assert.NotNull(_telemetry.SlowLinkMbps(Peer)); // two of four see the same link
+        Assert.True(limits.ForPeer(Peer).LinkBudget < 8_000_000);
+    }
+
+    [Fact]
+    public void LiveEvidenceAlone_NeverSetsACapBelowTheLowestRateWorthAConversion()
+    {
+        var limits = Limits(12);
+        SlowSegments(NewGrant("crawl"), copySeconds: 40); // 4.6 MB in 40 s: about 0.9 Mbps
+
+        Assert.InRange(_telemetry.SlowLinkMbps(Peer)!.Value, 0.8, 1.0);
+        Assert.Equal(1_500_000, limits.ForPeer(Peer).LinkBudget); // advice, floored at 1.5 Mbps; a new test settles the rest
+    }
+
+    [Fact]
+    public void AHealthyLink_OrASingleSlowSegment_ChangesNothing()
+    {
+        var limits = Limits(12);
+        var play = NewGrant("fine");
+
+        // Segments that copy in a fraction of their playing time: the link has room.
+        for (var i = 0; i < 4; i++)
+        {
+            _ = _telemetry.Begin(play, 6, i);
+            _telemetry.Record(play, 6, i, 1000, 4_575_000, TimeSpan.FromSeconds(2));
+            _time.Advance(TimeSpan.FromSeconds(6));
+        }
+
+        Assert.Null(_telemetry.SlowLinkMbps(Peer));
+        Assert.Equal(8_000_000, limits.ForPeer(Peer).LinkBudget);
+
+        _time.Advance(PassiveTelemetry.EvidenceWindow + TimeSpan.FromSeconds(1));
+        var other = NewGrant("one");
+        _ = _telemetry.Begin(other, 6, 0);
+        _telemetry.Record(other, 6, 0, 1000, 4_575_000, TimeSpan.FromSeconds(20)); // one slow segment is not a trend
+        Assert.Null(_telemetry.SlowLinkMbps(Peer)); // nor does it say anything alone
+        Assert.Equal(8_000_000, limits.ForPeer(Peer).LinkBudget);
+    }
+
+    [Fact]
+    public void WithNoTestYet_TheEvidenceAloneSetsTheBudget_AndAutoFitOffIgnoresIt()
+    {
+        var play = NewGrant("fresh");
+        for (var i = 0; i < 3; i++)
+        {
+            _ = _telemetry.Begin(play, 6, i);
+            _telemetry.Record(play, 6, i, 1000, 4_575_000, TimeSpan.FromSeconds(12.2));
+            _time.Advance(TimeSpan.FromSeconds(6));
+        }
+
+        var on = new LinkBudgetLimits(new FixedLimits(), _history, new OnSettings(), _time, _telemetry);
+
+        Assert.InRange(on.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000);
     }
 
     [Fact]

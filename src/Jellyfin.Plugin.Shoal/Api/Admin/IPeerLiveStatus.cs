@@ -44,6 +44,15 @@ public interface IPeerLiveStatus
     /// <param name="removals">True for the held removals, false for the held additions.</param>
     /// <returns>True when it was started.</returns>
     bool StartRelease(string peerKey, bool removals) => false;
+
+    /// <summary>
+    /// Applies what a peer's guard held back for one series ("Release by series"). Returns at once; a sync runs in the background.
+    /// </summary>
+    /// <param name="peerKey">The peer key.</param>
+    /// <param name="removals">True for the held removals, false for the held additions.</param>
+    /// <param name="seriesKey">The group's key from the holds list.</param>
+    /// <returns>True when it was started.</returns>
+    bool StartReleaseSeries(string peerKey, bool removals, string seriesKey) => false;
 }
 
 /// <summary>
@@ -91,17 +100,17 @@ public sealed record PeerLiveInfo
     /// <summary>Gets when the peer is checked next.</summary>
     public DateTime? NextCheckUtc { get; init; }
 
-    /// <summary>Gets the device lock read from the share account (<c>confirmed</c> or <c>missing</c>), or null when not known.</summary>
-    public string? DeviceLock { get; init; }
-
-    /// <summary>Gets the session limit read from the share account (<c>ok</c> or <c>notSet</c>), or null when not known.</summary>
-    public string? SessionLimit { get; init; }
-
     /// <summary>Gets a value indicating whether a sync is running.</summary>
     public bool Syncing { get; init; }
 
     /// <summary>Gets the number of titles imported from this peer.</summary>
     public int TitleCount { get; init; }
+
+    /// <summary>Gets how many titles of this peer are left without a stub because another peer or Home carries them.</summary>
+    public int HiddenByDedup { get; init; }
+
+    /// <summary>Gets the name of the peer that carries most of the hidden titles, or null.</summary>
+    public string? DedupWinner { get; init; }
 
     /// <summary>Gets the number of things that need attention.</summary>
     public int AlertCount { get; init; }

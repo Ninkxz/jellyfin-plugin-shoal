@@ -69,7 +69,9 @@ public sealed class VerdictEngineTests
         Assert.Equal("willBuffer", Verdict(7.5, "1080p", autoFit: false));
         Assert.Equal("willBuffer", VerdictEngine.TitleVerdict(7.5, 20, autoFit: false));
         Assert.Equal("needsTranscode", VerdictEngine.TitleVerdict(7.5, 20, autoFit: true));
-        Assert.Equal("willBuffer", VerdictEngine.TitleVerdict(5, 20, autoFit: true)); // 3.3 Mbps is not worth transcoding down to
+        Assert.Equal("needsTranscode", VerdictEngine.TitleVerdict(5, 20, autoFit: true)); // 3.3 Mbps is worth a conversion since the floor is 1.5 (it was 4)
+        Assert.Equal("needsTranscode", VerdictEngine.TitleVerdict(2.25, 20, autoFit: true)); // T / 1.5 = 1.5: exactly the floor
+        Assert.Equal("willBuffer", VerdictEngine.TitleVerdict(2.2, 20, autoFit: true)); // 1.47 Mbps is not
     }
 
     [Theory]

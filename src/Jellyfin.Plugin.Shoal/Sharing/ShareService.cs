@@ -499,7 +499,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
             .. all.Where(l => !UnderStubRoot(state.StubRoot, l) || shoalIds.Contains(l.Id)).Select(l =>
             {
                 var federated = shoalIds.Contains(l.Id);
-                return (object)new { id = l.Id, name = l.Name, type = "movies", selectable = !federated, shareable = !federated, reason = federated ? "federated" : null };
+                return (object)new { id = l.Id, name = l.Name, type = l.CollectionType.Length > 0 ? l.CollectionType : "movies", selectable = !federated, shareable = !federated, reason = federated ? "federated" : null };
             }),
         ];
     }

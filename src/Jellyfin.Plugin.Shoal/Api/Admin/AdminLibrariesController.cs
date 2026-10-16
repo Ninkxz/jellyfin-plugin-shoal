@@ -48,13 +48,17 @@ internal sealed record DriftDto(Guid UserId, string Kind);
 /// <param name="RemoteName">The library's name on the friend's server (text only).</param>
 /// <param name="ServerHandle">The server's handle.</param>
 /// <param name="ServerName">The server's name (text only).</param>
-/// <param name="Count">Titles with a stub.</param>
+/// <param name="Count">Titles with a stub (the same as LocalCount; kept for older pages).</param>
 /// <param name="LastSync">The last sync of the server.</param>
 /// <param name="HeldRemovals">Removals on hold in this library.</param>
 /// <param name="HeldAdditions">Additions on hold in this library.</param>
 /// <param name="Access">Who can see it.</param>
 /// <param name="Drift">Accounts whose access differs from the rule.</param>
-internal sealed record LibraryDto(string MappingKey, string LocalLibraryName, string RemoteName, string ServerHandle, string ServerName, int Count, SyncInfoDto? LastSync, int HeldRemovals, int HeldAdditions, LibraryAccessDto Access, IReadOnlyList<DriftDto> Drift);
+/// <param name="RemoteCount">Titles (movies or series) the friend lists in this library at the last sync. Always LocalCount + HiddenByDedup + the additions a guard holds back.</param>
+/// <param name="LocalCount">Titles of this library that have a stub on this server. Same number as Count.</param>
+/// <param name="HiddenByDedup">Titles with no stub because this server, or a better-ranked friend, carries them already.</param>
+/// <param name="DedupWinner">The friend that carries most of the hidden titles, or null (this server itself, or none hidden).</param>
+internal sealed record LibraryDto(string MappingKey, string LocalLibraryName, string RemoteName, string ServerHandle, string ServerName, int Count, SyncInfoDto? LastSync, int HeldRemovals, int HeldAdditions, LibraryAccessDto Access, IReadOnlyList<DriftDto> Drift, int RemoteCount = 0, int LocalCount = 0, int HiddenByDedup = 0, string? DedupWinner = null);
 
 /// <summary>A local account the picker may list. Sharing accounts Shoal made for friends are never in the list.</summary>
 /// <param name="Id">The local user id.</param>
@@ -175,6 +179,7 @@ public sealed class AdminLibraryView : ILibraryView
             foreach (var mapping in peer.Libraries)
             {
                 var entries = document.Entries.Where(e => string.Equals(e.MappingKey, mapping.MappingKey, StringComparison.Ordinal)).ToList();
+                var counts = TitleCounts.Of(entries);
                 var library = shoal.FirstOrDefault(l => l.PeerKey == peer.PeerKey && l.MappingKey == mapping.MappingKey);
                 var differences = new List<DriftDto>();
                 if (library is not null)
@@ -196,12 +201,16 @@ public sealed class AdminLibraryView : ILibraryView
                     mapping.RemoteName,
                     peer.PeerKey,
                     peer.DisplayName,
-                    entries.Count(e => e.State is EntryState.Active or EntryState.HeldRemoval),
+                    counts.Local,
                     last is null ? null : new SyncInfoDto(last.EndedUtc, last.Result.ToString().ToLowerInvariant(), last.Added, last.Removed),
                     entries.Count(e => e.State == EntryState.HeldRemoval),
                     entries.Count(e => e.State == EntryState.HeldAddition),
                     new LibraryAccessDto(mapping.Access.Mode, [.. mapping.Access.SelectedUserIds.Where(id => !shareUsers.Contains(id))], mapping.Access.IncludeRestricted),
-                    differences));
+                    differences,
+                    counts.Remote,
+                    counts.Local,
+                    counts.Hidden,
+                    counts.Hidden == 0 ? null : TitleCounts.Winner(_state, _catalogs, peer.PeerKey, entries)));
             }
         }
 

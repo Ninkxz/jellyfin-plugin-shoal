@@ -19,6 +19,7 @@ namespace Jellyfin.Plugin.Shoal.State;
 internal static partial class StateValidator
 {
     private const int MaxNameChars = 64;
+    private const int MaxAliasChars = 40;
     private const int MaxUrlChars = 2048;
 
     /// <summary>
@@ -116,6 +117,7 @@ internal static partial class StateValidator
         }
 
         peer.DisplayName = name;
+        peer.Alias = TextClean.Display(peer.Alias ?? string.Empty, MaxAliasChars);
         peer.MaxConcurrentStreams = Clamp(peer.MaxConcurrentStreams, 1, 16, "peer stream limit", notes);
         peer.MaxConcurrentTranscodes = Math.Min(Clamp(peer.MaxConcurrentTranscodes, 1, 16, "peer conversion limit", notes), peer.MaxConcurrentStreams);
         peer.Priority = Clamp(peer.Priority, 0, 1000, "peer priority", notes);

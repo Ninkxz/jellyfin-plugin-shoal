@@ -105,6 +105,28 @@ public sealed class StubRootInitializerTests : IDisposable
         Assert.False(Directory.Exists(paths.DefaultStubRoot));
     }
 
+    [Fact]
+    public void Pilot07_ShoalsOwnLibrariesInsideTheStubRoot_AreNotACollision_ButAForeignLibraryIs()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "shoal-stubroot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var own = Path.Combine(root, "4b0c1d2e3f405162738495a6b7c8d9e0", "Movies");
+            Directory.CreateDirectory(own);
+            Assert.Equal(StubRootCheck.Ok, new StubRootChecker(() => [own]).Check(root));
+
+            var foreign = Path.Combine(root, "my media");
+            Directory.CreateDirectory(foreign);
+            Assert.Equal(StubRootCheck.InsideLibrary, new StubRootChecker(() => [foreign]).Check(root));
+            Assert.Equal(StubRootCheck.InsideLibrary, new StubRootChecker(() => [Path.GetDirectoryName(root)!]).Check(root));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
     private sealed class FixedChecker : IStubRootChecker
     {
         private readonly StubRootCheck _result;

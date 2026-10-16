@@ -40,6 +40,7 @@ public class AdminPeerLibrariesController : ControllerBase
     private readonly IPeerLiveStatus _live;
     private readonly ILogger<AdminPeerLibrariesController> _logger;
     private readonly StubRootInitializer? _stubRoots;
+    private readonly ISettingsAccessor? _settings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdminPeerLibrariesController"/> class.
@@ -53,9 +54,11 @@ public class AdminPeerLibrariesController : ControllerBase
     /// <param name="live">The live status (starts the first sync).</param>
     /// <param name="logger">The logger.</param>
     /// <param name="stubRoots">Sets the default stub root when none is set, so a fresh install can add a library; none means the 409 stands.</param>
-    public AdminPeerLibrariesController(IStateStore state, IPeerEndpoints peers, PeerCatalogReader reader, ShoalLibraryService libraries, AccessService access, CatalogStore catalogs, IPeerLiveStatus live, ILogger<AdminPeerLibrariesController> logger, StubRootInitializer? stubRoots = null)
+    /// <param name="settings">The plugin toggles (<c>TvShowsEnabled</c> decides whether a TV library can be picked), or null for off.</param>
+    public AdminPeerLibrariesController(IStateStore state, IPeerEndpoints peers, PeerCatalogReader reader, ShoalLibraryService libraries, AccessService access, CatalogStore catalogs, IPeerLiveStatus live, ILogger<AdminPeerLibrariesController> logger, StubRootInitializer? stubRoots = null, ISettingsAccessor? settings = null)
     {
         _stubRoots = stubRoots;
+        _settings = settings;
         _state = state;
         _peers = peers;
         _reader = reader;
@@ -102,9 +105,19 @@ public class AdminPeerLibrariesController : ControllerBase
             foreach (var view in views.Take(MaxViews))
             {
                 var key = KeyOf(view.Id);
-                var selectable = IsMovies(view);
+                var selectable = CanPick(view);
+                var added = peer.Libraries.Any(l => l.MappingKey == key);
+                if (IsTv(view) && selectable)
+                {
+                    // Two cheap Limit=0 calls: "N series, M episodes" (DESIGN v2.7.6).
+                    var series = await _reader.CountAsync(endpoint, view.Id, "Series", cancellationToken).ConfigureAwait(false);
+                    var episodes = await _reader.CountAsync(endpoint, view.Id, "Episode", cancellationToken).ConfigureAwait(false);
+                    result.Add(WithLocal(new RemoteLibraryDto(key, view.Name, "tvshows", episodes, true, added, series, episodes, series), handle));
+                    continue;
+                }
+
                 var count = selectable ? await _reader.CountMoviesAsync(endpoint, view.Id, cancellationToken).ConfigureAwait(false) : 0;
-                result.Add(new RemoteLibraryDto(key, view.Name, TypeWord(view.CollectionType), count, selectable, peer.Libraries.Any(l => l.MappingKey == key)));
+                result.Add(WithLocal(new RemoteLibraryDto(key, view.Name, TypeWord(view.CollectionType), count, selectable, added, 0, 0, count), handle));
             }
 
             return AdminReply.Json(StatusCodes.Status200OK, result);
@@ -170,7 +183,7 @@ public class AdminPeerLibrariesController : ControllerBase
         foreach (var request in body)
         {
             var view = views.FirstOrDefault(v => KeyOf(v.Id) == request.MappingKey);
-            if (view is null || !IsMovies(view))
+            if (view is null || !CanPick(view))
             {
                 return AdminReply.Error(StatusCodes.Status400BadRequest, "unknownLibrary");
             }
@@ -188,7 +201,7 @@ public class AdminPeerLibrariesController : ControllerBase
         foreach (var (request, view) in wanted)
         {
             var key = request.MappingKey!;
-            var name = MetadataSanitizer.DisplayName(string.IsNullOrWhiteSpace(request.LocalLibraryName) ? peer.DisplayName + " " + view.Name : request.LocalLibraryName);
+            var name = MetadataSanitizer.DisplayName(string.IsNullOrWhiteSpace(request.LocalLibraryName) ? peer.DisplayName + " " + (IsTv(view) ? "TV shows" : view.Name) : request.LocalLibraryName);
             if (name.Length == 0)
             {
                 return Partial(StatusCodes.Status400BadRequest, "invalid", added);
@@ -199,7 +212,7 @@ public class AdminPeerLibrariesController : ControllerBase
                 {
                     MappingKey = key,
                     RemoteName = view.Name,
-                    CollectionType = "movies",
+                    CollectionType = IsTv(view) ? "tvshows" : "movies",
                     LocalLibraryName = name,
                     Subfolder = key,
                     Import = true,
@@ -266,7 +279,25 @@ public class AdminPeerLibrariesController : ControllerBase
         return AdminReply.Json(StatusCodes.Status200OK, new { removed = true });
     }
 
+    // The same numbers the libraries list shows (see TitleCounts): for a library already added, how many titles are here and how many were left to another copy.
+    private RemoteLibraryDto WithLocal(RemoteLibraryDto dto, string handle)
+    {
+        if (!dto.Added)
+        {
+            return dto;
+        }
+
+        var entries = _catalogs.Load(handle).Document.Entries;
+        var counts = TitleCounts.Of(entries, dto.MappingKey);
+        return dto with { LocalCount = counts.Local, HiddenByDedup = counts.Hidden, DedupWinner = counts.Hidden == 0 ? null : TitleCounts.Winner(_state, _catalogs, handle, entries, dto.MappingKey) };
+    }
+
     private static bool IsMovies(PeerView view) => string.Equals(view.CollectionType, "movies", StringComparison.Ordinal);
+
+    private static bool IsTv(PeerView view) => string.Equals(view.CollectionType, "tvshows", StringComparison.Ordinal);
+
+    // A movie library always; a TV library only while TvShowsEnabled is on (DESIGN v2.7.6). Mixed or untyped views are never pickable.
+    private bool CanPick(PeerView view) => IsMovies(view) || (IsTv(view) && _settings?.Current.TvShowsEnabled == true);
 
     private static string TypeWord(string collectionType) => collectionType switch
     {
@@ -338,7 +369,13 @@ public class AdminPeerLibrariesController : ControllerBase
 /// <param name="Count">How many titles it holds (movies only; 0 otherwise).</param>
 /// <param name="Selectable">Whether it can be added (movies only in the MVP).</param>
 /// <param name="Added">Whether it is added already.</param>
-internal sealed record RemoteLibraryDto(string MappingKey, string Name, string Type, int Count, bool Selectable, bool Added);
+/// <param name="SeriesCount">For a TV library: how many series it holds, else 0.</param>
+/// <param name="EpisodeCount">For a TV library: how many episodes it holds, else 0.</param>
+/// <param name="RemoteCount">Titles (movies or series) the friend lists; the unit of LocalCount and HiddenByDedup (for TV, the series count, not Count).</param>
+/// <param name="LocalCount">Titles of this library with a stub here (only for a library already added).</param>
+/// <param name="HiddenByDedup">Titles with no stub because this server or a better-ranked friend carries them (only for a library already added).</param>
+/// <param name="DedupWinner">The friend that carries most of the hidden titles, or null.</param>
+internal sealed record RemoteLibraryDto(string MappingKey, string Name, string Type, int Count, bool Selectable, bool Added, int SeriesCount = 0, int EpisodeCount = 0, int RemoteCount = 0, int LocalCount = 0, int HiddenByDedup = 0, string? DedupWinner = null);
 
 /// <summary>
 /// One library the admin ticked in the wizard.

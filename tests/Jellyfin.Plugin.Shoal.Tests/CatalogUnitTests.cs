@@ -276,7 +276,7 @@ public sealed class CatalogUnitTests
         var path = Path.Combine(new ShoalPaths(dir.Path).PeerDir(PeerKey), "catalog.json");
         var text = File.ReadAllText(path);
 
-        File.WriteAllText(path, text.Replace("\"schema\":3", "\"schema\":4", StringComparison.Ordinal));
+        File.WriteAllText(path, text.Replace("\"schema\":4", "\"schema\":5", StringComparison.Ordinal));
         File.Delete(path + ".bak");
         Assert.True(store.Load(PeerKey).Unreadable);
 
@@ -325,7 +325,7 @@ public sealed class CatalogUnitTests
         Assert.Equal(entry.StubRelPath, read.StubRelPath); // the entry itself is unchanged: no file is renamed
 
         store.Save(loaded.Document);
-        Assert.Equal(3, System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["schema"]!.GetValue<int>());
+        Assert.Equal(4, System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["schema"]!.GetValue<int>());
         var again = Assert.Single(store.Load(PeerKey).Document.Entries);
         Assert.Equal(entry.StubKey, Assert.Single(again.Sources).StubKey);
     }

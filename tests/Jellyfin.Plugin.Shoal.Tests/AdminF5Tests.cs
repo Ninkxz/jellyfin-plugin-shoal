@@ -73,8 +73,8 @@ public sealed class AdminF5Tests
     public async Task NoAnswerOfAnyAdminRoute_ContainsAKnownSecretOrPeerSideId()
     {
         await using var peer = await FakeJellyfinPeer.StartAsync();
-        peer.ApproveFromPoll = 2;
-        using var rig = new PairingRig();
+        using var side = new InviteHomeTests.PeerSide(peer);
+        using var rig = InviteHomeTests.NewRig();
         await rig.State.UpdateAsync(StateSamples.Fill);
         var http = new DefaultHttpContext
         {
@@ -112,12 +112,13 @@ public sealed class AdminF5Tests
         Record("GET", "Shoal/Admin/Pairing", pairing.Get());
         var probe = await rig.ProbeAsync(peer);
         Record("POST", "Shoal/Admin/Peers/Probe", await pairing.Probe(new ProbeRequest { Url = peer.BaseUrl, Network = Jellyfin.Plugin.Shoal.State.PeerNetwork.Tailnet }, default));
-        var fresh = await rig.ProbeAsync(peer);
-        Record("POST", "Shoal/Admin/Pairing", await pairing.Start(new StartPairingRequest { ProbeHandle = fresh.ProbeHandle, DisplayName = "Hops", Method = "qc" }, default));
-        await rig.UntilStepAsync(PairingStep.AwaitingConfirm);
+        var (inviteShare, invite) = await side.InviteAsync();
+        var fresh = await rig.ProbeAsync(peer, invite: invite);
+        Record("POST", "Shoal/Admin/Pairing", await pairing.Start(new StartPairingRequest { ProbeHandle = fresh.ProbeHandle, DisplayName = "Hops" }, default));
+        var waiting = await rig.UntilAsync(s => s.Step == PairingStep.AwaitingApproval && s.SafetyCode is not null, InviteHomeTests.Deadline);
         Record("GET", "Shoal/Admin/Pairing", pairing.Get());
-        Record("POST", "Shoal/Admin/Pairing/Confirm", await pairing.Confirm(new ConfirmPairingRequest { Match = true }, default));
-        await rig.UntilFinishedAsync();
+        await side.Service.DecideAsync(inviteShare.ShareId, new Jellyfin.Plugin.Shoal.Api.Admin.ApprovalRequest { Approve = true, Sas = waiting.SafetyCode }, default);
+        await rig.UntilFinishedAsync(InviteHomeTests.Deadline);
         Assert.NotNull(probe);
         var pairedKey = rig.State.Current.Home.Peers.Single(p => p.DisplayName == "Hops" && p.PeerKey != StateSamples.PeerKeyA).PeerKey;
 
@@ -134,9 +135,11 @@ public sealed class AdminF5Tests
         Record("GET", "Shoal/Admin/Peers/{handle}", home.GetPeer("nope"));
         Record("POST", "Shoal/Admin/Peers/{handle}/Sync", home.SyncPeer(StateSamples.PeerKeyA));
         Record("POST", "Shoal/Admin/Peers/{handle}/Sync", home.SyncPeer(StateSamples.PeerKeyA));
-        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{action}", home.Hold(StateSamples.PeerKeyA, "removals", "Release"));
-        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{action}", home.Hold(StateSamples.PeerKeyA, "additions", "Keep"));
-        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{action}", home.Hold(StateSamples.PeerKeyA, "nope", "Release"));
+        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{decision}", home.Hold(StateSamples.PeerKeyA, "removals", "Release"));
+        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{decision}", home.Hold(StateSamples.PeerKeyA, "additions", "Keep"));
+        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{decision}", home.Hold(StateSamples.PeerKeyA, "nope", "Release"));
+        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{decision}", home.Hold(StateSamples.PeerKeyA, "additions", "Release", "BAD KEY"));
+        Record("POST", "Shoal/Admin/Peers/{handle}/Holds/{kind}/{decision}", home.Hold(StateSamples.PeerKeyA, "additions", "Release", "abcdefgh12345678"));
         Record("POST", "Shoal/Admin/Peers/{handle}/Pause", await home.Pause(StateSamples.PeerKeyA, default));
         Record("POST", "Shoal/Admin/Peers/{handle}/Resume", await home.Resume(StateSamples.PeerKeyA, default));
         // Friends who watch from here (the share service answers "not built" until K21 and K22; the reads come from the state).
@@ -223,10 +226,17 @@ public sealed class AdminF5Tests
         // Settings (K33): the cache clear answers a number of bytes and nothing else.
         Record("DELETE", "Shoal/Admin/TrickplayCache", prefs.ClearTrickplayCache());
 
+        // Suggested addresses for the share wizard (pairing v2): this server's own names and private addresses, no secret.
+        var reach = new AdminReachController(new Jellyfin.Plugin.Shoal.Diagnostics.NoTailscaleStatus(), new ReachNone()) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Shares/Reach", await reach.Reach(default));
+
         // Overlap: numbers and words only.
         var overlap = new AdminOverlapController(rig.State, catalogs) { ControllerContext = context };
         Record("GET", "Shoal/Admin/Peers/{handle}/Overlap", overlap.Overlap(StateSamples.PeerKeyA));
         Record("GET", "Shoal/Admin/Peers/{handle}/Overlap", overlap.Overlap("nope"));
+        var holds = new AdminHoldsController(rig.State, catalogs) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Peers/{handle}/Holds", holds.Holds(StateSamples.PeerKeyA));
+        Record("GET", "Shoal/Admin/Peers/{handle}/Holds", holds.Holds("nope"));
 
         // Server detail settings: words only.
         var peerSettings = new AdminPeerSettingsController(rig.State, new Jellyfin.Plugin.Shoal.Peers.PeerDirectory(rig.State, rig.Secrets), rig.Client, rig.Registry, new Jellyfin.Plugin.Shoal.Peers.PeerAddressService(rig.State, rig.Secrets, rig.Registry, rig.Service), rig.Secrets, libraryService, rig.Paths, NullLogger<AdminPeerSettingsController>.Instance, rig.Service) { ControllerContext = context };
@@ -351,4 +361,11 @@ public sealed class AdminF5Tests
                 break;
         }
     }
+}
+
+internal sealed class ReachNone : Jellyfin.Plugin.Shoal.Api.Admin.IReachNetwork
+{
+    public int HttpPort => 8096;
+
+    public System.Collections.Generic.IReadOnlyList<System.Net.IPAddress> Addresses() => [];
 }

@@ -23,10 +23,24 @@ public interface ITailscaleStatus
     Task<TailscalePeerPath?> FindAsync(string host, CancellationToken cancellationToken);
 }
 
+/// <summary>Asks the local Tailscale for this server's own name (share side address suggestions, pairing v2).</summary>
+public interface ITailscaleSelf
+{
+    /// <summary>Reads this node's name and address.</summary>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The node, or null when Tailscale cannot be asked.</returns>
+    Task<TailscaleSelf?> SelfAsync(CancellationToken cancellationToken);
+}
+
 /// <summary>What Tailscale says about the path to one peer.</summary>
 /// <param name="Relayed">True when the traffic goes through a DERP relay.</param>
 /// <param name="Region">The relay's region, when it is relayed.</param>
 public sealed record TailscalePeerPath(bool Relayed, string? Region);
+
+/// <summary>This server's own Tailscale name and address.</summary>
+/// <param name="DnsName">The MagicDNS name, without the trailing dot.</param>
+/// <param name="Ip">The Tailscale IPv4 address, or null.</param>
+public sealed record TailscaleSelf(string DnsName, string? Ip);
 
 /// <summary>The default: Tailscale is not asked.</summary>
 public sealed class NoTailscaleStatus : ITailscaleStatus
@@ -39,7 +53,7 @@ public sealed class NoTailscaleStatus : ITailscaleStatus
 /// Reads <c>GET /localapi/v0/status</c> from the Tailscale daemon's Unix socket (read only, at most 1 MB). The socket is found by the
 /// <c>TailscaleSocket</c> setting: <c>auto</c> looks in the usual place on Linux, <c>off</c> never asks, a path is used as it is.
 /// </summary>
-public sealed class TailscaleLocalApi : ITailscaleStatus
+public sealed class TailscaleLocalApi : ITailscaleStatus, ITailscaleSelf
 {
     /// <summary>The usual place of the daemon's socket on Linux.</summary>
     public const string DefaultSocket = "/var/run/tailscale/tailscaled.sock";
@@ -102,8 +116,47 @@ public sealed class TailscaleLocalApi : ITailscaleStatus
         }
     }
 
+    /// <summary>Reads this node's own name and address out of a status document.</summary>
+    /// <param name="json">The status document.</param>
+    /// <returns>The node, or null when the document has no usable <c>Self</c>.</returns>
+    public static TailscaleSelf? ParseSelf(ReadOnlySpan<byte> json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json.ToArray(), new JsonDocumentOptions { MaxDepth = 16 });
+            if (!document.RootElement.TryGetProperty("Self", out var self) || self.ValueKind != JsonValueKind.Object
+                || !self.TryGetProperty("DNSName", out var dns) || dns.ValueKind != JsonValueKind.String || dns.GetString()?.TrimEnd('.') is not { Length: >= 3 and <= 253 } name
+                || !name.All(static c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '.' or '-'))
+            {
+                return null;
+            }
+
+            var address = self.TryGetProperty("TailscaleIPs", out var ips) && ips.ValueKind == JsonValueKind.Array
+                ? ips.EnumerateArray().Where(static i => i.ValueKind == JsonValueKind.String).Select(static i => i.GetString()).FirstOrDefault(static a => IPAddress.TryParse(a, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork)
+                : null;
+            return new TailscaleSelf(name, address);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <inheritdoc />
     public async Task<TailscalePeerPath?> FindAsync(string host, CancellationToken cancellationToken)
+    {
+        var bytes = await ReadStatusAsync(cancellationToken).ConfigureAwait(false);
+        return bytes is null ? null : Parse(bytes, host);
+    }
+
+    /// <inheritdoc />
+    public async Task<TailscaleSelf?> SelfAsync(CancellationToken cancellationToken)
+    {
+        var bytes = await ReadStatusAsync(cancellationToken).ConfigureAwait(false);
+        return bytes is null ? null : ParseSelf(bytes);
+    }
+
+    private async Task<byte[]?> ReadStatusAsync(CancellationToken cancellationToken)
     {
         if (SocketPath() is not { } socket)
         {
@@ -153,7 +206,7 @@ public sealed class TailscaleLocalApi : ITailscaleStatus
                 await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
 
-            return Parse(buffer.ToArray(), host);
+            return buffer.ToArray();
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or SocketException or TaskCanceledException or InvalidOperationException)
         {

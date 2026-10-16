@@ -21,11 +21,8 @@ public sealed record PeerCallProfile(string Name, TimeSpan Connect, TimeSpan Hea
     /// <summary>Gets the profile for <c>System/Info[/Public]</c>, <c>System/Ping</c>, <c>Users/Me</c>, the session anchor, <c>Shoal/Pair</c>.</summary>
     public static PeerCallProfile Info { get; } = new("info", Seconds(3), Seconds(5), Seconds(5), Seconds(8), 64 * KiB);
 
-    /// <summary>Gets the profile for Quick Connect: the 1 s poll and the redeem use a 3 s total (DESIGN 4.2a).</summary>
-    public static PeerCallProfile QuickConnect { get; } = new("quick-connect", Seconds(3), Seconds(3), Seconds(3), Seconds(3), 64 * KiB);
-
-    /// <summary>Gets the profile for Quick Connect <c>Enabled</c>, <c>Initiate</c> and <c>Logout</c> (3 s each, DESIGN 4.2a).</summary>
-    public static PeerCallProfile QuickConnectStep { get; } = QuickConnect with { Name = "quick-connect-step" };
+    /// <summary>Gets the profile for the steps of a pairing (3 s each, DESIGN 4.1b).</summary>
+    public static PeerCallProfile PairStep { get; } = new("pair-step", Seconds(3), Seconds(3), Seconds(3), Seconds(3), 64 * KiB);
 
     /// <summary>Gets the profile for <c>GET /Sessions</c> (the foreign-device watch).</summary>
     public static PeerCallProfile Sessions { get; } = new("sessions", Seconds(3), Seconds(5), Seconds(5), Seconds(8), 256 * KiB);

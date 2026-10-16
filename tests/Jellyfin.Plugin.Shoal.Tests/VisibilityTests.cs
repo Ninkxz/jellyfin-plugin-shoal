@@ -19,6 +19,14 @@ internal sealed class FakeLibraries : ILibrarySource
 
     public int CreateCalls { get; private set; }
 
+    public string? LastCollectionType { get; private set; }
+
+    public Task CreateAsync(string name, string path, string collectionType, CancellationToken cancellationToken)
+    {
+        LastCollectionType = collectionType;
+        return CreateAsync(name, path, cancellationToken);
+    }
+
     public bool FailCreate { get; set; }
 
     public IReadOnlyList<LibraryInfo> List() => _libraries.ToList();
@@ -68,6 +76,9 @@ internal sealed class FakeAccounts : IAccountSource
 
     public Guid? FailFor { get; set; }
 
+    /// <summary>Runs on every List call, with the number of calls so far (simulates an edit in the dashboard in the middle of a run).</summary>
+    public Action<int>? OnList { get; set; }
+
     public AccountInfo Add(string name, bool all = true, IEnumerable<Guid>? folders = null, bool admin = false, bool restricted = false, bool disabled = false)
     {
         var account = new AccountInfo(Guid.NewGuid(), name, disabled, admin, restricted, all, [.. folders ?? []]);
@@ -86,6 +97,7 @@ internal sealed class FakeAccounts : IAccountSource
     public IReadOnlyList<AccountInfo> List()
     {
         ListCalls++;
+        OnList?.Invoke(ListCalls);
         return _accounts.ToList();
     }
 

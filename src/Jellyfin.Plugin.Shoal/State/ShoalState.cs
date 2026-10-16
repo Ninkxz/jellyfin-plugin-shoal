@@ -70,7 +70,7 @@ public enum AccessMode
 /// </summary>
 public enum HardeningMode
 {
-    /// <summary>Count what would be blocked; block nothing. The default.</summary>
+    /// <summary>Count what would be blocked; block nothing. One click away from the default (<see cref="Enforce"/> since D18); a state that already stores it keeps it.</summary>
     LogOnly,
 
     /// <summary>Anonymous requests for shared titles are refused.</summary>
@@ -137,6 +137,9 @@ public sealed class PeerState
     /// <summary>Gets or sets the name the admin sees (text only, never HTML).</summary>
     public string DisplayName { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets a local name for this server, or empty. The offline card and the offline message use it instead of <see cref="DisplayName"/>, so a friend's own choice of server name is never what Home's users read on the screen.</summary>
+    public string Alias { get; set; } = string.Empty;
+
     /// <summary>Gets or sets the peer base URL, validated by <c>AddressPolicy</c> before use.</summary>
     public string BaseUrl { get; set; } = string.Empty;
 
@@ -190,6 +193,12 @@ public sealed class PeerState
 
     /// <summary>Gets or sets when the token was last rotated (UTC), or null.</summary>
     public DateTime? LastRotatedUtc { get; set; }
+
+    /// <summary>
+    /// The name shown to Home's users on the offline card and message: the alias when there is one, else the display name.
+    /// </summary>
+    /// <returns>The name.</returns>
+    public string ShownName() => Alias.Length > 0 ? Alias : DisplayName;
 }
 
 /// <summary>
@@ -207,7 +216,7 @@ public sealed class PairingProgress
     public Guid StartedByUserId { get; set; }
 
     /// <summary>Gets or sets the pairing method.</summary>
-    public PairingMethod Method { get; set; } = PairingMethod.Qc;
+    public PairingMethod Method { get; set; } = PairingMethod.Invite;
 }
 
 /// <summary>
@@ -289,6 +298,36 @@ public sealed class VisibilityState
     /// current and undo exactly its own change.
     /// </summary>
     public Dictionary<Guid, ManagedUser> ManagedUsers { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the servers whose libraries are hidden while they are offline (<c>ParkOfflinePeers</c>), with the exact (account, library) pairs Shoal removed,
+    /// so only those are put back. Survives a restart.
+    /// </summary>
+    public Dictionary<string, ParkedPeer> Parked { get; set; } = [];
+}
+
+/// <summary>
+/// A server whose libraries are hidden.
+/// </summary>
+public sealed class ParkedPeer
+{
+    /// <summary>Gets or sets when the libraries were hidden (UTC).</summary>
+    public DateTime ParkedUtc { get; set; }
+
+    /// <summary>Gets or sets the (account, library) pairs Shoal removed from an explicit library list.</summary>
+    public List<ParkedPair> Pairs { get; set; } = [];
+}
+
+/// <summary>
+/// One library removed from one account's list.
+/// </summary>
+public sealed class ParkedPair
+{
+    /// <summary>Gets or sets the account.</summary>
+    public Guid UserId { get; set; }
+
+    /// <summary>Gets or sets the library's folder id.</summary>
+    public Guid LibraryId { get; set; }
 }
 
 /// <summary>
@@ -309,7 +348,7 @@ public sealed class ManagedUser
 public sealed class PeerRoleState
 {
     /// <summary>Gets or sets the guard filter mode.</summary>
-    public HardeningMode HardeningMode { get; set; } = HardeningMode.LogOnly;
+    public HardeningMode HardeningMode { get; set; } = HardeningMode.Enforce;
 
     /// <summary>Gets or sets when the mode was last changed (UTC).</summary>
     public DateTime HardeningSinceUtc { get; set; }

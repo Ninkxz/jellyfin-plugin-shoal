@@ -731,6 +731,24 @@ public sealed class ImageFetcherTests : IAsyncLifetime
         Assert.Equal(1, _maxActive);
     }
 
+    [Fact]
+    public async Task ImagesOfTwoPeers_AreFetchedAtTheSameTime_ButOnePeerStillOneAtATime()
+    {
+        Respond = _ => (200, "image/jpeg", ImageBuilder.Jpeg(600, 900, 2000), false, 250);
+        var quota = new DiskQuota(1L << 30);
+        var fetcher = Fetcher;
+        var other = new PeerEndpoint("00000000000000000000000000000def", "Other", Peer.BaseUri, "shoal-1a2b3c4d5e6f-4b0c1d2e", "9f2c4d6e8a0b1c3d5e7f9a0b2c4d6e8f");
+        string Folder(int i) => Directory.CreateDirectory(Path.Combine(_stubRoot, "peerkey", "Movies", "Movie " + i)).FullName;
+
+        var results = await Task.WhenAll(
+            fetcher.FetchAsync(Peer, ItemId, ImageKind.Poster, Tag, ArtQuality.Standard, _stubRoot, Folder(1), quota, CancellationToken.None),
+            fetcher.FetchAsync(other, ItemId, ImageKind.Poster, Tag, ArtQuality.Standard, _stubRoot, Folder(2), quota, CancellationToken.None),
+            fetcher.FetchAsync(Peer, ItemId, ImageKind.Poster, Tag, ArtQuality.Standard, _stubRoot, Folder(3), quota, CancellationToken.None));
+
+        Assert.All(results, r => Assert.Equal(ImageOutcome.Stored, r.Outcome));
+        Assert.Equal(2, _maxActive); // the two peers overlap; the third request waited for the first of its own peer
+    }
+
     // --- T-SYNC-10: F-CAP-01 scaled down
 
     [Fact]

@@ -11,6 +11,7 @@ using Jellyfin.Plugin.Shoal.Security;
 using Jellyfin.Plugin.Shoal.State;
 using Jellyfin.Plugin.Shoal.Storage;
 using Jellyfin.Plugin.Shoal.Sync;
+using Jellyfin.Plugin.Shoal.Text;
 using Jellyfin.Plugin.Shoal.Visibility;
 using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
@@ -223,7 +224,7 @@ public class AdminPeerSettingsController : ControllerBase
         }
 
         var body = await AdminReply.ReadAsync<UpdatePeerRequest>(Request, cancellationToken).ConfigureAwait(false);
-        if (body is null || body.MaxConcurrentStreams is < 1 or > 16 || body.Priority is < 1 or > 1000)
+        if (body is null || body.MaxConcurrentStreams is < 1 or > 16 || body.Priority is < 1 or > 1000 || (body.Alias is not null && TextClean.Display(body.Alias, 40).Length != body.Alias.Trim().Length))
         {
             return AdminReply.Error(StatusCodes.Status400BadRequest, "invalid");
         }
@@ -319,6 +320,11 @@ public class AdminPeerSettingsController : ControllerBase
                 target.Priority = priority;
             }
 
+            if (body.Alias is not null)
+            {
+                target.Alias = TextClean.Display(body.Alias, 40); // empty clears it: the display name is used again
+            }
+
             target.MaxConcurrentTranscodes = Math.Min(target.MaxConcurrentTranscodes, target.MaxConcurrentStreams);
             target.ProxyUrl = proxy;
             target.TlsSpkiPin = pin;
@@ -387,21 +393,35 @@ public class AdminPeerSettingsController : ControllerBase
             return AdminReply.Error(StatusCodes.Status400BadRequest, "confirmName");
         }
 
+        // Removing a server ends its pairing: a live session is cancelled instead of refusing the removal.
         if (_gate?.IsLive(handle) == true)
         {
-            return AdminReply.Error(StatusCodes.Status409Conflict, "pairingActive");
-        }
+            try
+            {
+                await _gate.CancelAsync(handle, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // the pairing did not end within its wait: the removal says so instead of failing
+            }
 
-        // A running sync would recreate stubs and catalog files behind the removal. Stop new ones first (a disabled server is skipped), then look again.
-        if (_sync?.IsSyncing(handle) == true)
-        {
-            return AdminReply.Error(StatusCodes.Status409Conflict, "syncing");
+            if (_gate.IsLive(handle))
+            {
+                return AdminReply.Error(StatusCodes.Status409Conflict, "pairingActive");
+            }
         }
 
         var wasEnabled = peer.Enabled;
         if (wasEnabled)
         {
             await _state.UpdateAsync(s => s.Home.Peers.First(p => string.Equals(p.PeerKey, handle, StringComparison.Ordinal)).Enabled = false, cancellationToken).ConfigureAwait(false);
+        }
+
+        // A running sync would recreate stubs and catalog files behind the removal. The server is disabled now, so no new one starts; the running one is told to
+        // stop and given a few seconds. A server that is offline makes a sync wait on its calls, which this ends at the next checkpoint too.
+        if (_sync?.IsSyncing(handle) == true)
+        {
+            await _sync.StopAsync(handle, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
 
         if (_sync?.IsSyncing(handle) == true)
@@ -512,6 +532,9 @@ internal sealed class UpdatePeerRequest
 
     /// <summary>Gets the priority (lower wins).</summary>
     public int? Priority { get; init; }
+
+    /// <summary>Gets the local name for the offline card and message: text sets it, an empty string clears it, absent keeps it.</summary>
+    public string? Alias { get; init; }
 
     /// <summary>Gets the server address.</summary>
     public string? Url { get; init; }

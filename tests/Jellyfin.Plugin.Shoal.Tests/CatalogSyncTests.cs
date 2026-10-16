@@ -593,6 +593,106 @@ public sealed class CatalogSyncTests
         Assert.Equal(EntryState.Active, entries["Inception"].State);
     }
 
+    private static async Task AddBetterPeerWithTheMatrixAsync(SyncRig rig, string other)
+    {
+        await rig.AddPeerAsync(other, "Better", priority: 50, paired: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+        var catalog = new CatalogDocument { PeerKey = other, CompletedOnce = true };
+        catalog.Entries.Add(new CatalogEntry
+        {
+            StubKey = "bbbbbbbbbbbbbbbb",
+            PeerItemId = "11111111111111111111111111111111",
+            PeerMediaSourceId = "11111111111111111111111111111111",
+            MappingKey = "movies-1",
+            Title = "The Matrix",
+            Year = 1999,
+            ProviderIds = new Dictionary<string, string> { ["Tmdb"] = "603" },
+            State = EntryState.Active,
+            StubRelPath = "The Matrix (1999) [tmdbid-603]/The Matrix (1999) [tmdbid-603].strm",
+        });
+        rig.Catalogs.Save(catalog);
+    }
+
+    [Fact]
+    public async Task AnOfflineOrPausedBetterPeer_DoesNotKeepThisPeersTitlesOut_AndTheTieIsRankedAgainWhenItIsBack()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Peer.Add("The Matrix", 1999, tmdb: 603);
+        rig.Peer.Add("Inception", 2010, tmdb: 27205);
+        var other = "ffffffffffffffffffffffffffffffff";
+        await AddBetterPeerWithTheMatrixAsync(rig, other);
+        rig.DownPeers.Add(other); // the old server is offline: the owner's case, a new server for the same friend with the same titles
+
+        var report = await rig.SyncAsync();
+
+        Assert.Equal(2, report.Added);
+        Assert.All(rig.Entries, e => Assert.Equal(EntryState.Active, e.State));
+        Assert.Equal(2, Directory.GetDirectories(rig.LibraryFolder).Length); // both stubs were written
+
+        rig.DownPeers.Clear(); // the old one is back: rank decides again at the next sync, and it is better
+        rig.Time.Advance(TimeSpan.FromMinutes(11));
+        await rig.SyncAsync(SyncTrigger.Scheduled);
+
+        var entries = rig.Entries.ToDictionary(static e => e.Title);
+        Assert.Equal(EntryState.DuplicatePeer, entries["The Matrix"].State);
+        Assert.Equal(EntryState.Active, entries["Inception"].State);
+    }
+
+    [Fact]
+    public async Task WhenABetterServerLetsGo_TheTitlesItHeldBackGetTheirStubs_AndOneScanIsQueued()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Peer.Add("The Matrix", 1999, tmdb: 603);
+        rig.Peer.Add("Inception", 2010, tmdb: 27205);
+        var other = "ffffffffffffffffffffffffffffffff";
+        await AddBetterPeerWithTheMatrixAsync(rig, other);
+        var better = rig.Catalogs.Load(other).Document;
+        better.Entries.Add(new CatalogEntry
+        {
+            StubKey = "cccccccccccccccc",
+            PeerItemId = "22222222222222222222222222222222",
+            PeerMediaSourceId = "22222222222222222222222222222222",
+            MappingKey = "movies-1",
+            Title = "Inception",
+            Year = 2010,
+            ProviderIds = new Dictionary<string, string> { ["Tmdb"] = "27205" },
+            State = EntryState.Active,
+            StubRelPath = "Inception (2010) [tmdbid-27205]/Inception (2010) [tmdbid-27205].strm",
+        });
+        rig.Catalogs.Save(better);
+
+        await rig.SyncAsync(); // the better server holds both: this server has no stub at all
+        Assert.All(rig.Entries, e => Assert.Equal(EntryState.DuplicatePeer, e.State));
+        Assert.Equal(0, rig.Refresh.Scans);
+
+        rig.DownPeers.Add(other); // the better server is removed, paused or gone
+        rig.Time.Advance(TimeSpan.FromMinutes(11));
+        var report = await rig.SyncAsync(SyncTrigger.Scheduled);
+
+        Assert.Equal(2, report.Added);
+        Assert.All(rig.Entries, e => Assert.Equal(EntryState.Active, e.State));
+        Assert.Equal(1, rig.Refresh.Scans); // the new stubs show without a manual scan
+
+        rig.Time.Advance(TimeSpan.FromMinutes(11));
+        await rig.SyncAsync(SyncTrigger.Scheduled);
+        Assert.Equal(1, rig.Refresh.Scans); // and a sync that promotes nothing queues none
+    }
+
+    [Fact]
+    public void PromotionScans_AreOneEveryFiveMinutes_AcrossAllServers_AndNeverWhileAScanRuns()
+    {
+        var refresh = new FakeRefresh();
+        var d = new CatalogSyncService.Dependencies(null!, null!, null!, null!, null!, refresh, TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, _ => true);
+        var t0 = new DateTime(2026, 10, 16, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.True(d.TryStartScan("a", t0, promotion: true));
+        Assert.False(d.TryStartScan("b", t0.AddMinutes(1), promotion: true)); // another server's promotion, within five minutes of any
+        Assert.True(d.TryStartScan("b", t0.AddMinutes(1))); // the first stubs of a library are not held back by that
+        Assert.False(d.TryStartScan("a", t0.AddMinutes(2))); // but one server asks at most once in five minutes
+        Assert.True(d.TryStartScan("b", t0.AddMinutes(6), promotion: true));
+        refresh.IsScanRunning = true;
+        Assert.False(d.TryStartScan("c", t0.AddMinutes(30), promotion: true)); // a scan is running: none is queued behind it
+    }
+
     [Fact]
     public async Task AWorseRankedPeersTitle_DoesNotBlockThisPeers()
     {
@@ -894,6 +994,24 @@ public sealed class CatalogSyncTests
         Assert.Equal("catalogUnreadable", report.Error);
         Assert.Equal("{ not json", Text(path));
         Assert.Single(Directory.GetDirectories(rig.LibraryFolder));
+    }
+
+    [Fact]
+    public async Task StopAsync_EndsASyncThatWaitsOnASlowOrUnreachablePeer_AtOnce_AndNothingThrows()
+    {
+        await using var rig = await RigWithAsync(30);
+        rig.Peer.DelayMs = 20_000; // every answer takes far longer than the test
+        var running = rig.SyncAsync();
+        await Task.Delay(300);
+        Assert.True(rig.Sync.IsSyncing(SyncRig.PeerKey));
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await rig.Sync.StopAsync(SyncRig.PeerKey, TimeSpan.FromSeconds(10));
+        watch.Stop();
+
+        Assert.False(rig.Sync.IsSyncing(SyncRig.PeerKey));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), "took " + watch.Elapsed);
+        await running; // the run ended without an exception
     }
 
     [Fact]

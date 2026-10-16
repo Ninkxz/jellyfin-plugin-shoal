@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.Shoal.Guard;
 
 /// <summary>
 /// The Peer-side guard (DESIGN 8.4): one global resource filter, inert unless a share exists, with four jobs. (a) sign-in for shared media
-/// (<c>LogOnly</c>, <c>Enforce</c>, <c>Off</c>), (b) the Quick Connect initiate shield, (c) a best-effort per-share transcode limit, (d) no
+/// (<c>LogOnly</c>, <c>Enforce</c>, <c>Off</c>), (b) a placeholder kept for the numbering, (c) a best-effort per-share transcode limit, (d) no
 /// self-minting by sharing accounts. Jobs (a) to (c) fail open (a bug here must never break the friend's own server); job (d) fails closed.
 /// It only adds requirements and never relaxes core's authorization.
 /// </summary>
@@ -34,7 +34,6 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
     private readonly IGuardItems _items;
     private readonly ITranscodeProbe _transcodes;
     private readonly GuardCounters _counters;
-    private readonly InitiateShield _shield;
     private readonly SharedItemCache _cache;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
@@ -50,12 +49,11 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
     /// <param name="items">Item questions.</param>
     /// <param name="transcodes">Transcode jobs.</param>
     /// <param name="counters">The counters.</param>
-    /// <param name="shield">The Quick Connect shield.</param>
     /// <param name="cache">The shared-item cache.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    public PeerGuardFilter(GuardShares shares, IStateStore state, IGuardItems items, ITranscodeProbe transcodes, GuardCounters counters, InitiateShield shield, SharedItemCache cache, TimeProvider time, ILogger<PeerGuardFilter> logger)
-        : this(shares, state, items, transcodes, counters, shield, cache, time, (ILogger)logger)
+    public PeerGuardFilter(GuardShares shares, IStateStore state, IGuardItems items, ITranscodeProbe transcodes, GuardCounters counters, SharedItemCache cache, TimeProvider time, ILogger<PeerGuardFilter> logger)
+        : this(shares, state, items, transcodes, counters, cache, time, (ILogger)logger)
     {
     }
 
@@ -67,18 +65,16 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
     /// <param name="items">Item questions.</param>
     /// <param name="transcodes">Transcode jobs.</param>
     /// <param name="counters">The counters.</param>
-    /// <param name="shield">The shield.</param>
     /// <param name="cache">The cache.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    internal PeerGuardFilter(GuardShares shares, IStateStore state, IGuardItems items, ITranscodeProbe transcodes, GuardCounters counters, InitiateShield shield, SharedItemCache cache, TimeProvider time, ILogger logger)
+    internal PeerGuardFilter(GuardShares shares, IStateStore state, IGuardItems items, ITranscodeProbe transcodes, GuardCounters counters, SharedItemCache cache, TimeProvider time, ILogger logger)
     {
         _shares = shares;
         _state = state;
         _items = items;
         _transcodes = transcodes;
         _counters = counters;
-        _shield = shield;
         _cache = cache;
         _time = time;
         _logger = logger;
@@ -139,17 +135,6 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
 
         try
         {
-            if (HttpMethods.IsPost(http.Request.Method) && path.Equals("QuickConnect/Initiate", StringComparison.OrdinalIgnoreCase))
-            {
-                var ip = AddressKey.Of(http.Connection.RemoteIpAddress); // an IPv6 network counts as one caller
-                if (!_shield.TryAllow(ip))
-                {
-                    _counters.Shield();
-                    context.Result = new ShoalResult(StatusCodes.Status429TooManyRequests, new { error = "rateLimited" }, 60);
-                    return;
-                }
-            }
-
             if (isShareUser && user is { } shareUser && TranscodeStart(http, path) && TranscodeGate(shareUser, snapshot, http) is { } gate)
             {
                 context.Result = gate;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Jellyfin.Plugin.Shoal.Playback;
 
@@ -70,6 +71,18 @@ public interface ISlotLedger
     bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax) => true;
 
     /// <summary>
+    /// The same pre-check for a stream that may be a binge handover (DESIGN v2.7.8): the next episode of a series on the device that plays the last one gets one
+    /// place more on the half-of-the-peer rule only. The peer total and <c>MaxStreamsPerUser</c> stay hard limits.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="itemId">The local item.</param>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="peerMax">The peer's <c>MaxConcurrentStreams</c>.</param>
+    /// <param name="origin">The series and device of the new stream.</param>
+    /// <returns>True when a slot is available.</returns>
+    bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax, SlotOrigin origin) => CanStart(userId, itemId, peerKey, peerMax);
+
+    /// <summary>
     /// Whether all of the peer's conversion slots are held.
     /// </summary>
     /// <param name="peerKey">The peer.</param>
@@ -91,6 +104,14 @@ public interface ISlotLedger
 /// <param name="IsDefault">Whether it is the default stream.</param>
 /// <param name="IsForced">Whether it is forced.</param>
 public sealed record GrantTrack(int Index, string Type, string? Codec, string? Language, string? Title, bool IsText, bool IsExternal, bool IsDefault, bool IsForced);
+
+/// <summary>
+/// One segment of the media playlist Home accepted: the two integers it wrote into the segment's URL and its extension.
+/// </summary>
+/// <param name="RuntimeTicks">The runtimeTicks value.</param>
+/// <param name="LengthTicks">The actualSegmentLengthTicks value.</param>
+/// <param name="Extension"><c>ts</c> or <c>mp4</c>.</param>
+public sealed record SegmentPlanItem(long RuntimeTicks, long LengthTicks, string Extension);
 
 /// <summary>
 /// What PlaybackInfo agreed with the Peer for one (user, item, device): the only source of every later Peer request for this play (DESIGN 3.5).
@@ -131,6 +152,9 @@ public sealed class Grant
     /// <summary>Gets the capped device id of the caller (a convenience key within one user, never an identity).</summary>
     public required string CallerDeviceId { get; init; }
 
+    /// <summary>Gets the peer's series id of an episode (32 hex characters), or empty for any other title. Used only for the binge handover allowance (DESIGN v2.7.8).</summary>
+    public string SeriesKey { get; init; } = string.Empty;
+
     /// <summary>Gets the random play session id Home gave the client (32 hex characters).</summary>
     public required string LocalPlaySessionId { get; init; }
 
@@ -170,8 +194,18 @@ public sealed class Grant
     /// <summary>Gets or sets a value indicating whether the Peer started an ffmpeg job for this grant (set at the first forwarded HLS segment).</summary>
     public bool PeerJobStarted { get; set; }
 
+    /// <summary>
+    /// Gets or sets the Peer's main playlist as it is being fetched (or was fetched) since the master playlist was served, or null. The Peer starts its
+    /// conversion when it is asked for this playlist, which takes seconds on a slow link: Home asks as soon as the variant is known and keeps the answer, so a
+    /// client that gave up and asks again finds it instead of starting over. The bytes are the Peer's; they are rewritten for each request.
+    /// </summary>
+    public Task<byte[]?>? MainPrefetch { get; set; }
+
     /// <summary>Gets or sets how many segments the accepted media playlist listed, or null while no media playlist was accepted (H-1: no segment is served before it).</summary>
     public int? SegmentCount { get; set; }
+
+    /// <summary>Gets or sets, per segment number, the two integers and the extension Home wrote into the accepted media playlist (what the read-ahead asks the Peer for), or null.</summary>
+    public IReadOnlyList<SegmentPlanItem>? SegmentPlan { get; set; }
 
     /// <summary>Gets or sets a value indicating whether the accepted media playlist carried an initialization segment (<c>-1.mp4</c>).</summary>
     public bool HasInitSegment { get; set; }

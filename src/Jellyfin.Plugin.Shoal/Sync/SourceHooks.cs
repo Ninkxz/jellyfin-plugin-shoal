@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Plugin.Shoal.Peers;
 using MediaBrowser.Model.Dto;
 
 namespace Jellyfin.Plugin.Shoal.Sync;
@@ -58,4 +61,65 @@ public sealed class NoTrickplay : ITrickplaySanitizer
 
     /// <inheritdoc />
     public IReadOnlyList<SanitizedTrickplay> Read(BaseItemDto dto, Guid peerSourceId) => [];
+}
+
+/// <summary>
+/// The default TV services (DESIGN v2.7, K34): they do nothing, which is v1 behavior with <c>TvShowsEnabled</c> off. K35, K36 and K37 Replace them.
+/// </summary>
+public sealed class NoTv : ITvSanitizer, ITvLayout, ITvNfoWriter, IPeerTvReader, ITvPlanner, ITvImageWork
+{
+    /// <summary>Gets the only instance.</summary>
+    public static NoTv Instance { get; } = new();
+
+    /// <inheritdoc />
+    public SanitizedSeries? Series(BaseItemDto dto) => null;
+
+    /// <inheritdoc />
+    public SanitizedSeason? Season(BaseItemDto dto) => null;
+
+    /// <inheritdoc />
+    public TvEpisodeResult Episode(BaseItemDto dto) => new(null, TvSkip.NoNumber);
+
+    /// <inheritdoc />
+    public string SeriesFolder(SanitizedSeries series, string stubKey, ISet<string> takenNormalized) => "shoal-" + (stubKey.Length >= 8 ? stubKey[..8] : stubKey);
+
+    /// <inheritdoc />
+    public string SeasonFolder(int season) => "Season " + season.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <inheritdoc />
+    public string EpisodeStem(int season, int episode, int? episodeEnd) =>
+        "S" + season.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "E" + episode.ToString("00", System.Globalization.CultureInfo.InvariantCulture)
+        + (episodeEnd is { } end ? "-E" + end.ToString("00", System.Globalization.CultureInfo.InvariantCulture) : string.Empty);
+
+    /// <inheritdoc />
+    public TvEpisodeSet Resolve(IReadOnlyList<SanitizedEpisode> episodes) => new(episodes, 0);
+
+    /// <inheritdoc />
+    public IReadOnlyList<TvMove> MatchSeriesMoves(IReadOnlyList<CatalogEntry> goneSeries, IReadOnlyList<SanitizedSeries> newSeries) => [];
+
+    /// <inheritdoc />
+    public IReadOnlyList<TvMove> MatchEpisodeMoves(IReadOnlyList<CatalogEntry> goneEpisodes, IReadOnlyList<SanitizedEpisode> newEpisodes) => [];
+
+    /// <inheritdoc />
+    string ITvNfoWriter.Series(SanitizedSeries series, IReadOnlyList<string> tags) => string.Empty;
+
+    /// <inheritdoc />
+    string ITvNfoWriter.Season(SanitizedSeason season, IReadOnlyList<string> tags) => string.Empty;
+
+    /// <inheritdoc />
+    string ITvNfoWriter.Episode(SanitizedEpisode episode, IReadOnlyList<string> tags) => string.Empty;
+
+    /// <inheritdoc />
+    public Task<TvListings> ListAsync(PeerEndpoint peer, Guid peerLibraryId, CancellationToken cancellationToken) =>
+        Task.FromResult(new TvListings([], [], [], SeriesComplete: false, SeasonsComplete: false, EpisodesComplete: false));
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<BaseItemDto>> DetailsAsync(PeerEndpoint peer, IReadOnlyList<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<BaseItemDto>>([]);
+
+    /// <inheritdoc />
+    public TvPlan Plan(TvPlanInput input) => TvPlan.Empty;
+
+    /// <inheritdoc />
+    public IReadOnlyList<TvImageJob> Queue(IReadOnlyList<CatalogEntry> entries, IReadOnlyCollection<string> pendingKeys, bool episodeThumbs) => [];
 }

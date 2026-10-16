@@ -63,6 +63,9 @@ public sealed class MatrixWorld
 
     public ConcurrentDictionary<Guid, FederatedItem> Federated { get; } = new();
 
+    /// <summary>Gets the stub paths below the library folder of the TV items ("Show (2020)/Season 01/S01E01.strm"); an item listed here has this path instead of a movie folder.</summary>
+    public ConcurrentDictionary<Guid, string> TvPaths { get; } = new();
+
     public string PeerKey { get; } = StateSamples.PeerKeyA;
 
     public const string SecondMappingKey = "movies-2";
@@ -277,7 +280,7 @@ public sealed class MatrixHarness : IAsyncDisposable
     }
 
     /// <summary>Sends a request with a principal and returns the answer.</summary>
-    public async Task<HttpResponseMessage> SendAsync(string? principalKey, HttpMethod method, string pathAndQuery, Action<HttpRequestMessage>? configure = null)
+    public async Task<HttpResponseMessage> SendAsync(string? principalKey, HttpMethod method, string pathAndQuery, Action<HttpRequestMessage>? configure = null, System.Threading.CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(method, BaseUrl + pathAndQuery);
         if (principalKey is not null)
@@ -286,7 +289,7 @@ public sealed class MatrixHarness : IAsyncDisposable
         }
 
         configure?.Invoke(request);
-        return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
     /// <summary>Runs one row against a real route and returns what is wrong with it (null when the row holds).</summary>

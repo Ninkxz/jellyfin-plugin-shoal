@@ -15,14 +15,14 @@ public static class PairingErrors
     /// Whether the kind is a safety kind (shield card, pop-up to every admin).
     /// </summary>
     /// <param name="kind">The kind.</param>
-    /// <returns>True for the five safety kinds.</returns>
+    /// <returns>True for the three safety kinds.</returns>
     public static bool IsSafety(PairingErrorKind kind) =>
-        kind is PairingErrorKind.RequestReplaced or PairingErrorKind.CodesDidNotMatch or PairingErrorKind.ServerChanged or PairingErrorKind.AdminAccount or PairingErrorKind.BadPeerResponse;
+        kind is PairingErrorKind.ServerChanged or PairingErrorKind.AdminAccount or PairingErrorKind.BadPeerResponse;
 }
 
 /// <summary>
 /// The pairing session as the admin API shows it (DESIGN 9.5). It never contains the secret, the token or a peer GUID; only the 6-digit code
-/// and the check, which the admin has to read out.
+/// and the safety code, which the admin reads out.
 /// </summary>
 public sealed class PairingSessionInfo
 {
@@ -46,15 +46,11 @@ public sealed class PairingSessionInfo
     [JsonPropertyName("state")]
     public string State { get; init; } = "running";
 
-    /// <summary>Gets the 6-digit code. Present only after the baseline poll confirmed the request (4.2a), and only until the pairing ends.</summary>
-    [JsonPropertyName("code")]
-    public string? Code { get; init; }
-
-    /// <summary>Gets the check (4 characters) the friend compares in their Devices list. Same visibility as <see cref="Code"/>.</summary>
+    /// <summary>Gets the safety code (8 characters) the friend types on their server. Present only while the pairing waits for the friend, and only until it ends.</summary>
     [JsonPropertyName("safetyCode")]
     public string? SafetyCode { get; init; }
 
-    /// <summary>Gets the end of the code's life, or in AwaitingConfirm the end of the 15-minute confirm window.</summary>
+    /// <summary>Gets the end of the invite's life.</summary>
     [JsonPropertyName("expiresUtc")]
     public DateTime? ExpiresUtc { get; init; }
 
@@ -164,6 +160,14 @@ public sealed class ProbeResult
     /// <summary>Gets a value indicating whether a friend with this server's id prefix already watches this server (DESIGN v2.6.2; display only, never an access decision).</summary>
     [JsonPropertyName("alsoWatchesYou")]
     public bool AlsoWatchesYou { get; init; }
+
+    /// <summary>Gets a value indicating whether the probed server answered Shoal's anonymous ping (pairing v2; a hint for the admin, never trusted).</summary>
+    [JsonPropertyName("hasShoal")]
+    public bool HasShoal { get; init; }
+
+    /// <summary>Gets a value indicating whether the probed server's ping limit answered "later", so whether Shoal is there is not known (distinct from "no Shoal").</summary>
+    [JsonPropertyName("shoalPingThrottled")]
+    public bool ShoalPingThrottled { get; init; }
 }
 
 /// <summary>

@@ -717,6 +717,29 @@ public sealed class PlaybackInfoTests : IClassFixture<PlaybackFixture>, IAsyncLi
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
     }
 
+    [Fact]
+    public async Task AnOpenCircuit_WithTheCardOff_IsNotAllowed_AsBefore()
+    {
+        P.CardsEnabled = false;
+        var breaker = H.Client.BreakerOf(P.Endpoint);
+        for (var i = 0; i < 3; i++)
+        {
+            breaker.RecordFailure();
+        }
+
+        try
+        {
+            using var response = await PostAsync("{}");
+
+            Assert.Equal("NotAllowed", (string?)(await ReadAsync(response))["ErrorCode"]);
+        }
+        finally
+        {
+            breaker.RecordSuccess();
+            P.CardsEnabled = true;
+        }
+    }
+
     [Theory]
     [InlineData(PeerStatus.AuthFailed)]
     [InlineData(PeerStatus.IdentityMismatch)]
@@ -734,7 +757,7 @@ public sealed class PlaybackInfoTests : IClassFixture<PlaybackFixture>, IAsyncLi
     }
 
     [Fact]
-    public async Task AnOpenCircuit_IsRateLimitExceeded_WithTheOfflineNotice_AndNoPeerCall()
+    public async Task AnOpenCircuit_AnswersTheOfflineCard_WithTheOfflineNotice_AndNoPeerCall_AndAnswersFast()
     {
         var breaker = H.Client.BreakerOf(P.Endpoint);
         for (var i = 0; i < 3; i++)
@@ -746,10 +769,16 @@ public sealed class PlaybackInfoTests : IClassFixture<PlaybackFixture>, IAsyncLi
         {
             var calls = PeerPlaybackCalls();
 
+            await PostAsync("{}"); // warm up
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             using var response = await PostAsync("{}");
+            watch.Stop();
 
-            Assert.Equal("RateLimitExceeded", (string?)(await ReadAsync(response))["ErrorCode"]);
-            Assert.Single(P.Notice.Notices);
+            var answer = await ReadAsync(response);
+            Assert.Null((string?)answer["ErrorCode"]);
+            Assert.Equal("Server offline", (string?)answer["MediaSources"]![0]!["Name"]);
+            Assert.True(watch.ElapsedMilliseconds < 100, "took " + watch.ElapsedMilliseconds + " ms");
+            Assert.Equal(2, P.Notice.Notices.Count); // the warm-up and the timed call
             Assert.Equal(calls, PeerPlaybackCalls());
         }
         finally

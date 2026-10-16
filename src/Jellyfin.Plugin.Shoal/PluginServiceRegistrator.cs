@@ -84,6 +84,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ILocalMovies, JellyfinLocalMovies>();
         serviceCollection.AddSingleton<ILibraryRefresh, JellyfinLibraryRefresh>();
         serviceCollection.AddSingleton<CatalogSyncService>();
+        serviceCollection.AddShoalTv();
+        serviceCollection.AddShoalTvSync();
         serviceCollection.AddSingleton<ISyncActivity>(sp => sp.GetRequiredService<CatalogSyncService>());
         serviceCollection.AddHostedService<SyncScheduler>();
 
@@ -116,7 +118,10 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new RateLimiter(sp.GetRequiredService<TimeProvider>(), perMinute: 30, burst: 15));
         serviceCollection.AddSingleton<IDeviceCapabilities, JellyfinDeviceCapabilities>();
         Jellyfin.Plugin.Shoal.Diagnostics.DiagnosticsRegistration.AddLinkBudget(serviceCollection);
-        serviceCollection.AddSingleton<IOfflineNotice>(sp => new ClientOfflineNotice(sp.GetRequiredService<ISessionManager>(), () => Plugin.Instance?.Configuration.NotifyClientsWhenOffline ?? true, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ClientOfflineNotice>>()));
+        serviceCollection.AddSingleton<IOfflineNotice>(sp => new ClientOfflineNotice(sp.GetRequiredService<ISessionManager>(), () => Plugin.Instance?.Configuration.NotifyClientsWhenOffline ?? true, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ClientOfflineNotice>>(), () => (Plugin.Instance?.Configuration.RequestServiceName ?? "Seerr", Plugin.Instance?.Configuration.RequestServiceUrl ?? string.Empty)));
+        serviceCollection.AddShoalOfflineCards();
+        serviceCollection.AddSingleton<OfflineParker>();
+        serviceCollection.AddSingleton<Jellyfin.Plugin.Shoal.Visibility.IOfflineParking>(sp => sp.GetRequiredService<Jellyfin.Plugin.Shoal.Visibility.OfflineParker>());
         serviceCollection.AddSingleton<HealthMonitor>();
         serviceCollection.AddHostedService<HealthMonitorHost>();
         serviceCollection.AddSingleton<IPlaybackInfoHandler>(sp => new PlaybackInfoHandler(
@@ -137,7 +142,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<PlaybackInfoHandler>>(),
             sp.GetService<IAttachmentRebuilder>(),
-            sp.GetService<IVersionResolver>()));
+            sp.GetService<IVersionResolver>(),
+            sp.GetService<OfflineCards>()));
         serviceCollection.AddSingleton<IStaticStreamHandler>(sp => new StaticStreamHandler(
             sp.GetRequiredService<StubCatalog>(),
             sp.GetRequiredService<IPeerEndpoints>(),
@@ -149,7 +155,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<IStateStore>(),
             sp.GetRequiredService<IOfflineNotice>(),
             sp.GetRequiredService<ILogger<StaticStreamHandler>>(),
-            sp.GetService<IVersionResolver>()));
+            sp.GetService<IVersionResolver>(),
+            sp.GetService<OfflineCards>(),
+            new ReadAheadBudget(64L * 1024 * 1024))); // direct play: 4 MB read ahead per stream, 64 MB for all of them
         serviceCollection.AddSingleton(sp => new PeerExtractionGate(sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new SubtitleHandler(
             sp.GetRequiredService<GrantStore>(),
@@ -174,6 +182,28 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<HlsJobControl>(),
             sp.GetRequiredService<StreamSlots>(),
             new RateLimiter(sp.GetRequiredService<TimeProvider>(), perMinute: 10, burst: 10)));
+        serviceCollection.AddSingleton(sp =>
+        {
+            var grants = sp.GetRequiredService<GrantStore>();
+            var slots = sp.GetRequiredService<StreamSlots>();
+            var peers = sp.GetRequiredService<IPeerEndpoints>();
+            var registry = sp.GetRequiredService<PeerRegistry>();
+            var readAhead = new HlsReadAhead(
+                () => Plugin.Instance?.Configuration.HlsBufferAhead ?? 6,
+                id => grants.Get(id) is { } grant && slots.HoldsOwnSlot(grant) && peers.Find(grant.PeerKey) is not null && registry.StatusOf(grant.PeerKey) is not (PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled or PeerStatus.Pairing or PeerStatus.PairingAborted),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<ILogger<HlsReadAhead>>());
+            slots.HlsReleased += readAhead.Release; // a stopped or freed stream keeps nothing
+            registry.PeerStopped += readAhead.ReleasePeer; // nor does a server that was removed, stopped, or whose key is being replaced
+            slots.HlsSuperseded += ids =>
+            {
+                foreach (var id in ids)
+                {
+                    readAhead.Release(id);
+                }
+            };
+            return readAhead;
+        });
         serviceCollection.AddSingleton(sp => new HlsProxyHandler(
             sp.GetRequiredService<GrantStore>(),
             sp.GetRequiredService<IPeerEndpoints>(),
@@ -187,7 +217,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             new RateLimiter(sp.GetRequiredService<TimeProvider>(), perMinute: 600, burst: 40),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<HlsProxyHandler>>(),
-            sp.GetRequiredService<Jellyfin.Plugin.Shoal.Diagnostics.ISegmentTelemetry>()));
+            sp.GetRequiredService<Jellyfin.Plugin.Shoal.Diagnostics.ISegmentTelemetry>(),
+            sp.GetRequiredService<HlsReadAhead>()));
 
         // Phase 5 and 6 (DESIGN v2.6.9): the seams with their do-nothing defaults, then one call per feature. Each task fills in its own file under Registrations/.
         serviceCollection.AddShoalFoundation();

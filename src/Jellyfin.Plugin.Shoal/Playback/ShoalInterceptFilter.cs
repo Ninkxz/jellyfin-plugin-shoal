@@ -25,6 +25,7 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
 {
     private const string StaticKey = "Static";
     private const string ItemIdKey = "itemId";
+    private const int MaxReportBytes = 64 * 1024;
 
     private readonly ShoalIndex _index;
     private readonly CallerContext _callerContext;
@@ -37,6 +38,7 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
     private readonly ITrickplayHandler? _trickplay;
     private readonly IAttachmentHandler? _attachments;
     private readonly IVersionResolver? _versions;
+    private readonly OfflineCards? _cards;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ShoalInterceptFilter"/> class.
@@ -52,6 +54,7 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
     /// <param name="trickplay">The trickplay tile handler; none means 404 (counted as a core HLS route).</param>
     /// <param name="attachments">The attachment handler; none means 404 (counted as a core HLS route).</param>
     /// <param name="versions">Tells whether a media source belongs to the same title as the route item (DESIGN v2.6.4); none means only the item itself does.</param>
+    /// <param name="cards">The offline card sessions; none means no playback report is looked at.</param>
     public ShoalInterceptFilter(
         ShoalIndex index,
         CallerContext callerContext,
@@ -63,8 +66,10 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
         ILogger<ShoalInterceptFilter> logger,
         ITrickplayHandler? trickplay = null,
         IAttachmentHandler? attachments = null,
-        IVersionResolver? versions = null)
+        IVersionResolver? versions = null,
+        OfflineCards? cards = null)
     {
+        _cards = cards;
         _versions = versions;
         _trickplay = trickplay;
         _attachments = attachments;
@@ -84,6 +89,20 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
         var template = context.ActionDescriptor.AttributeRouteInfo?.Template;
+
+        // A player that was given the offline card reports its playback against the real item. While a card session exists, a report that names one is answered here
+        // and never reaches core, so the item gets no resume point, play count or watched mark. With no card session this costs one flag read.
+        if (_cards is { HasSessions: true } && PlaybackReportRoutes.Matches(template) && await CardReportSessionAsync(context.HttpContext, template).ConfigureAwait(false) is { } cardSession)
+        {
+            if (PlaybackReportRoutes.IsStop(template, context.HttpContext.Request.Method))
+            {
+                _cards.Drop(cardSession); // the card has stopped playing: its session ends with it
+            }
+
+            context.Result = new ShoalResult(StatusCodes.Status204NoContent);
+            return;
+        }
+
         var route = InterceptTable.Find(template);
         if (route is null)
         {
@@ -117,6 +136,75 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
         }
 
         context.Result = result;
+    }
+
+    // The card session a playback report belongs to, or null when it is not one (core decides). A session is bound to its user and its item: a report is swallowed
+    // only for that item, taken from the route (older shapes) or the body, so a card session cannot silence the reports of anything else (Warden 15 M1). A ping carries
+    // no item, only the session id.
+    private async Task<string?> CardReportSessionAsync(HttpContext http, string? template)
+    {
+        if (TryUserId(http) is not { } user || _cards is null)
+        {
+            return null;
+        }
+
+        var request = http.Request;
+        Guid? routeItem = request.RouteValues.TryGetValue("itemId", out var routed) && ShoalRequest.TryParseGuid(routed?.ToString(), out var routeId) ? routeId : null;
+        var ping = template is not null && template.TrimEnd('/').EndsWith("/Ping", StringComparison.OrdinalIgnoreCase);
+        if (routeItem is not null || ping)
+        {
+            // The item is in the path (the older shapes) or there is none (a ping): the session id is in the query.
+            foreach (var value in ShoalRequest.Values(request, "playSessionId"))
+            {
+                if (_cards.IsCardSession(value, user, routeItem))
+                {
+                    return value;
+                }
+            }
+        }
+
+        if (!HttpMethods.IsPost(request.Method) || request.ContentLength is 0 or > MaxReportBytes)
+        {
+            return null;
+        }
+
+        try
+        {
+            request.EnableBuffering(MaxReportBytes, MaxReportBytes);
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(request.Body, cancellationToken: http.RequestAborted).ConfigureAwait(false);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            string? session = null;
+            Guid? bodyItem = null;
+            foreach (var property in document.RootElement.EnumerateObject().Where(static p => p.Value.ValueKind == System.Text.Json.JsonValueKind.String))
+            {
+                if (string.Equals(property.Name, "PlaySessionId", StringComparison.OrdinalIgnoreCase))
+                {
+                    session = property.Value.GetString();
+                }
+                else if (string.Equals(property.Name, "ItemId", StringComparison.OrdinalIgnoreCase) && ShoalRequest.TryParseGuid(property.Value.GetString(), out var parsed))
+                {
+                    bodyItem = parsed;
+                }
+            }
+
+            var item = routeItem ?? bodyItem;
+            return item is not null && _cards.IsCardSession(session, user, item) ? session : null;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or System.IO.InvalidDataException or System.IO.IOException)
+        {
+            return null; // not a report we can read: core decides
+        }
+        finally
+        {
+            if (request.Body.CanSeek)
+            {
+                request.Body.Position = 0;
+            }
+        }
     }
 
     private static bool IsStatic(HttpRequest request) =>
@@ -290,7 +378,7 @@ public sealed class ShoalInterceptFilter : IAsyncResourceFilter
         }
 
         var stub = _index.Get(itemId);
-        if (stub is null)
+        if (stub is null || stub.Kind == IndexKind.Container)
         {
             return Answer(template, StatusCodes.Status404NotFound); // the item vanished between the check and now
         }

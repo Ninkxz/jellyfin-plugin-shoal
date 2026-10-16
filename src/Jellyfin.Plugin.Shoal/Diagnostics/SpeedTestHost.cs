@@ -111,7 +111,15 @@ public sealed class SpeedTestHost : BackgroundService
             var samples = _history.Read(peer.PeerKey);
             var last = samples.Where(static s => s.Kind != SpeedKinds.Playback).Select(static s => (DateTimeOffset?)s.T).Max();
             var lastAny = samples.Select(static s => (DateTimeOffset?)s.T).Max();
-            if (_schedule.IsDue(peer.PeerKey, _registry.StatusOf(peer.PeerKey), last, lastAny, now, interval, _tests.IsStreaming(peer.PeerKey)))
+            var due = _schedule.IsDue(peer.PeerKey, _registry.StatusOf(peer.PeerKey), last, lastAny, now, interval, _tests.IsStreaming(peer.PeerKey));
+
+            // The segments of a stream showed the link too slow: measure again as soon as nothing streams through the peer (at most every two minutes).
+            if (!due && !_tests.IsStreaming(peer.PeerKey) && _registry.StatusOf(peer.PeerKey) == PeerStatus.Online && _passive.TakeRemeasure(peer.PeerKey) && (last is null || now - last >= TimeSpan.FromMinutes(2)))
+            {
+                due = true;
+            }
+
+            if (due)
             {
                 await _tests.RunAsync(peer.PeerKey, SpeedKinds.Light, cancellationToken).ConfigureAwait(false);
             }
@@ -154,13 +162,15 @@ public sealed class LinkBudgetLimits : ISystemLimits
     /// <summary>How old the newest test may be for the budget to apply.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromHours(48);
 
-    // The budget only ever lowers a cap, but a link that looked slow once must not pin streams to a crawl: never below what a 720p stream needs.
-    private const int MinBudgetBps = (int)(VerdictEngine.MinUsableMbps * 1_000_000);
+    // The budget only ever lowers a cap, but a link that looked slow once must not pin streams to a crawl: never below the floor, and never a floor above what the link
+    // can carry at all (the floor is the smaller of MinUsableMbps and T / 1.2, so a 1 Mbps link is not asked for 1.5).
+    private const double FloorHeadroom = 1.2;
 
     private readonly ISystemLimits _inner;
     private readonly SpeedHistoryStore _history;
     private readonly ISettingsAccessor _settings;
     private readonly TimeProvider _time;
+    private readonly PassiveTelemetry? _passive;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LinkBudgetLimits"/> class.
@@ -169,8 +179,10 @@ public sealed class LinkBudgetLimits : ISystemLimits
     /// <param name="history">The speed history.</param>
     /// <param name="settings">The plugin toggles (auto-fit).</param>
     /// <param name="time">The clock.</param>
-    public LinkBudgetLimits(ISystemLimits inner, SpeedHistoryStore history, ISettingsAccessor settings, TimeProvider time)
+    /// <param name="passive">What the segments of a running stream show about the link, or null.</param>
+    public LinkBudgetLimits(ISystemLimits inner, SpeedHistoryStore history, ISettingsAccessor settings, TimeProvider time, PassiveTelemetry? passive = null)
     {
+        _passive = passive;
         _inner = inner;
         _history = history;
         _settings = settings;
@@ -196,15 +208,38 @@ public sealed class LinkBudgetLimits : ISystemLimits
             return null;
         }
 
-        var bps = VerdictEngine.AutoFitMbps(t) * 1_000_000;
-        return bps < MinBudgetBps ? MinBudgetBps : (int)Math.Min(bps, int.MaxValue);
+        return FromThroughput(t);
+    }
+
+    /// <summary>The budget a measured throughput allows: T / 1.5, never below the floor (the smaller of 1.5 Mbps and T / 1.2).</summary>
+    /// <param name="throughputMbps">T.</param>
+    /// <returns>Bits per second.</returns>
+    public static int FromThroughput(double throughputMbps)
+    {
+        var bps = VerdictEngine.AutoFitMbps(throughputMbps) * 1_000_000;
+        var floor = Math.Min(VerdictEngine.MinUsableMbps, throughputMbps / FloorHeadroom) * 1_000_000;
+        return (int)Math.Min(Math.Max(bps, floor), int.MaxValue);
     }
 
     /// <inheritdoc />
     public BitrateLimits Current() => _inner.Current();
 
     /// <inheritdoc />
-    public BitrateLimits ForPeer(string peerKey) => _inner.Current() with { LinkBudget = BudgetOf(_history.Read(peerKey), _settings.Current.AutoFitQualityToLink, _time.GetUtcNow()) };
+    public BitrateLimits ForPeer(string peerKey)
+    {
+        var autoFit = _settings.Current.AutoFitQualityToLink;
+        var budget = BudgetOf(_history.Read(peerKey), autoFit, _time.GetUtcNow());
+
+        // A link that dropped since the last test: what the segments of the last 30 seconds show wins at once if it is lower, without waiting for the next test.
+        if (autoFit && _passive?.SlowLinkMbps(peerKey) is { } live)
+        {
+            // Advice only: it can lower the budget, never below the lowest rate worth a conversion, and never raise it.
+            var fromLive = Math.Max(FromThroughput(live), (int)(VerdictEngine.MinUsableMbps * 1_000_000));
+            budget = budget is { } known ? Math.Min(known, fromLive) : fromLive;
+        }
+
+        return _inner.Current() with { LinkBudget = budget };
+    }
 }
 
 /// <summary>Registers the speed diagnostics (one call from the plugin's registrator).</summary>
@@ -235,7 +270,7 @@ public static class DiagnosticsRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<JellyfinSystemLimits>();
-        services.AddSingleton<ISystemLimits>(sp => new LinkBudgetLimits(sp.GetRequiredService<JellyfinSystemLimits>(), sp.GetRequiredService<SpeedHistoryStore>(), sp.GetRequiredService<ISettingsAccessor>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<ISystemLimits>(sp => new LinkBudgetLimits(sp.GetRequiredService<JellyfinSystemLimits>(), sp.GetRequiredService<SpeedHistoryStore>(), sp.GetRequiredService<ISettingsAccessor>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<PassiveTelemetry>()));
         return services;
     }
 }

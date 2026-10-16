@@ -48,8 +48,6 @@ public sealed class AdminSettingsControllerTests
 
         public int GuardErrors => 1;
 
-        public int ShieldHits => 12;
-
         public int TranscodeCapHits => 2;
     }
 
@@ -307,24 +305,72 @@ public sealed class AdminSettingsControllerTests
     }
 
     [Fact]
-    public async Task Hardening_StartsInLogOnly_AndTheModeChangesAtOnce()
+    public void EveryPropertyOfThePluginConfiguration_IsKnownToTheSettingsApi()
+    {
+        // A setting the page edits but the controller does not know cannot be saved (Pilot 09 F1: TvShowsEnabled). SchemaVersion is the file's own.
+        var dto = typeof(SettingsDto).GetProperties().Select(static p => p.Name).ToHashSet(StringComparer.Ordinal);
+        var missing = typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+            .Select(static p => p.Name)
+            .Where(name => name != nameof(PluginConfiguration.SchemaVersion) && !dto.Contains(name))
+            .ToList();
+
+        Assert.Empty(missing);
+    }
+
+    [Fact]
+    public void EveryFieldThePageSaves_IsKnownToTheSettingsApi()
+    {
+        using var stream = typeof(Plugin).Assembly.GetManifestResourceStream("Jellyfin.Plugin.Shoal.Configuration.shoal.js");
+        Assert.NotNull(stream);
+        using var reader = new StreamReader(stream);
+        var script = reader.ReadToEnd();
+        var start = script.LastIndexOf("function collect() {", script.IndexOf("tvShowsEnabled: f.tvShows", StringComparison.Ordinal), StringComparison.Ordinal); // the settings page's own
+        var body = script[start..script.IndexOf("function validate(", start, StringComparison.Ordinal)];
+        var posted = System.Text.RegularExpressions.Regex.Matches(body, @"^\s{12}(\w+):", System.Text.RegularExpressions.RegexOptions.Multiline).Select(static m => m.Groups[1].Value).ToList();
+        var known = typeof(SettingsDto).GetProperties().Select(static p => p.Name.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
+
+        Assert.NotEmpty(posted);
+        Assert.All(posted, field => Assert.Contains(field.ToLowerInvariant(), known));
+    }
+
+    [Fact]
+    public async Task TheTvSwitches_RoundTripThroughTheSettingsApi()
+    {
+        using var rig = Create();
+        await rig.Store.UpdateAsync(s => s.StubRoot = "/data/shoal");
+        var before = Body(rig.Controller.GetSettings());
+        Assert.False(before.GetProperty("tvShowsEnabled").GetBoolean());
+        Assert.True(before.GetProperty("tvEpisodeThumbs").GetBoolean());
+
+        Send(rig.Controller, """{"tvShowsEnabled":true,"tvEpisodeThumbs":false}""");
+        var after = Body(await rig.Controller.PutSettings(default));
+
+        Assert.True(after.GetProperty("tvShowsEnabled").GetBoolean());
+        Assert.False(after.GetProperty("tvEpisodeThumbs").GetBoolean());
+        Assert.True(rig.Settings.Current.TvShowsEnabled);
+        Assert.False(rig.Settings.Current.TvEpisodeThumbs);
+        Assert.True(Body(rig.Controller.GetSettings()).GetProperty("tvShowsEnabled").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Hardening_StartsInEnforce_AndTheModeChangesAtOnce()
     {
         using var rig = Create();
 
         var before = Body(rig.Controller.GetHardening());
-        Assert.Equal("LogOnly", before.GetProperty("mode").GetString());
+        Assert.Equal("Enforce", before.GetProperty("mode").GetString()); // D18: a fresh install protects
         Assert.Equal(new[] { "LogOnly", "Enforce", "Off" }, before.GetProperty("modes").EnumerateArray().Select(m => m.GetString()).ToArray());
         var counter = Assert.Single(before.GetProperty("counters").EnumerateArray());
         Assert.Equal("Kodi", counter.GetProperty("app").GetString());
-        Assert.Equal(12, before.GetProperty("shieldHits").GetInt32());
+        Assert.False(before.TryGetProperty("shieldHits", out _)); // the Initiate shield went with Quick Connect (D17 B8)
         Assert.Equal(1, before.GetProperty("guardErrors").GetInt32());
 
         rig.Time.Advance(TimeSpan.FromDays(1));
-        Send(rig.Controller, """{"mode":"Enforce"}""");
+        Send(rig.Controller, """{"mode":"LogOnly"}""");
         var after = Body(await rig.Controller.PutHardening(CancellationToken.None));
 
-        Assert.Equal("Enforce", after.GetProperty("mode").GetString());
-        Assert.Equal(HardeningMode.Enforce, rig.Store.Current.PeerRole.HardeningMode);
+        Assert.Equal("LogOnly", after.GetProperty("mode").GetString());
+        Assert.Equal(HardeningMode.LogOnly, rig.Store.Current.PeerRole.HardeningMode);
         Assert.Equal(rig.Time.GetUtcNow().UtcDateTime, rig.Store.Current.PeerRole.HardeningSinceUtc);
     }
 
@@ -340,7 +386,25 @@ public sealed class AdminSettingsControllerTests
 
         Body(await rig.Controller.PutHardening(CancellationToken.None), 400);
 
-        Assert.Equal(HardeningMode.LogOnly, rig.Store.Current.PeerRole.HardeningMode);
+        Assert.Equal(HardeningMode.Enforce, rig.Store.Current.PeerRole.HardeningMode);
+    }
+
+    [Fact]
+    public async Task D18_AnExistingStateKeepsItsStoredMode_AcrossARestart()
+    {
+        using var dir = new TempDirectory();
+        var paths = new ShoalPaths(dir.Path);
+        using (var first = new StateStore(paths, NullLogger.Instance, TimeProvider.System, null))
+        {
+            await first.UpdateAsync(s => s.PeerRole.HardeningMode = HardeningMode.LogOnly);
+        }
+
+        using var again = new StateStore(paths, NullLogger.Instance, TimeProvider.System, null);
+
+        Assert.Equal(HardeningMode.LogOnly, again.Current.PeerRole.HardeningMode); // no silent flip on upgrade
+        using var fresh = new TempDirectory();
+        using var brandNew = new StateStore(new ShoalPaths(fresh.Path), NullLogger.Instance, TimeProvider.System, null);
+        Assert.Equal(HardeningMode.Enforce, brandNew.Current.PeerRole.HardeningMode);
     }
 
     [Fact]

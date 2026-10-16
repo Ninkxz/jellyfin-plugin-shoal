@@ -23,8 +23,8 @@ public static class VerdictEngine
     /// <summary>Headroom over a class's reference bitrate (VBR peaks and short-burst variance).</summary>
     public const double Headroom = 1.5;
 
-    /// <summary>The lowest rate worth transcoding down to (Jellyfin's 720p preset).</summary>
-    public const double MinUsableMbps = 4;
+    /// <summary>The lowest rate worth transcoding down to: 1.5 Mbps, so a slow link gets a low-bitrate conversion instead of a stall (owner, 2026-10-16; it was 4, the 720p preset).</summary>
+    public const double MinUsableMbps = 1.5;
 
     private static readonly (string Cls, double Reference, bool CanTranscodeDown)[] Classes =
     [

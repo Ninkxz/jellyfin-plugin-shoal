@@ -109,7 +109,7 @@ public partial class PairController : ControllerBase
                 : new ShoalResult(StatusCodes.Status404NotFound, new { });
         }
 
-        return new ShoalResult(StatusCodes.Status200OK, new Reply(1, answer.State, answer.PeerServerId, answer.PeerNonce, answer.Token));
+        return new ShoalResult(StatusCodes.Status200OK, new Reply(1, answer.State, answer.PeerServerId, answer.PeerNonce, answer.Token, answer.ExpiresInSeconds));
     }
 
     /// <summary>Reads and checks the request body strictly.</summary>
@@ -167,5 +167,5 @@ public partial class PairController : ControllerBase
     [GeneratedRegex(@"\Ashoal-[0-9a-f]{12}-[0-9a-f]{8}\z")]
     private static partial Regex DeviceId();
 
-    private sealed record Reply(int V, string State, string? PeerServerId, string? PeerNonce, string? Token);
+    private sealed record Reply(int V, string State, string? PeerServerId, string? PeerNonce, string? Token, int? ExpiresInSeconds);
 }

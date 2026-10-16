@@ -488,6 +488,6 @@ public sealed class PeerNetworkPolicyTests : IClassFixture<PeerServerFixture>, I
         Assert.Equal("socks5://127.0.0.1:1055", endpoint.ProxyUrl);
         Assert.Equal("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", endpoint.TlsSpkiPin);
         Assert.Equal("0123456789abcdef0123456789abcdef", endpoint.PinnedServerId);
-        Assert.Equal("K7QM", endpoint.Check);
+        Assert.Null(endpoint.Check); // a device-name check belonged to Quick Connect (D17): a server paired that way is paused
     }
 }

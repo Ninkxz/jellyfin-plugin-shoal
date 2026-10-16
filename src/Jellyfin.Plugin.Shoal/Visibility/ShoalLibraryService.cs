@@ -112,7 +112,7 @@ public sealed class ShoalLibraryService
             return new LibraryCreateResult(LibraryCreateError.AlreadyExists, shoal.Id);
         }
 
-        var name = MetadataSanitizer.DisplayName(string.IsNullOrWhiteSpace(mapping.LocalLibraryName) ? peer.DisplayName + " Movies" : mapping.LocalLibraryName);
+        var name = MetadataSanitizer.DisplayName(string.IsNullOrWhiteSpace(mapping.LocalLibraryName) ? peer.DisplayName + (mapping.CollectionType == "tvshows" ? " TV shows" : " Movies") : mapping.LocalLibraryName);
         if (name.Length == 0 || existing.Any(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return new LibraryCreateResult(LibraryCreateError.NameInUse, null);
@@ -135,7 +135,7 @@ public sealed class ShoalLibraryService
         try
         {
             SecureDirectory.Ensure(path);
-            await _libraries.CreateAsync(name, path, cancellationToken).ConfigureAwait(false);
+            await _libraries.CreateAsync(name, path, mapping.CollectionType, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

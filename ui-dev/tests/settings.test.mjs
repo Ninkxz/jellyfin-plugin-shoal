@@ -50,7 +50,7 @@ test('Save sends every field under the names of 8.5.1 and confirms', async () =>
         await p.wait(150);
         const put = p.mock.calls.find((c) => c.method === 'PUT' && c.path === 'Settings');
         assert.ok(put);
-        assert.deepEqual(Object.keys(put.body).sort(), ['alternateVersionsEnabled', 'artQuality', 'attachmentsEnabled', 'autoFitQualityToLink', 'diskQuotaGbPerPeer', 'hlsSubtitlesEnabled', 'maxStreamsPerUser', 'massDeletionMinCount', 'massDeletionPercent', 'newItemsMinCount', 'newItemsPercent', 'notifyClientsWhenOffline', 'parkAfterHours', 'parkOfflinePeers', 'reencodeImages', 'speedTestIntervalHours', 'stubRoot', 'stubRootNetworkAck', 'syncIntervalHours', 'tailscaleSocket', 'trickplayCacheGb', 'trickplayEnabled'].sort());
+        assert.deepEqual(Object.keys(put.body).sort(), ['alternateVersionsEnabled', 'artQuality', 'attachmentsEnabled', 'autoFitQualityToLink', 'diskQuotaGbPerPeer', 'hlsSubtitlesEnabled', 'maxStreamsPerUser', 'massDeletionMinCount', 'massDeletionPercent', 'newItemsMinCount', 'newItemsPercent', 'notifyClientsWhenOffline', 'parkAfterHours', 'parkOfflinePeers', 'reencodeImages', 'speedTestIntervalHours', 'stubRoot', 'stubRootNetworkAck', 'syncIntervalHours', 'tailscaleSocket', 'trickplayCacheGb', 'trickplayEnabled', 'tvEpisodeThumbs', 'tvShowsEnabled', 'hlsBufferAhead', 'offlineCardEnabled', 'requestServiceName', 'requestServiceUrl'].sort());
         assert.equal(put.body.massDeletionMinCount, 30);
         assert.equal(put.body.syncIntervalHours, 6);
         assert.match(p.text(), /Settings saved/);
@@ -418,7 +418,7 @@ test('v2.1 protection lines: wrong invites with the calm notice, reverse proxy h
         const t = p.text();
         assert.match(t, /Wrong invites tried in the last hour: 8/);
         assert.match(t, /Someone tried 8 wrong invites on your server in the last hour\./);
-        assert.match(t, /add the proxy under Known proxies in Dashboard > Networking\./);
+        assert.match(t, /add the proxy under Known proxies in Dashboard, then Networking\./);
         assert.match(t, /This folder can't make backups the usual way, so Shoal copies the file instead\. That's fine\./);
     } finally {
         p.close();

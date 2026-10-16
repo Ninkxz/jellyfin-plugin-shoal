@@ -52,6 +52,16 @@ public interface ILibrarySource
     Task CreateAsync(string name, string path, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Creates a library of the given collection type (<c>movies</c> or <c>tvshows</c>) with the locked options. The default creates a movie library.
+    /// </summary>
+    /// <param name="name">The library name.</param>
+    /// <param name="path">The only path of the library.</param>
+    /// <param name="collectionType"><c>movies</c> or <c>tvshows</c>.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when the library exists.</returns>
+    Task CreateAsync(string name, string path, string collectionType, CancellationToken cancellationToken) => CreateAsync(name, path, cancellationToken);
+
+    /// <summary>
     /// Deletes the items of a library from Jellyfin's database, so no title of it stays listed (as an orphan) until the next scan. Files on disk are not touched.
     /// Called before <see cref="RemoveAsync"/>.
     /// </summary>
@@ -98,7 +108,8 @@ public interface IAccountSource
 /// <param name="Id">The library's folder item id, the id that appears in <c>EnabledFolders</c>.</param>
 /// <param name="Name">The library name.</param>
 /// <param name="Locations">The library's paths.</param>
-public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Locations);
+/// <param name="CollectionType">The library's collection type in lower case (<c>movies</c>, <c>tvshows</c>, ...), or empty when core does not say.</param>
+public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Locations, string CollectionType = "");
 
 /// <summary>
 /// A Jellyfin account, as the visibility rules see it.

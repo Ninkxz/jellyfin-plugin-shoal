@@ -169,6 +169,18 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
         return true;
     }
 
+    /// <inheritdoc />
+    public bool StartReleaseSeries(string peerKey, bool removals, string seriesKey)
+    {
+        if (_sync is null)
+        {
+            return false;
+        }
+
+        Run(peerKey, () => _sync.ReleaseSeriesAsync(peerKey, removals, seriesKey));
+        return true;
+    }
+
     // The enum names are the wire words with a capital first letter (RequestReplaced -> requestReplaced).
     private static string Word(string name) => name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
 
@@ -250,8 +262,6 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
             Status = _registry.StatusOf(peerKey).ToString(),
             RttMs = info.RttMs ?? snapshot?.RttMs,
             NextCheckUtc = snapshot?.NextCheckUtc.UtcDateTime,
-            DeviceLock = snapshot?.DeviceLock,
-            SessionLimit = snapshot?.SessionLimit,
         };
     }
 
@@ -276,7 +286,10 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
         }
 
         var doc = load.Document;
-        var stubs = doc.Entries.Count(e => e.State is EntryState.Active or EntryState.HeldRemoval);
+
+        // A title is a movie or a series; seasons and episodes belong to their series and are not counted on their own.
+        var stubs = TitleCounts.Of(doc.Entries).Local;
+        var hidden = doc.Entries.Where(static e => e.State == EntryState.DuplicatePeer && e.Kind is EntryKind.Movie or EntryKind.Series).ToList();
         var syncing = _running.ContainsKey(peerKey) || _running.ContainsKey("all");
         var last = doc.LastSync;
         var quota = (_settings?.Current.DiskQuotaGbPerPeer ?? 2) * 1_000_000_000L;
@@ -285,13 +298,45 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
         {
             Syncing = syncing,
             TitleCount = stubs,
+            HiddenByDedup = hidden.Count,
+            DedupWinner = hidden.Count == 0 ? null : WinnerOf(peerKey, hidden),
             HeldRemovals = doc.HeldRemovals.Count,
-            HeldAdditions = doc.HeldAdditions.Count,
+            HeldAdditions = doc.HeldAdditions.Count + doc.TvHeldAdditions.Count,
             AlertCount = alerts.Count,
             LastSync = _skipped.TryGetValue(peerKey, out var skippedAt) ? new PeerSyncInfo(skippedAt, "skipped", 0, 0) : (last is null ? null : new PeerSyncInfo(last.EndedUtc, last.Result.ToString().ToLowerInvariant(), last.Added, last.Removed)),
             Usage = new PeerUsageInfo(doc.Usage.DiskBytes, quota, stubs, doc.Usage.People, doc.Usage.Genres, doc.Usage.Studios),
             Alerts = alerts
         };
+    }
+
+    // The peer whose catalog holds most of the stubs that won against these titles (the loser keeps the winner's stub key).
+    private string? WinnerOf(string peerKey, List<CatalogEntry> hidden)
+    {
+        var wanted = hidden.Select(static e => e.DuplicateOf).Where(static k => !string.IsNullOrEmpty(k)).ToHashSet(StringComparer.Ordinal);
+        if (wanted.Count == 0 || _state is null || _catalogs is null)
+        {
+            return null;
+        }
+
+        string? best = null;
+        var bestCount = 0;
+        foreach (var other in _state.Current.Home.Peers.Where(p => p.PeerKey != peerKey))
+        {
+            var load = _catalogs.Load(other.PeerKey);
+            if (load.Unreadable)
+            {
+                continue;
+            }
+
+            var count = load.Document.Entries.Count(e => wanted.Contains(e.StubKey));
+            if (count > bestCount)
+            {
+                best = other.DisplayName;
+                bestCount = count;
+            }
+        }
+
+        return best;
     }
 
     private static List<PeerAlertInfo> Alerts(CatalogDocument doc)
@@ -305,7 +350,7 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
                     result.Add(new PeerAlertInfo("heldRemovals", "warn", doc.HeldRemovals.Count, doc.Entries.Where(e => e.State == EntryState.HeldRemoval).Select(e => e.Title).Take(3).ToList()));
                     break;
                 case nameof(SyncAlert.HeldAdditions):
-                    result.Add(new PeerAlertInfo("heldAdditions", "warn", doc.HeldAdditions.Count, doc.Entries.Where(e => e.State == EntryState.HeldAddition).Select(e => e.Title).Take(3).ToList()));
+                    result.Add(new PeerAlertInfo("heldAdditions", "warn", doc.HeldAdditions.Count + doc.TvHeldAdditions.Count, doc.Entries.Where(e => e.State == EntryState.HeldAddition).Select(e => e.Title).Take(3).ToList()));
                     break;
                 case nameof(SyncAlert.QuotaReached):
                     result.Add(new PeerAlertInfo("diskQuota", "warn"));

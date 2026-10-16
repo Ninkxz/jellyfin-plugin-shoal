@@ -42,7 +42,10 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     private readonly Func<string, PeerEndpoint?> _find;
     private readonly Func<SyncSettings> _settings;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly TvSyncEngine? _tv;
+    private readonly Func<bool> _tvEnabled;
     private volatile string? _syncing;
+    private volatile Func<Task>? _stopRun;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CatalogSyncService"/> class.
@@ -56,6 +59,8 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     /// <param name="local">Home's own movies.</param>
     /// <param name="refresh">The library refresh.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="tv">The TV part of a sync, or null (a build without TV shows).</param>
+    /// <param name="registry">The peer statuses, so an unreachable peer does not hold titles against a reachable one, or null.</param>
     public CatalogSyncService(
         IStateStore state,
         PeerDirectory peers,
@@ -65,8 +70,10 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         StubWriter writer,
         ILocalMovies local,
         ILibraryRefresh refresh,
-        ILogger<CatalogSyncService> logger)
-        : this(state, peers.Find, trust, reader, store, writer, local, refresh, () => SyncSettings.From(Plugin.Instance?.Configuration), TimeProvider.System, logger)
+        ILogger<CatalogSyncService> logger,
+        TvSyncEngine? tv = null,
+        PeerRegistry? registry = null)
+        : this(state, peers.Find, trust, reader, store, writer, local, refresh, () => SyncSettings.From(Plugin.Instance?.Configuration), TimeProvider.System, logger, tv, () => Plugin.Instance?.Configuration.TvShowsEnabled ?? false, registry is null ? null : new DedupReachability(registry, TimeProvider.System).IsUp)
     {
     }
 
@@ -84,6 +91,9 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     /// <param name="settings">The settings in force.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="tv">The TV part of a sync, or null.</param>
+    /// <param name="tvEnabled">Whether TV libraries are synced (the <c>TvShowsEnabled</c> switch); off by default.</param>
+    /// <param name="isUp">Whether a peer can be reached (tests); null counts every peer as reachable.</param>
     internal CatalogSyncService(
         IStateStore state,
         Func<string, PeerEndpoint?> find,
@@ -95,18 +105,32 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         ILibraryRefresh refresh,
         Func<SyncSettings> settings,
         TimeProvider time,
-        ILogger logger)
+        ILogger logger,
+        TvSyncEngine? tv = null,
+        Func<bool>? tvEnabled = null,
+        Func<string, bool>? isUp = null)
     {
+        _tv = tv;
+        _tvEnabled = tvEnabled ?? (static () => false);
         _state = state;
         _find = find;
         _settings = settings;
-        _d = new Dependencies(trust, reader, store, writer, local, refresh, time, logger);
+        _d = new Dependencies(trust, reader, store, writer, local, refresh, time, logger, isUp ?? (static _ => true));
     }
 
     /// <summary>
     /// Gets or sets the overall budget of one sync (tests shorten it).
     /// </summary>
     internal TimeSpan SyncBudget { get; set; } = Budget;
+
+    /// <summary>
+    /// Whether a peer with this status can hold a title against a lower-ranked peer (D19). A peer that is offline, paused or stopped does not: its titles must not
+    /// keep another peer's copy of the same title out of the library. When it is back, the tie is resolved by rank again at the next sync.
+    /// </summary>
+    /// <param name="status">The peer's status.</param>
+    /// <returns>False for a peer that cannot be reached.</returns>
+    public static bool IsReachable(PeerStatus status) =>
+        status is not (PeerStatus.Offline or PeerStatus.Disabled or PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Pairing or PeerStatus.PairingAborted);
 
     /// <summary>
     /// Whether peer <paramref name="a"/> wins over <paramref name="b"/> when both carry a title: lower priority number first, then the
@@ -136,7 +160,7 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The report; a sync that cannot run says why in <see cref="SyncReport.Error"/>.</returns>
     public Task<SyncReport> SyncAsync(string peerKey, SyncTrigger trigger, CancellationToken cancellationToken = default) =>
-        RunAsync(peerKey, trigger, bypassRemovals: false, bypassAdditions: false, cancellationToken);
+        RunAsync(peerKey, trigger, bypassRemovals: false, bypassAdditions: false, releaseSeries: null, cancellationToken);
 
     /// <summary>
     /// Applies what the guards held back, by running a sync that does not hold.
@@ -146,7 +170,29 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The report.</returns>
     public Task<SyncReport> ReleaseAsync(string peerKey, ReleaseKind kind, CancellationToken cancellationToken = default) =>
-        RunAsync(peerKey, SyncTrigger.Scheduled, kind is ReleaseKind.Removals or ReleaseKind.Both, kind is ReleaseKind.Additions or ReleaseKind.Both, cancellationToken);
+        RunAsync(peerKey, SyncTrigger.Scheduled, kind is ReleaseKind.Removals or ReleaseKind.Both, kind is ReleaseKind.Additions or ReleaseKind.Both, releaseSeries: null, cancellationToken);
+
+    /// <summary>
+    /// Applies what the guard held back for one series only ("Release by series"): a sync that lets that series through the guards and holds the rest.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="removals">True for the held removals, false for the held additions.</param>
+    /// <param name="seriesKey">The group's key as <c>GET Peers/{h}/Holds</c> lists it (Home's own random key, not a peer id).</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The report; <c>notFound</c> in its error when there is no such held group.</returns>
+    public Task<SyncReport> ReleaseSeriesAsync(string peerKey, bool removals, string seriesKey, CancellationToken cancellationToken = default)
+    {
+        var load = _d.Store.Load(peerKey);
+        string? peerSeriesId = removals
+            ? load.Document.Entries.FirstOrDefault(e => e.Kind == EntryKind.Series && string.Equals(e.StubKey, seriesKey, StringComparison.Ordinal))?.PeerItemId
+            : load.Document.HeldSeries.FirstOrDefault(h => string.Equals(h.Key, seriesKey, StringComparison.Ordinal))?.PeerSeriesId;
+        if (load.Unreadable || !Guid.TryParseExact(peerSeriesId, "N", out var id))
+        {
+            return Task.FromResult(SyncReport.Failed("notFound"));
+        }
+
+        return RunAsync(peerKey, SyncTrigger.Scheduled, bypassRemovals: false, bypassAdditions: false, new HashSet<Guid> { id }, cancellationToken);
+    }
 
     /// <summary>
     /// Syncs every enabled peer, one after the other.
@@ -169,9 +215,36 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     public bool IsSyncing(string peerKey) => string.Equals(_syncing, peerKey, StringComparison.Ordinal);
 
     /// <inheritdoc />
+    public async Task StopAsync(string peerKey, TimeSpan wait)
+    {
+        if (!IsSyncing(peerKey))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_stopRun is { } stop)
+            {
+                await stop().ConfigureAwait(false); // the run ends like one whose time ran out: it stops at the next checkpoint and keeps what it wrote
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // it just ended
+        }
+
+        var until = DateTime.UtcNow + wait;
+        while (IsSyncing(peerKey) && DateTime.UtcNow < until)
+        {
+            await Task.Delay(50).ConfigureAwait(false);
+        }
+    }
+
+    /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
-    private async Task<SyncReport> RunAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, CancellationToken cancellationToken)
+    private async Task<SyncReport> RunAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, IReadOnlySet<Guid>? releaseSeries, CancellationToken cancellationToken)
     {
         if (!_gate.Wait(0, CancellationToken.None))
         {
@@ -181,7 +254,7 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         _syncing = peerKey;
         try
         {
-            return await RunLockedAsync(peerKey, trigger, bypassRemovals, bypassAdditions, cancellationToken).ConfigureAwait(false);
+            return await RunLockedAsync(peerKey, trigger, bypassRemovals, bypassAdditions, releaseSeries, cancellationToken).ConfigureAwait(false);
         }
         catch (PeerCallException ex)
         {
@@ -203,11 +276,12 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         finally
         {
             _syncing = null;
+            _stopRun = null;
             _gate.Release();
         }
     }
 
-    private async Task<SyncReport> RunLockedAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, CancellationToken cancellationToken)
+    private async Task<SyncReport> RunLockedAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, IReadOnlySet<Guid>? releaseSeries, CancellationToken cancellationToken)
     {
         if (_state.Status != StateStatus.Ready)
         {
@@ -261,8 +335,56 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
 
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(SyncBudget);
-        var run = new SyncRun(_d, state, peer, endpoint, document, _settings(), now, bypassRemovals, bypassAdditions);
-        return await run.RunAsync(cancellationToken, budget.Token).ConfigureAwait(false);
+        _stopRun = budget.CancelAsync;
+        var settings = _settings();
+        var run = new SyncRun(_d, state, peer, endpoint, document, settings, now, bypassRemovals, bypassAdditions);
+        var report = await run.RunAsync(cancellationToken, budget.Token).ConfigureAwait(false);
+        if (_tv is null || !_tvEnabled() || report.Result is SyncResultKind.Failed or SyncResultKind.Skipped)
+        {
+            return report;
+        }
+
+        // The TV libraries of the peer, after the movies and under the same lock and budget (DESIGN v2.7.2).
+        var tvReport = await _tv.RunAsync(_d, state, peer, endpoint, document, settings, now, bypassRemovals, bypassAdditions, cancellationToken, budget.Token, releaseSeries).ConfigureAwait(false);
+        return tvReport is null ? report : MergeTv(report, tvReport, document);
+    }
+
+    private SyncReport MergeTv(SyncReport movies, SyncReport tv, CatalogDocument document)
+    {
+        movies.Added += tv.Added;
+        movies.Updated += tv.Updated;
+        movies.Removed += tv.Removed;
+        movies.Moved += tv.Moved;
+        movies.Duplicates += tv.Duplicates;
+        movies.SkippedItems += tv.SkippedItems;
+        movies.ImagesStored += tv.ImagesStored;
+        movies.ImagesPending |= tv.ImagesPending;
+        movies.ChangedFolders += tv.ChangedFolders;
+        movies.Complete &= tv.Complete;
+        movies.Error ??= tv.Error;
+        movies.HeldRemovals = document.Entries.Count(static e => e.State == EntryState.HeldRemoval && e.Kind is EntryKind.Movie or EntryKind.Episode);
+        movies.HeldAdditions = document.HeldAdditions.Count + document.TvHeldAdditions.Count;
+        foreach (var alert in tv.Alerts.Where(a => !movies.Alerts.Contains(a)))
+        {
+            movies.Alerts.Add(alert);
+        }
+
+        movies.Result = !movies.Complete ? SyncResultKind.Partial : (movies.HeldRemovals > 0 || movies.HeldAdditions > 0 ? SyncResultKind.Held : SyncResultKind.Ok);
+        if (document.LastSync is { } last)
+        {
+            last.EndedUtc = _d.Time.GetUtcNow().UtcDateTime;
+            last.Result = movies.Result;
+            last.Added = movies.Added;
+            last.Updated = movies.Updated;
+            last.Removed = movies.Removed;
+            last.HeldRemovals = movies.HeldRemovals;
+            last.HeldAdditions = movies.HeldAdditions;
+            last.Error = movies.Error;
+            last.Alerts = [.. movies.Alerts.Select(static a => a.ToString()).OrderBy(static a => a, StringComparer.Ordinal)];
+        }
+
+        _d.Store.Save(document);
+        return movies;
     }
 
     /// <summary>
@@ -271,8 +393,13 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
 #pragma warning disable SA1600 // internal plumbing
     internal sealed class Dependencies
     {
-        public Dependencies(PeerTrust trust, PeerCatalogReader reader, CatalogStore store, StubWriter writer, ILocalMovies local, ILibraryRefresh refresh, TimeProvider time, ILogger logger)
+        private static readonly TimeSpan ScanEvery = TimeSpan.FromMinutes(5);
+        private readonly Dictionary<string, DateTime> _scans = new(StringComparer.Ordinal);
+        private DateTime _lastPromotionScan;
+
+        public Dependencies(PeerTrust trust, PeerCatalogReader reader, CatalogStore store, StubWriter writer, ILocalMovies local, ILibraryRefresh refresh, TimeProvider time, ILogger logger, Func<string, bool> isUp)
         {
+            IsUp = isUp;
             Trust = trust;
             Reader = reader;
             Store = store;
@@ -282,6 +409,8 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
             Time = time;
             Logger = logger;
         }
+
+        public Func<string, bool> IsUp { get; }
 
         public PeerTrust Trust { get; }
 
@@ -298,5 +427,41 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         public TimeProvider Time { get; }
 
         public ILogger Logger { get; }
+
+        /// <summary>
+        /// Says whether a library scan may be queued for this server now (once in five minutes at most), and notes it when it may.
+        /// </summary>
+        /// <param name="peerKey">The server.</param>
+        /// <param name="now">The time.</param>
+        /// <param name="promotion">True for a scan asked for only because titles a better-ranked server held back got their stubs: those are limited to one in five minutes across all servers.</param>
+        /// <returns>True when the scan may be queued (never while a scan is running).</returns>
+        public bool TryStartScan(string peerKey, DateTime now, bool promotion = false)
+        {
+            if (Refresh.IsScanRunning)
+            {
+                return false;
+            }
+
+            lock (_scans)
+            {
+                if (_scans.TryGetValue(peerKey, out var last) && now - last < ScanEvery)
+                {
+                    return false;
+                }
+
+                if (promotion && _lastPromotionScan != default && now - _lastPromotionScan < ScanEvery)
+                {
+                    return false;
+                }
+
+                _scans[peerKey] = now;
+                if (promotion)
+                {
+                    _lastPromotionScan = now;
+                }
+
+                return true;
+            }
+        }
     }
 }

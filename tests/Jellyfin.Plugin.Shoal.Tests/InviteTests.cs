@@ -151,7 +151,10 @@ public sealed class InviteTests
         var delivered = home.Poll(rig.Book);
         Assert.Equal("approved", delivered.State);
         Assert.Equal("0123456789abcdef0123456789abcdef", delivered.Token);
-        Assert.True(home.Poll(rig.Book).Failed, "the token is delivered once");
+        var again = home.Poll(rig.Book);
+        Assert.False(again.Failed);
+        Assert.Equal("used", again.State); // the secret is known, the key was handed over once
+        Assert.Null(again.Token);
         Assert.Equal("collected", Json(rig.Service.Approval(rig.Share.ShareId)).GetProperty("state").GetString());
     }
 
@@ -317,16 +320,19 @@ public sealed class InviteTests
 
         var replaced = await rig.InviteAsync(rig.Share);
         Assert.NotEqual(invite, replaced);
-        Assert.True(home.Poll(rig.Book, reveal: false).Failed, "the old invite no longer works");
+        var old = home.Poll(rig.Book, reveal: false);
+        Assert.Equal("replaced", old.State); // the old secret says why it no longer works; only an unknown secret is the uniform 404
+        Assert.Null(old.Token);
+        Assert.True(rig.Book.Redeem(home.Request(false, secret: "0000000000000000000000000A")).Failed);
 
         var fresh = new Home(replaced);
         rig.Time.Advance(TimeSpan.FromMinutes(16));
-        Assert.True(fresh.Poll(rig.Book, reveal: false).Failed);
+        Assert.Equal("expired", fresh.Poll(rig.Book, reveal: false).State);
         Assert.Equal("expired", Json(rig.Service.Read(rig.Share.ShareId)!).GetProperty("invite").GetProperty("state").GetString());
 
         var cancelled = new Home(await rig.InviteAsync(rig.Share));
         await rig.Service.InviteAsync(rig.Share.ShareId, false, default);
-        Assert.True(cancelled.Poll(rig.Book, reveal: false).Failed);
+        Assert.Equal("cancelled", cancelled.Poll(rig.Book, reveal: false).State);
     }
 
     [Fact]
@@ -337,9 +343,9 @@ public sealed class InviteTests
         Assert.True(rig.Book.Redeem(home.Request(false, secret: "0000000000000000000000000A")).Failed);
         Assert.True(home.Poll(rig.Book, reveal: true).Failed, "the first request must be the commitment only");
         home.Poll(rig.Book, reveal: false);
-        var other = new Home(await rig.InviteAsync(rig.Share));
         Assert.True(rig.Book.Redeem(home.Request(true) with { HomeNonceCommit = InviteCrypto.Commit(new byte[16]) }).Failed);
         Assert.True(rig.Book.Redeem(home.Request(true) with { HomeNonce = InviteCrypto.Base64Url(new byte[16]) }).Failed);
+        var other = new Home(await rig.InviteAsync(rig.Share));
         Assert.NotNull(other);
     }
 
@@ -419,7 +425,7 @@ public sealed class InviteTests
         rig.Users.MintGate.SetResult();
 
         Assert.Equal(ShareOutcome.Invalid, (await deciding).Outcome);
-        Assert.True(home.Poll(rig.Book).Failed, "the invite is gone");
+        Assert.Equal("cancelled", home.Poll(rig.Book).State); // the share was revoked: the invite is gone, and Home is told so
         Assert.False(rig.Users.Exists(userId));
     }
 

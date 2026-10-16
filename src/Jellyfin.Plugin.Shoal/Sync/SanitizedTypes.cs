@@ -144,3 +144,150 @@ public sealed record SanitizedMovie
     /// </summary>
     public bool RatingUntrusted => OfficialRating is not null;
 }
+
+/// <summary>
+/// A peer series after the TV sanitizer (DESIGN v2.7.4): the only form of peer series metadata the rest of Shoal may store or write. Only the sanitizer creates one.
+/// </summary>
+public sealed record SanitizedSeries
+{
+    /// <summary>Gets the peer series id.</summary>
+    public Guid PeerItemId { get; internal init; }
+
+    /// <summary>Gets the title, up to 300 characters.</summary>
+    public string Title { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the original title, or empty.</summary>
+    public string OriginalTitle { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the sort title, or empty.</summary>
+    public string SortTitle { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the overview (paragraph breaks kept), up to 10,000 characters, or empty.</summary>
+    public string Overview { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the genres (at most 32).</summary>
+    public IReadOnlyList<string> Genres { get; internal init; } = [];
+
+    /// <summary>Gets the studios, the networks (at most 16).</summary>
+    public IReadOnlyList<string> Studios { get; internal init; } = [];
+
+    /// <summary>Gets the actors (at most <see cref="TvLimits.MaxActorsPerSeries"/>).</summary>
+    public IReadOnlyList<SanitizedActor> Actors { get; internal init; } = [];
+
+    /// <summary>Gets the content rating, only when Jellyfin rating table recognizes it, else null.</summary>
+    public string? OfficialRating { get; internal init; }
+
+    /// <summary>Gets the community rating, 0..10, or null.</summary>
+    public double? CommunityRating { get; internal init; }
+
+    /// <summary>Gets the production year, 1870..2100, or null.</summary>
+    public int? Year { get; internal init; }
+
+    /// <summary>Gets the premiere date, or null.</summary>
+    public DateOnly? Premiered { get; internal init; }
+
+    /// <summary>Gets the end date, or null.</summary>
+    public DateOnly? EndDate { get; internal init; }
+
+    /// <summary>Gets the status: the closed words <c>Continuing</c> or <c>Ended</c>, else null.</summary>
+    public string? Status { get; internal init; }
+
+    /// <summary>Gets the canonical provider ids.</summary>
+    public CanonicalIds ProviderIds { get; internal init; }
+
+    /// <summary>Gets the primary (poster) image tag, or null when there is no valid one.</summary>
+    public string? PosterTag { get; internal init; }
+
+    /// <summary>Gets the first backdrop tag, or null.</summary>
+    public string? BackdropTag { get; internal init; }
+
+    /// <summary>Gets the banner tag, or null.</summary>
+    public string? BannerTag { get; internal init; }
+
+    /// <summary>Gets the landscape (the peer Thumb) tag, or null.</summary>
+    public string? LandscapeTag { get; internal init; }
+
+    /// <summary>Gets the peer etag, as listed (up to 64 characters), or empty.</summary>
+    public string Etag { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the hash of the sanitized fields above (hex), so an etag change that changes nothing rewrites nothing.</summary>
+    public string ContentHash { get; internal init; } = string.Empty;
+
+    /// <summary>Gets a value indicating whether the rating came from the peer and so cannot be trusted. True whenever a rating is present.</summary>
+    public bool RatingUntrusted => OfficialRating is not null;
+}
+
+/// <summary>
+/// A peer season after the TV sanitizer.
+/// </summary>
+public sealed record SanitizedSeason
+{
+    /// <summary>Gets the peer season id.</summary>
+    public Guid PeerItemId { get; internal init; }
+
+    /// <summary>Gets the peer series id.</summary>
+    public Guid PeerSeriesId { get; internal init; }
+
+    /// <summary>Gets the season number, 0..2100.</summary>
+    public int Number { get; internal init; }
+
+    /// <summary>Gets the name, up to 100 characters, or empty when it is the default <c>Season N</c> pattern.</summary>
+    public string Name { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the overview, up to 2,000 characters, or empty.</summary>
+    public string Overview { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the poster tag, or null.</summary>
+    public string? PosterTag { get; internal init; }
+
+    /// <summary>Gets the hash of the sanitized fields (hex).</summary>
+    public string ContentHash { get; internal init; } = string.Empty;
+}
+
+/// <summary>
+/// A peer episode after the TV sanitizer. The file name is built from <see cref="Season"/>, <see cref="Number"/> and <see cref="NumberEnd"/> only.
+/// </summary>
+public sealed record SanitizedEpisode
+{
+    /// <summary>Gets the peer episode id.</summary>
+    public Guid PeerItemId { get; internal init; }
+
+    /// <summary>Gets the peer series id.</summary>
+    public Guid PeerSeriesId { get; internal init; }
+
+    /// <summary>Gets the season number, 0..2100.</summary>
+    public int Season { get; internal init; }
+
+    /// <summary>Gets the episode number, 0..9999.</summary>
+    public int Number { get; internal init; }
+
+    /// <summary>Gets the last episode number of a multi-episode file (start to start+99), or null.</summary>
+    public int? NumberEnd { get; internal init; }
+
+    /// <summary>Gets the title, up to 300 characters, or empty.</summary>
+    public string Title { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the overview (paragraph breaks kept), up to 10,000 characters, or empty.</summary>
+    public string Overview { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the air date, or null.</summary>
+    public DateOnly? Aired { get; internal init; }
+
+    /// <summary>Gets the community rating, 0..10, or null.</summary>
+    public double? CommunityRating { get; internal init; }
+
+    /// <summary>Gets the duration, 0..48 h, or null.</summary>
+    public long? RunTimeTicks { get; internal init; }
+
+    /// <summary>Gets the primary media source (episodes keep the primary only), or null when none passed validation.</summary>
+    public SanitizedSource? Source { get; internal init; }
+
+    /// <summary>Gets the thumbnail (Primary image) tag, or null.</summary>
+    public string? ThumbTag { get; internal init; }
+
+    /// <summary>Gets the peer etag, as listed, or empty.</summary>
+    public string Etag { get; internal init; } = string.Empty;
+
+    /// <summary>Gets the hash of the sanitized fields (hex).</summary>
+    public string ContentHash { get; internal init; } = string.Empty;
+}

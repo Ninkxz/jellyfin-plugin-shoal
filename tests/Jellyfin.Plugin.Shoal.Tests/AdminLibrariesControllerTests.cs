@@ -63,6 +63,36 @@ public sealed class AdminLibrariesControllerTests
     }
 
     [Fact]
+    public async Task N2_TheListGivesOneDefinitionOfTheCounts_RemoteLocalAndHidden()
+    {
+        var (controller, rig, _) = Create();
+        using (rig)
+        {
+            await rig.CreateLibraryAsync();
+            var catalogs = new CatalogStore(new ShoalPaths(rig.Dir.Path), NullLogger<CatalogStore>.Instance);
+            CatalogEntry Entry(string key, EntryState state) => new() { StubKey = key, PeerItemId = Guid.NewGuid().ToString("N"), PeerMediaSourceId = Guid.NewGuid().ToString("N"), MappingKey = VisibilityRig.MappingKey, Title = "Title " + key, State = state, SizeBytes = 1000, Container = "mkv", RuntimeTicks = 1000, StubRelPath = state == EntryState.Active ? key + "/" + key + ".strm" : null };
+            catalogs.Save(new CatalogDocument
+            {
+                PeerKey = VisibilityRig.PeerKey,
+                CompletedOnce = true,
+                Entries =
+                [
+                    Entry("aaaaaaaaaaaaaaa1", EntryState.Active),
+                    Entry("aaaaaaaaaaaaaaa2", EntryState.Active),
+                    Entry("aaaaaaaaaaaaaaa3", EntryState.DuplicatePeer),
+                ]
+            });
+
+            var mapping = Assert.Single(AdminTestSupport.Body(controller.GetLibraries()).GetProperty("mappings").EnumerateArray());
+
+            Assert.Equal(3, mapping.GetProperty("remoteCount").GetInt32()); // what the friend lists
+            Assert.Equal(2, mapping.GetProperty("localCount").GetInt32());  // stubs here
+            Assert.Equal(2, mapping.GetProperty("count").GetInt32());       // older pages: the same as localCount
+            Assert.Equal(1, mapping.GetProperty("hiddenByDedup").GetInt32());
+        }
+    }
+
+    [Fact]
     public async Task AccessChange_IsStored_ReturnsTheNewAccess_AndRefusesASharingAccount()
     {
         var (controller, rig, id) = Create();

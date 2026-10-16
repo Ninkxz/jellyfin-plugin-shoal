@@ -61,6 +61,28 @@ public enum SyncResultKind
 }
 
 /// <summary>
+/// What a catalog entry is (catalog schema 4, DESIGN v2.7.2). A file written before schema 4 has no kind and reads as <see cref="Movie"/>.
+/// </summary>
+public enum EntryKind
+{
+    /// <summary>A movie: one <c>.strm</c> per media source, two path segments.</summary>
+    [JsonStringEnumMemberName("movie")]
+    Movie,
+
+    /// <summary>A series: a container only (a folder, no stub). It exists while at least one active episode does.</summary>
+    [JsonStringEnumMemberName("series")]
+    Series,
+
+    /// <summary>A season: a container only (a folder inside the series folder).</summary>
+    [JsonStringEnumMemberName("season")]
+    Season,
+
+    /// <summary>An episode: one <c>.strm</c>, three path segments (<c>series/Season NN/SnnEnn.strm</c>).</summary>
+    [JsonStringEnumMemberName("episode")]
+    Episode,
+}
+
+/// <summary>
 /// One mapped peer library as the catalog knows it.
 /// </summary>
 public sealed class CatalogLibrary
@@ -73,6 +95,21 @@ public sealed class CatalogLibrary
 
     /// <summary>Gets or sets how many titles the peer listed at the last complete sync.</summary>
     public int LastCount { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a sync of this mapping has completed once; the first sync of each mapping is exempt from the new-items guard (DESIGN v2.7.2).</summary>
+    public bool CompletedOnce { get; set; }
+
+    /// <summary>Gets or sets how many episodes the last sync skipped for a missing or out-of-range season or episode number (TV libraries).</summary>
+    public int SkippedNoNumber { get; set; }
+
+    /// <summary>Gets or sets how many episodes the last sync skipped because their numbers overlapped an accepted one (<c>duplicate-peer</c>).</summary>
+    public int SkippedDuplicate { get; set; }
+
+    /// <summary>Gets or sets how many episodes the last sync dropped because their series was not in the listing.</summary>
+    public int DroppedOrphans { get; set; }
+
+    /// <summary>Gets or sets how many series, seasons or episodes the last sync dropped because a cap was reached.</summary>
+    public int DroppedOverCap { get; set; }
 }
 
 /// <summary>
@@ -130,6 +167,30 @@ public sealed class CatalogUsage
 }
 
 /// <summary>
+/// A series whose new episodes are held by the new-items guard. The key is random and Home's own: the admin page names the group by it, never by a peer id.
+/// </summary>
+public sealed class HeldSeries
+{
+    /// <summary>Gets or sets the random key of the group (lower-case letters and digits).</summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the mapping key of the library.</summary>
+    public string MappingKey { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the peer's series id (32 hex characters).</summary>
+    public string PeerSeriesId { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the sanitized title, or empty.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the year, or null.</summary>
+    public int? Year { get; set; }
+
+    /// <summary>Gets or sets how many episodes are held.</summary>
+    public int Episodes { get; set; }
+}
+
+/// <summary>
 /// The overlap and storage report (DESIGN 5.8).
 /// </summary>
 public sealed class OverlapReport
@@ -148,6 +209,18 @@ public sealed class OverlapReport
 
     /// <summary>Gets or sets the size of the peer's copies of those titles.</summary>
     public long GainBytes { get; set; }
+
+    /// <summary>Gets or sets how many of the friend's series Home already has (series-level dedup, DESIGN v2.7).</summary>
+    public int SharedSeries { get; set; }
+
+    /// <summary>Gets or sets how many episodes the friend has of those series (all hidden: the series is Home's).</summary>
+    public int SharedSeriesEpisodes { get; set; }
+
+    /// <summary>Gets or sets how many series Home gains.</summary>
+    public int GainSeries { get; set; }
+
+    /// <summary>Gets or sets how many episodes Home gains (part of <see cref="GainCount"/>).</summary>
+    public int GainEpisodes { get; set; }
 
     /// <summary>Gets or sets when it was computed (UTC).</summary>
     public DateTime ComputedUtc { get; set; }
@@ -188,6 +261,33 @@ public sealed class HeldRemovalTracker
 /// </summary>
 public sealed class CatalogEntry
 {
+    /// <summary>Gets or sets what this entry is (schema 4); absent in an older file, which reads as a movie.</summary>
+    public EntryKind Kind { get; set; } = EntryKind.Movie;
+
+    /// <summary>Gets or sets the stub key of the series entry this season or episode belongs to (re-derived and checked on load), or null.</summary>
+    public string? ParentKey { get; set; }
+
+    /// <summary>Gets or sets the season number of a season or an episode, 0..2100, or null.</summary>
+    public int? Season { get; set; }
+
+    /// <summary>Gets or sets the episode number, 0..9999, or null.</summary>
+    public int? Episode { get; set; }
+
+    /// <summary>Gets or sets the last episode number of a multi-episode file (at least <see cref="Episode"/>, at most 99 more), or null.</summary>
+    public int? EpisodeEnd { get; set; }
+
+    /// <summary>Gets or sets the peer's series id (32 hex characters) of an episode or a season, or empty.</summary>
+    public string PeerSeriesId { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets how many episodes the peer lists for a series entry (0..10,000), or null; it is what a series Home already has hides.</summary>
+    public int? PeerEpisodeCount { get; set; }
+
+    /// <summary>Gets or sets the folder of a series or season entry relative to the library folder (<c>Show</c> or <c>Show/Season 01</c>), or null. Containers have no stub path.</summary>
+    public string? FolderRel { get; set; }
+
+    /// <summary>Gets or sets a hash of the sanitized fields the stub, NFO and images were written from, so a peer-side Etag storm rewrites nothing (DESIGN v2.7.2), or null.</summary>
+    public string? ContentHash { get; set; }
+
     /// <summary>Gets or sets the random key of the stub (16 lower-case letters and digits).</summary>
     public string StubKey { get; set; } = string.Empty;
 
@@ -364,13 +464,13 @@ public sealed class TrickplayLevel
 /// </summary>
 public sealed class CatalogDocument
 {
-    /// <summary>The schema this build writes (3 adds <c>sources</c> and <c>trickplay</c>; DESIGN v2.6.4).</summary>
-    public const int CurrentSchema = 3;
+    /// <summary>The schema this build writes (3 adds <c>sources</c> and <c>trickplay</c>, DESIGN v2.6.4; 4 adds the entry <c>kind</c>, parents, numbers and container entries, DESIGN v2.7.2).</summary>
+    public const int CurrentSchema = 4;
 
     /// <summary>The oldest schema this build still reads (it is migrated in memory and written as the current one; nothing on disk is renamed).</summary>
     public const int OldestReadableSchema = 2;
 
-    /// <summary>The most entries a peer may have (DESIGN 5.10).</summary>
+    /// <summary>The most playable entries (movies and episodes) a peer may have (DESIGN 5.10). Series and season entries do not count toward it (<see cref="TvLimits.MaxContainerEntries"/>).</summary>
     public const int MaxEntries = 50_000;
 
     /// <summary>Gets or sets the schema number.</summary>
@@ -400,8 +500,17 @@ public sealed class CatalogDocument
     /// <summary>Gets or sets the peer item ids whose addition is held back.</summary>
     public List<string> HeldAdditions { get; set; } = [];
 
+    /// <summary>Gets or sets the peer item ids (series and episodes of TV libraries) whose addition is held back. Apart from <see cref="HeldAdditions"/>, which the movie sync prunes against its own listing.</summary>
+    public List<string> TvHeldAdditions { get; set; } = [];
+
+    /// <summary>Gets or sets the series whose additions are held back (one group per series, so the admin can release one alone; schema 4, TV).</summary>
+    public List<HeldSeries> HeldSeries { get; set; } = [];
+
     /// <summary>Gets or sets how long the held removals have been the same.</summary>
     public HeldRemovalTracker? HeldTracker { get; set; }
+
+    /// <summary>Gets or sets how long the held TV removals (episodes) have been the same, for their own automatic release (schema 4).</summary>
+    public HeldRemovalTracker? TvHeldTracker { get; set; }
 
     /// <summary>Gets or sets the budgets.</summary>
     public CatalogUsage Usage { get; set; } = new();
@@ -411,6 +520,15 @@ public sealed class CatalogDocument
 
     /// <summary>Gets or sets the overlap report.</summary>
     public OverlapReport? Report { get; set; }
+
+    /// <summary>Gets or sets the peer item ids whose details were not fetched yet; the next run continues with them (schema 4, TV).</summary>
+    public List<string> PendingDetail { get; set; } = [];
+
+    /// <summary>Gets or sets the stub keys whose images were not fetched yet; the next run continues with them (schema 4, TV).</summary>
+    public List<string> ImagesPending { get; set; } = [];
+
+    /// <summary>Gets or sets how many image follow-up runs came one after the other (at most <see cref="TvLimits.MaxImageFollowUps"/>).</summary>
+    public int ImageFollowUps { get; set; }
 
     /// <summary>Gets or sets the entries.</summary>
     public List<CatalogEntry> Entries { get; set; } = [];

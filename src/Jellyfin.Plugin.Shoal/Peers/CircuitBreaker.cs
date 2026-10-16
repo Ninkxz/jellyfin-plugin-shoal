@@ -13,7 +13,7 @@ public sealed class CircuitBreaker
     public const int OpenAfterFailures = 3;
 
     private static readonly TimeSpan FirstProbeDelay = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan MaxProbeDelay = TimeSpan.FromSeconds(300);
+    private static readonly TimeSpan MaxProbeDelay = TimeSpan.FromSeconds(60); // a restarted peer shows as online within about a minute (Pilot 06: 5.5 min with the old 300 s cap)
 
     private readonly TimeProvider _time;
     private readonly object _lock = new();

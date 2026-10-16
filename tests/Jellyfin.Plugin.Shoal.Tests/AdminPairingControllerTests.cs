@@ -60,32 +60,54 @@ public sealed class AdminPairingControllerTests
     public async Task TheWholeFlow_ThroughTheRoutes()
     {
         await using var peer = await FakeJellyfinPeer.StartAsync();
-        peer.ApproveFromPoll = 2;
-        using var rig = new PairingRig();
+        using var side = new InviteHomeTests.PeerSide(peer);
+        using var rig = InviteHomeTests.NewRig();
         var controller = Controller(rig);
+        var (share, invite) = await side.InviteAsync();
 
-        Assert.Equal(404, Status(controller.Get()));
-        var probe = Value<ProbeResult>(await controller.Probe(new ProbeRequest { Url = peer.BaseUrl }, default));
+        Assert.Equal(204, Status(controller.Get())); // no session is not an error (Pilot 07 D21)
+        var probe = Value<ProbeResult>(await controller.Probe(new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet, Invite = invite }, default));
         Assert.True(probe.Ok);
-        var started = Value<PairingSessionInfo>(await controller.Start(new StartPairingRequest { ProbeHandle = probe.ProbeHandle, DisplayName = "Hops", Method = "qc" }, default));
-        Assert.Equal(PairingMethod.Qc, started.Method);
+        var started = Value<PairingSessionInfo>(await controller.Start(new StartPairingRequest { ProbeHandle = probe.ProbeHandle, DisplayName = "Hops" }, default));
+        Assert.Equal(PairingMethod.Invite, started.Method);
 
-        var second = await controller.Start(new StartPairingRequest { ProbeHandle = probe.ProbeHandle, DisplayName = "Hops", Method = "qc" }, default);
+        var second = await controller.Start(new StartPairingRequest { ProbeHandle = probe.ProbeHandle, DisplayName = "Hops" }, default);
         Assert.Equal("sessionActive", ErrorOf(second));
         Assert.Equal(409, Status(second));
 
-        await rig.UntilStepAsync(PairingStep.AwaitingConfirm);
-        var current = Value<PairingSessionInfo>(controller.Get());
-        var json = JsonSerializer.Serialize(current, new JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
-        Assert.Contains("\"step\":\"awaitingConfirm\"", json, StringComparison.Ordinal);
+        var waiting = await rig.UntilAsync(s => s.Step == PairingStep.AwaitingApproval && s.SafetyCode is not null, InviteHomeTests.Deadline);
+        var json = JsonSerializer.Serialize(Value<PairingSessionInfo>(controller.Get()), new JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+        Assert.Contains("\"step\":\"awaitingApproval\"", json, StringComparison.Ordinal);
         Assert.Contains("\"safetyCode\":\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain(peer.Token, json, StringComparison.Ordinal);
-        Assert.DoesNotContain(peer.Secret, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(invite, json, StringComparison.Ordinal);
 
-        var done = Value<PairingSessionInfo>(await controller.Confirm(new ConfirmPairingRequest { Match = true }, default));
+        var (outcome, _) = await side.Service.DecideAsync(share.ShareId, new Jellyfin.Plugin.Shoal.Api.Admin.ApprovalRequest { Approve = true, Sas = waiting.SafetyCode }, default);
+        Assert.Equal(Jellyfin.Plugin.Shoal.Api.Admin.ShareOutcome.Ok, outcome);
+        var done = await rig.UntilFinishedAsync(InviteHomeTests.Deadline);
         Assert.Equal("confirmed", done.State);
-        var again = await controller.Confirm(new ConfirmPairingRequest { Match = true }, default);
-        Assert.Equal("notAwaitingConfirm", ErrorOf(again));
+    }
+
+    [Fact]
+    public async Task D17_TheConfirmRouteIsGone_QuickConnectIsRefused_AndAProbeWithoutAnInviteCannotStartAPairing()
+    {
+        await using var peer = await FakeJellyfinPeer.StartAsync();
+        using var side = new InviteHomeTests.PeerSide(peer);
+        using var rig = InviteHomeTests.NewRig();
+        var controller = Controller(rig);
+        var (_, invite) = await side.InviteAsync();
+
+        Assert.DoesNotContain(typeof(AdminPairingController).GetMethods(), static m => m.Name == "Confirm");
+        var withInvite = await rig.Service.ProbeAsync(new ProbeRequest { Url = peer.BaseUrl, Network = PeerNetwork.Tailnet, Invite = invite });
+        var qc = await controller.Start(new StartPairingRequest { ProbeHandle = withInvite.ProbeHandle, DisplayName = "Hops", Method = "qc" }, default);
+        Assert.Equal(409, Status(qc));
+        Assert.Equal("methodUnavailable", ErrorOf(qc));
+
+        var bare = await rig.ProbeAsync(peer); // the check step still works: it reports what the server is, it just cannot start a pairing
+        var noInvite = await controller.Start(new StartPairingRequest { ProbeHandle = bare.ProbeHandle, DisplayName = "Hops" }, default);
+        Assert.Equal(409, Status(noInvite));
+        Assert.Equal("methodUnavailable", ErrorOf(noInvite));
+        Assert.Null(rig.Service.GetSession());
     }
 
     [Fact]
@@ -95,11 +117,9 @@ public sealed class AdminPairingControllerTests
 
         var anonymous = await Controller(rig, signedIn: false).Start(new StartPairingRequest { ProbeHandle = "x", DisplayName = "y" }, default);
         var missing = await Controller(rig).Start(new StartPairingRequest(), default);
-        var noAnswer = await Controller(rig).Confirm(new ConfirmPairingRequest(), default);
 
         Assert.Equal(400, Status(anonymous));
         Assert.Equal(400, Status(missing));
-        Assert.Equal(400, Status(noAnswer));
         Assert.Null(rig.Service.GetSession());
     }
 
@@ -112,12 +132,12 @@ public sealed class AdminPairingControllerTests
         var controller = Controller(rig);
         for (var i = 0; i < 5; i++)
         {
-            var probe = await rig.ProbeAsync(peer);
+            var probe = await rig.ProbeAsync(peer, invite: Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.Format(peer.ServerId, Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.NewSecret()));
             Assert.Equal(200, Status(await controller.Start(new StartPairingRequest { ProbeHandle = probe.ProbeHandle, DisplayName = "A" + i }, default)));
             await rig.UntilFinishedAsync();
         }
 
-        var last = await rig.ProbeAsync(peer);
+        var last = await rig.ProbeAsync(peer, invite: Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.Format(peer.ServerId, Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.NewSecret()));
         var limited = await controller.Start(new StartPairingRequest { ProbeHandle = last.ProbeHandle, DisplayName = "A6" }, default);
 
         Assert.Equal(429, Status(limited));
@@ -137,7 +157,8 @@ public sealed class AdminPairingControllerTests
         using var rig = new PairingRig();
         var controller = Controller(rig);
 
-        Assert.Equal(404, Status(await controller.Cancel(default)));
+        Assert.Equal(204, Status(await controller.Cancel(default))); // N18: no session is 204, never 404
+        Assert.Equal(204, Status(controller.Get()));
         Assert.Equal("unknownPeer", ErrorOf(await controller.DismissPairing("00000000000000000000000000000000", default)));
         Assert.Equal("nothingToConfirm", ErrorOf(controller.ConfirmRestore()));
 

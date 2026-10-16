@@ -28,6 +28,17 @@ public enum SlotDenial
 }
 
 /// <summary>
+/// Where a new stream comes from, for the binge handover allowance (DESIGN v2.7.8): the series of an episode and the device that asks. Both empty for anything else.
+/// </summary>
+/// <param name="SeriesKey">The peer's series id of an episode, or empty.</param>
+/// <param name="DeviceId">The caller's device id.</param>
+public readonly record struct SlotOrigin(string SeriesKey, string DeviceId)
+{
+    /// <summary>Gets a value indicating whether the origin names a series (only an episode can be a handover).</summary>
+    public bool IsEpisode => !string.IsNullOrEmpty(SeriesKey);
+}
+
+/// <summary>
 /// A running static stream's claim on a slot. Dispose it when the connection ends; call <see cref="Touch"/> while bytes flow.
 /// </summary>
 public sealed class StaticLease : IDisposable
@@ -88,10 +99,14 @@ public sealed class StreamSlots : ISlotLedger
     /// <summary>The most open static connections per user.</summary>
     public const int MaxConnectionsPerUser = 6;
 
+    /// <summary>How long an HLS slot must have had no segment request before the next episode of the same series on the same device may take its place.</summary>
+    public static readonly TimeSpan HlsSupersedeAfter = TimeSpan.FromSeconds(10);
+
     /// <summary>How long a slot outlives its last byte or request.</summary>
     public static readonly TimeSpan Grace = TimeSpan.FromMinutes(2);
 
     private readonly object _gate = new();
+
     private readonly Dictionary<(Guid User, Guid Item), StaticSlot> _static = [];
     private readonly Dictionary<string, HlsSlot> _hls = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, int> _connections = [];
@@ -110,6 +125,17 @@ public sealed class StreamSlots : ISlotLedger
     }
 
     /// <summary>
+    /// Raised, under the ledger's lock, with the ids of the HLS grants whose slots the next episode just took over. A listener must only queue work (the reporter sends the
+    /// scoped delete to the Peer, best effort) and must never call back into the ledger.
+    /// </summary>
+#pragma warning disable CA1003 // A plain callback with the ids: this is internal plumbing, not a public event model.
+    public event Action<IReadOnlyList<string>>? HlsSuperseded;
+
+    /// <summary>Raised with a grant id after its HLS slot was released (the read-ahead of that stream is dropped). A listener must not call back into the ledger.</summary>
+    public event Action<string>? HlsReleased;
+#pragma warning restore CA1003
+
+    /// <summary>
     /// Takes (or shares) the static slot of a user and item and opens a connection on it.
     /// </summary>
     /// <param name="userId">The user.</param>
@@ -117,8 +143,9 @@ public sealed class StreamSlots : ISlotLedger
     /// <param name="peerKey">The peer.</param>
     /// <param name="peerMax">The peer's <c>MaxConcurrentStreams</c>.</param>
     /// <param name="denial">Why it was refused.</param>
+    /// <param name="origin">The series and device, for the binge handover allowance.</param>
     /// <returns>The lease, or null when refused.</returns>
-    public StaticLease? TryOpenStatic(Guid userId, Guid itemId, string peerKey, int peerMax, out SlotDenial denial)
+    public StaticLease? TryOpenStatic(Guid userId, Guid itemId, string peerKey, int peerMax, out SlotDenial denial, SlotOrigin origin = default)
     {
         lock (_gate)
         {
@@ -133,13 +160,14 @@ public sealed class StreamSlots : ISlotLedger
             var created = false;
             if (!_static.TryGetValue(key, out var slot))
             {
-                denial = CheckLimits(userId, peerKey, peerMax);
+                denial = CheckLimits(userId, peerKey, peerMax, origin, itemId);
                 if (denial != SlotDenial.None)
                 {
                     return null;
                 }
 
-                slot = new StaticSlot { PeerKey = peerKey };
+                DropSuperseded(userId, itemId, origin);
+                slot = new StaticSlot { PeerKey = peerKey, Origin = origin };
                 _static[key] = slot;
                 created = true;
             }
@@ -178,7 +206,7 @@ public sealed class StreamSlots : ISlotLedger
             var sameStream = _static.ContainsKey((grant.LocalUserId, grant.SlotItem)) && !_hls.Values.Any(h => h.User == grant.LocalUserId && h.Item == grant.SlotItem);
             if (!sameStream)
             {
-                denial = CheckLimits(grant.LocalUserId, grant.PeerKey, peerMax);
+                denial = CheckLimits(grant.LocalUserId, grant.PeerKey, peerMax, OriginOf(grant), grant.SlotItem);
                 if (denial != SlotDenial.None)
                 {
                     return false;
@@ -186,13 +214,19 @@ public sealed class StreamSlots : ISlotLedger
             }
 
             // Every HLS stream is a conversion (6.9): one more than the peer allows is refused, whatever the stream slots say.
-            if (_hls.Values.Count(h => h.PeerKey == grant.PeerKey) >= peerMaxConversions)
+            var movedOn = Superseded(grant.LocalUserId, grant.SlotItem, OriginOf(grant));
+            if (_hls.Where(p => !movedOn.Hls.Contains(p.Key)).Count(p => p.Value.PeerKey == grant.PeerKey) >= peerMaxConversions)
             {
                 denial = SlotDenial.Conversions;
                 return false;
             }
 
-            _hls[grant.GrantId] = new HlsSlot { User = grant.LocalUserId, Item = grant.SlotItem, PeerKey = grant.PeerKey, LastActivity = _time.GetUtcNow() };
+            if (!sameStream)
+            {
+                DropSuperseded(grant.LocalUserId, grant.SlotItem, OriginOf(grant));
+            }
+
+            _hls[grant.GrantId] = new HlsSlot { User = grant.LocalUserId, Item = grant.SlotItem, PeerKey = grant.PeerKey, Origin = OriginOf(grant), LastActivity = _time.GetUtcNow() };
             denial = SlotDenial.None;
             return true;
         }
@@ -220,10 +254,18 @@ public sealed class StreamSlots : ISlotLedger
     /// <returns>True when a slot was held.</returns>
     public bool ReleaseHls(string grantId)
     {
+        bool removed;
         lock (_gate)
         {
-            return _hls.Remove(grantId);
+            removed = _hls.Remove(grantId);
         }
+
+        if (removed)
+        {
+            HlsReleased?.Invoke(grantId);
+        }
+
+        return removed;
     }
 
     /// <summary>
@@ -302,12 +344,15 @@ public sealed class StreamSlots : ISlotLedger
     }
 
     /// <inheritdoc />
-    public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax)
+    public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax) => CanStart(userId, itemId, peerKey, peerMax, default);
+
+    /// <inheritdoc />
+    public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax, SlotOrigin origin)
     {
         lock (_gate)
         {
             PruneLocked();
-            return _static.ContainsKey((userId, itemId)) || CheckLimits(userId, peerKey, peerMax) == SlotDenial.None;
+            return _static.ContainsKey((userId, itemId)) || CheckLimits(userId, peerKey, peerMax, origin, itemId) == SlotDenial.None;
         }
     }
 
@@ -340,6 +385,15 @@ public sealed class StreamSlots : ISlotLedger
         {
             PruneLocked();
             return _hls.ContainsKey(grant.GrantId);
+        }
+    }
+
+    // When the stream's HLS slot was last used (tests: the read-ahead must not move it).
+    internal DateTimeOffset? HlsActivity(string grantId)
+    {
+        lock (_gate)
+        {
+            return _hls.TryGetValue(grantId, out var slot) ? slot.LastActivity : null;
         }
     }
 
@@ -391,19 +445,79 @@ public sealed class StreamSlots : ISlotLedger
         }
     }
 
-    private SlotDenial CheckLimits(Guid userId, string peerKey, int peerMax)
+    private static SlotOrigin OriginOf(Grant grant) => new(grant.SeriesKey, grant.CallerDeviceId);
+
+    // The streams a device has moved on from (DESIGN v2.7.8): the same user starts another episode of the same series on the same device, and the earlier stream is
+    // finished sending: a static slot with no open connection (bytes only flow on an open connection, which stays counted), an HLS slot with no segment request for
+    // HlsSupersedeAfter. Such a slot is counted as gone in every limit and dropped when the new slot is taken (Pilot 08, N9: a leaked slot refused the third episode).
+    // A stream that still sends is never superseded, so one device id cannot run several streams on one slot (Warden 16 M1): the limits stay hard.
+    private (HashSet<(Guid User, Guid Item)> Static, HashSet<string> Hls) Superseded(Guid userId, Guid itemId, SlotOrigin origin)
     {
-        var userSlots = _static.Keys.Count(k => k.User == userId) + _hls.Values.Count(h => h.User == userId);
+        if (!origin.IsEpisode || string.IsNullOrEmpty(origin.DeviceId))
+        {
+            return ([], []);
+        }
+
+        var now = _time.GetUtcNow();
+        return (
+            _static.Where(p => p.Key.User == userId && p.Key.Item != itemId && p.Value.Origin == origin && p.Value.Connections == 0).Select(static p => p.Key).ToHashSet(),
+            _hls.Where(p => p.Value.User == userId && p.Value.Item != itemId && p.Value.Origin == origin && now - p.Value.LastActivity >= HlsSupersedeAfter).Select(static p => p.Key).ToHashSet(StringComparer.Ordinal));
+    }
+
+    private void DropSuperseded(Guid userId, Guid itemId, SlotOrigin origin)
+    {
+        var gone = Superseded(userId, itemId, origin);
+        foreach (var key in gone.Static)
+        {
+            _static.Remove(key);
+        }
+
+        foreach (var id in gone.Hls)
+        {
+            _hls.Remove(id);
+        }
+
+        if (gone.Hls.Count > 0)
+        {
+            try
+            {
+                HlsSuperseded?.Invoke([.. gone.Hls]);
+            }
+#pragma warning disable CA1031 // A listener must never stop the new episode from starting.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // best effort
+            }
+        }
+    }
+
+    private SlotDenial CheckLimits(Guid userId, string peerKey, int peerMax, SlotOrigin origin, Guid itemId)
+    {
+        var movedOn = Superseded(userId, itemId, origin);
+        var userSlots = _static.Keys.Count(k => k.User == userId && !movedOn.Static.Contains(k)) + _hls.Where(p => p.Value.User == userId && !movedOn.Hls.Contains(p.Key)).Count();
         if (userSlots >= Math.Clamp(_maxPerUser(), 1, 4))
         {
             return SlotDenial.User;
         }
 
-        var onPeer = _static.Values.Count(s => s.PeerKey == peerKey) + _hls.Values.Count(h => h.PeerKey == peerKey);
-        var mineOnPeer = _static.Where(p => p.Key.User == userId && p.Value.PeerKey == peerKey).Count() + _hls.Values.Count(h => h.User == userId && h.PeerKey == peerKey);
+        var onPeer = _static.Where(p => p.Value.PeerKey == peerKey && !movedOn.Static.Contains(p.Key)).Count() + _hls.Where(p => p.Value.PeerKey == peerKey && !movedOn.Hls.Contains(p.Key)).Count();
+        var mineOnPeer = _static.Where(p => p.Key.User == userId && p.Value.PeerKey == peerKey && !movedOn.Static.Contains(p.Key)).Count() + _hls.Where(p => p.Value.User == userId && p.Value.PeerKey == peerKey && !movedOn.Hls.Contains(p.Key)).Count();
         var half = (peerMax + 1) / 2;
+
+        // Binge handover (DESIGN v2.7.8): the user already plays another episode of this series on this device at this peer, so the next one may exceed the
+        // half-of-the-peer rule by one. The peer total and the per-user limit above stay hard.
+        if (origin.IsEpisode && mineOnPeer >= half && HoldsSameSeriesOnDevice(userId, peerKey, origin))
+        {
+            half++;
+        }
+
         return onPeer >= peerMax || mineOnPeer >= half ? SlotDenial.Peer : SlotDenial.None;
     }
+
+    private bool HoldsSameSeriesOnDevice(Guid userId, string peerKey, SlotOrigin origin) =>
+        _static.Any(p => p.Key.User == userId && p.Value.PeerKey == peerKey && p.Value.Origin == origin)
+        || _hls.Values.Any(h => h.User == userId && h.PeerKey == peerKey && h.Origin == origin);
 
     private void PruneLocked()
     {
@@ -416,12 +530,15 @@ public sealed class StreamSlots : ISlotLedger
         foreach (var pair in _hls.Where(p => now - p.Value.LastActivity >= Grace).ToList())
         {
             _hls.Remove(pair.Key);
+            HlsReleased?.Invoke(pair.Key); // an idle stream keeps no read-ahead either (the listener only drops its own memory)
         }
     }
 
     private sealed class StaticSlot
     {
         public string PeerKey { get; init; } = string.Empty;
+
+        public SlotOrigin Origin { get; init; }
 
         public int Connections { get; set; }
 
@@ -437,6 +554,8 @@ public sealed class StreamSlots : ISlotLedger
         public Guid Item { get; init; }
 
         public string PeerKey { get; init; } = string.Empty;
+
+        public SlotOrigin Origin { get; init; }
 
         public DateTimeOffset LastActivity { get; set; }
     }

@@ -26,17 +26,8 @@ public sealed class PairingOptions
     /// <summary>Gets the time between two polls (measured from the start of one poll to the start of the next).</summary>
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(1);
 
-    /// <summary>Gets the deadlines of a poll and of the redeem (3 s).</summary>
-    public PeerCallProfile PollProfile { get; init; } = PeerCallProfile.QuickConnect;
-
     /// <summary>Gets the deadlines of the other steps (3 s).</summary>
-    public PeerCallProfile StepProfile { get; init; } = PeerCallProfile.QuickConnectStep;
-
-    /// <summary>Gets how long the first poll may take to confirm the request before the pairing stops.</summary>
-    public TimeSpan BaselineWindow { get; init; } = TimeSpan.FromSeconds(10);
-
-    /// <summary>Gets the local life of a code, from the moment <c>Initiate</c> is sent. Core expires it at 10 minutes on its own clock; the margin keeps a natural expiry from looking like a replacement.</summary>
-    public TimeSpan LocalDeadline { get; init; } = TimeSpan.FromSeconds(570);
+    public PeerCallProfile StepProfile { get; init; } = PeerCallProfile.PairStep;
 
     /// <summary>Gets how long the peer may stay silent before the pairing stops as <see cref="PairingErrorKind.Network"/>.</summary>
     public TimeSpan NetworkAbortAfter { get; init; } = TimeSpan.FromSeconds(30);
@@ -44,11 +35,11 @@ public sealed class PairingOptions
     /// <summary>Gets the number of failed polls in a row after which the session reads "waiting for the server".</summary>
     public int SilentAfterFailures { get; init; } = 3;
 
-    /// <summary>Gets how long the admin has to confirm after approval.</summary>
-    public TimeSpan ConfirmWindow { get; init; } = TimeSpan.FromMinutes(15);
-
     /// <summary>Gets how long a probe handle lives.</summary>
     public TimeSpan ProbeLifetime { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>Gets how long a confirmed pairing stays on the page as the last session before it ends by itself (sooner once libraries were chosen for the server).</summary>
+    public TimeSpan ConfirmedLife { get; init; } = TimeSpan.FromMinutes(2);
 
     /// <summary>Gets the most pairings that may be started per server in <see cref="StartWindow"/>.</summary>
     public int StartLimit { get; init; } = 5;
@@ -61,13 +52,13 @@ public sealed class PairingOptions
 }
 
 /// <summary>
-/// The Home side of pairing a friend's stock Jellyfin by Quick Connect (DESIGN 4.2, 4.2a, 4.3; K5).
+/// The Home side of pairing a friend's Shoal server by invite (DESIGN 4.1b, 4.2a; D17).
 /// <para>
 /// One live session at a time, started only by an explicit call (<see cref="BeginAsync"/>): nothing else, not a probe, a reload, a retry or a
-/// restart, ever sends <c>QuickConnect/Initiate</c>. The session runs in the background and keeps polling without any page open. The token
-/// is held in memory until <see cref="ConfirmAsync"/> says the check matched; only then is it stored, and until then nothing is saved
+/// restart, ever starts a pairing. The session runs in the background and keeps polling without any page open. The token
+/// is held in memory until the friend's admin has approved the safety code; only then is it stored, and until then nothing is saved
 /// (no secret, no library, no sync). Every value the peer sends is validated before it is shown, stored or put in a header, and none of it,
-/// nor the poll URL, the secret, the code or the token, is ever logged.
+/// nor the invite, the safety code or the token, is ever logged.
 /// </para>
 /// Aborts are durable (<c>health.json</c>) and split into safety kinds (pop-up to every admin) and stopped kinds (no pop-up).
 /// </summary>
@@ -89,6 +80,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
     private readonly object _lock = new();
     private readonly Dictionary<string, ProbeEntry> _probes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<DateTimeOffset>> _starts = new(StringComparer.Ordinal);
+
     private Run? _run;
 
     /// <summary>
@@ -157,17 +149,6 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         _options = options;
     }
 
-    private enum PollKind
-    {
-        Waiting,
-        Approved,
-        Invalid,
-        NonJson,
-        NotFound,
-        Off,
-        Unreachable
-    }
-
     /// <summary>
     /// Gets the task of the current session, for tests that wait for it to finish.
     /// </summary>
@@ -191,9 +172,12 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         }
     }
 
+    /// <inheritdoc />
+    public Task<bool> CancelAsync(string peerKey, CancellationToken cancellationToken = default) => IsLive(peerKey) ? CancelAsync(cancellationToken) : Task.FromResult(false);
+
     /// <summary>
     /// Looks at a server before pairing (DESIGN 4.2 steps 1 and 2): checks the address, asks <c>/System/Info/Public</c> and returns a
-    /// single-use handle (valid for 10 minutes) that <see cref="BeginAsync"/> needs. It never sends <c>QuickConnect/Initiate</c> and never
+    /// single-use handle (valid for 10 minutes) that <see cref="BeginAsync"/> needs. It never starts a pairing and never
     /// sends a token.
     /// </summary>
     /// <param name="request">What the admin typed.</param>
@@ -202,108 +186,14 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
     public async Task<ProbeResult> ProbeAsync(ProbeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var url = request.Url;
-        var network = request.Network;
-        var proxy = request.ProxyUrl;
-        var ack = request.LanAck;
-        string? inviteSecret = null;
-        if (!string.IsNullOrWhiteSpace(request.Invite))
+        var result = await ProbeCoreAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!result.Ok)
         {
-            // An invite names the server it is for (the first 8 hex of its id); a malformed one is refused before any request is made.
-            if (!Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.TryParse(request.Invite, out _, out inviteSecret))
-            {
-                return new ProbeResult { Ok = false, Failure = "inviteInvalid" };
-            }
+            // The reason is a fixed word (never the address, the invite or a peer's text), so a refused check leaves a trace.
+            _logger.LogInformation("A pairing check was refused: {Reason} (invite given: {HasInvite})", result.Failure ?? result.AddressProblem.ToString(), !string.IsNullOrWhiteSpace(request.Invite));
         }
 
-        PeerState? existing = null;
-        if (!string.IsNullOrEmpty(request.PeerHandle))
-        {
-            existing = FindPeer(request.PeerHandle);
-            if (existing is null)
-            {
-                return new ProbeResult { Ok = false, Failure = "unknownPeer" };
-            }
-
-            // The stored address is used: while a pairing lives, and for a re-pair, the address does not change.
-            (url, network, proxy, ack) = (existing.BaseUrl, existing.Network, existing.ProxyUrl, existing.LanCleartextAck);
-        }
-
-        var check = (_options.AddressValidator ?? AddressPolicy.Validate)(url, network, ack, proxy);
-        if (!check.Ok)
-        {
-            return new ProbeResult { Ok = false, AddressProblem = check.Problem };
-        }
-
-        var address = check.Address!;
-
-        // An invite's secret and the token that comes back travel over this address: cleartext is only for a Tailnet (DESIGN 4.2 step 1; Warden M2).
-        if (inviteSecret is not null && address.IsCleartext && network != PeerNetwork.Tailnet)
-        {
-            return new ProbeResult { Ok = false, Failure = "inviteLanHttp" };
-        }
-
-        var probeKey = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
-        var endpoint = PeerEndpoint.WithoutToken(probeKey, "probe", address.BaseUri, DeviceIdFor(probeKey), null).Configured(network, proxy, ack, null, existing?.TlsSpkiPin);
-        var clock = Stopwatch.StartNew();
-        try
-        {
-            using var response = await _client.SendAsync(endpoint, PeerRequest.GetAnonymous("/System/Info/Public"), PeerCallProfile.Info, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
-            {
-                return new ProbeResult { Ok = false, Failure = "unreachable" };
-            }
-
-            var info = await response.ReadJsonAsync<SystemInfoWire>(cancellationToken).ConfigureAwait(false);
-            if (!PeerTrust.TryNormalizeServerId(info.Id, out var serverId))
-            {
-                return new ProbeResult { Ok = false, Failure = "notJellyfin" };
-            }
-
-            if (inviteSecret is not null && Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.TryParse(request.Invite, out var invitePrefix, out _) && !string.Equals(invitePrefix, serverId[..8], StringComparison.Ordinal))
-            {
-                return new ProbeResult { Ok = false, Failure = "inviteWrongServer" };
-            }
-
-            var handle = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-            var name = TextClean.Display(info.ServerName, 64);
-            var version = TextClean.Display(info.Version, 32);
-            lock (_lock)
-            {
-                PurgeProbes();
-                if (_probes.Count >= MaxProbeHandles)
-                {
-                    var oldest = _probes.OrderBy(p => p.Value.ExpiresUtc).First().Key;
-                    _probes.Remove(oldest);
-                }
-
-                _probes[handle] = new ProbeEntry(address, network, proxy, ack, serverId, existing?.PeerKey, _time.GetUtcNow() + _options.ProbeLifetime, existing?.TlsSpkiPin, existing?.BaseUrl, inviteSecret);
-            }
-
-            return new ProbeResult
-            {
-                Ok = true,
-                ProbeHandle = handle,
-                ServerName = name.Length == 0 ? null : name,
-                Version = version.Length == 0 ? null : version,
-                ServerIdPrefix = serverId[..8],
-                LatencyMs = (int)Math.Min(clock.ElapsedMilliseconds, int.MaxValue),
-                Address = address.BaseUri.AbsoluteUri.TrimEnd('/'),
-                AlsoWatchesYou = _state.Status == StateStatus.Ready && Jellyfin.Plugin.Shoal.Sharing.FriendLinks.AlsoWatchesYou(_state.Current, serverId)
-            };
-        }
-        catch (PeerCallException ex) when (ex.Kind is PeerFailureKind.BadResponse or PeerFailureKind.TooLarge)
-        {
-            return new ProbeResult { Ok = false, Failure = "notJellyfin" };
-        }
-        catch (PeerCallException)
-        {
-            return new ProbeResult { Ok = false, Failure = "unreachable" };
-        }
-        finally
-        {
-            _client.Forget(probeKey);
-        }
+        return result;
     }
 
     /// <summary>
@@ -313,11 +203,10 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
     /// <param name="adminUserId">The local admin who clicked.</param>
     /// <param name="probeHandle">The single-use handle from <see cref="ProbeAsync"/>.</param>
     /// <param name="displayName">The name the admin gives the server.</param>
-    /// <param name="method">The method; only Quick Connect is available here.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The session as it stands.</returns>
     /// <exception cref="PairingConflictException">A session is live, the handle is not valid, the secret store is unreadable, or too many pairings were started for this server.</exception>
-    public async Task<PairingSessionInfo> BeginAsync(Guid adminUserId, string probeHandle, string displayName, PairingMethod method, CancellationToken cancellationToken = default)
+    public async Task<PairingSessionInfo> BeginAsync(Guid adminUserId, string probeHandle, string displayName, CancellationToken cancellationToken = default)
     {
         var name = TextClean.Display(displayName, 64);
         if (name.Length == 0)
@@ -345,13 +234,13 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
                 throw new PairingConflictException(PairingConflict.ProbeExpired);
             }
 
-            // The method must match what was probed: an invite starts only from a probe that carried one, Quick Connect only from one that did not.
-            if (method != (probe.InviteSecret is null ? PairingMethod.Qc : PairingMethod.Invite))
+            // Every pairing is by invite (D17): a probe that carried no invite can be checked but cannot start one.
+            if (probe.InviteSecret is null)
             {
                 throw new PairingConflictException(PairingConflict.MethodUnavailable);
             }
 
-            if (probe.InviteSecret is not null && probe.Address.IsCleartext && probe.Network != PeerNetwork.Tailnet)
+            if (probe.Address.IsCleartext && probe.Network != PeerNetwork.Tailnet)
             {
                 throw new PairingConflictException(PairingConflict.MethodUnavailable); // checked again here: the probe could have come from anywhere
             }
@@ -417,32 +306,16 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
     {
         lock (_lock)
         {
+            // A pairing that is done ends by itself: once its libraries were chosen, or two minutes after it was confirmed, the page is not told "still in progress" any more.
+            if (_run is { IsConfirmed: true } done && done.ConfirmedUtc is { } at
+                && (_time.GetUtcNow().UtcDateTime - at >= _options.ConfirmedLife || (FindPeer(done.PeerKey)?.Libraries.Count ?? 0) > done.LibrariesAtConfirm))
+            {
+                _run = null;
+                return null;
+            }
+
             return _run?.Snapshot();
         }
-    }
-
-    /// <summary>
-    /// "The codes match" (<paramref name="match"/> true) or "They don't match" (false). Legal only while the session waits for it
-    /// (DESIGN 4.2a): nothing is stored without this call.
-    /// </summary>
-    /// <param name="match">Whether the check in the friend's Devices list matched.</param>
-    /// <param name="cancellationToken">Cancellation.</param>
-    /// <returns>The session after it has finished.</returns>
-    /// <exception cref="PairingConflictException">The session is not waiting for the confirmation.</exception>
-    public async Task<PairingSessionInfo> ConfirmAsync(bool match, CancellationToken cancellationToken = default)
-    {
-        Run run;
-        lock (_lock)
-        {
-            run = _run is { IsLive: true } live && live.Step == PairingStep.AwaitingConfirm ? live : throw new PairingConflictException(PairingConflict.NotAwaitingConfirm);
-            if (!run.TryDecide(match))
-            {
-                throw new PairingConflictException(PairingConflict.NotAwaitingConfirm);
-            }
-        }
-
-        await run.Completion.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
-        return run.Snapshot();
     }
 
     /// <summary>
@@ -606,12 +479,225 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         }
     }
 
+    private async Task<ProbeResult> ProbeCoreAsync(ProbeRequest request, CancellationToken cancellationToken)
+    {
+        var url = request.Url;
+        var network = request.Network;
+        var proxy = request.ProxyUrl;
+        var ack = request.LanAck;
+        string? inviteSecret = null;
+        if (!string.IsNullOrWhiteSpace(request.Invite))
+        {
+            // An invite names the server it is for (the first 8 hex of its id); a malformed one is refused before any request is made.
+            if (!Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.TryParse(request.Invite, out _, out inviteSecret))
+            {
+                return new ProbeResult { Ok = false, Failure = "inviteInvalid" };
+            }
+        }
+
+        PeerState? existing = null;
+        if (!string.IsNullOrEmpty(request.PeerHandle))
+        {
+            existing = FindPeer(request.PeerHandle);
+            if (existing is null)
+            {
+                return new ProbeResult { Ok = false, Failure = "unknownPeer" };
+            }
+
+            // The stored address is used: while a pairing lives, and for a re-pair, the address does not change.
+            (url, network, proxy, ack) = (existing.BaseUrl, existing.Network, existing.ProxyUrl, existing.LanCleartextAck);
+        }
+
+        var check = (_options.AddressValidator ?? AddressPolicy.Validate)(url, network, ack, proxy);
+        if (!check.Ok)
+        {
+            return new ProbeResult { Ok = false, AddressProblem = check.Problem };
+        }
+
+        var address = check.Address!;
+
+        // An invite's secret and the token that comes back travel over this address: cleartext is only for a Tailnet (DESIGN 4.2 step 1; Warden M2).
+        if (inviteSecret is not null && address.IsCleartext && network != PeerNetwork.Tailnet)
+        {
+            return new ProbeResult { Ok = false, Failure = "inviteLanHttp" };
+        }
+
+        var probeKey = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+        var endpoint = PeerEndpoint.WithoutToken(probeKey, "probe", address.BaseUri, DeviceIdFor(probeKey), null).Configured(network, proxy, ack, null, existing?.TlsSpkiPin);
+        var clock = Stopwatch.StartNew();
+        try
+        {
+            using var response = await _client.SendAsync(endpoint, PeerRequest.GetAnonymous("/System/Info/Public"), PeerCallProfile.Info, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                return new ProbeResult { Ok = false, Failure = "unreachable" };
+            }
+
+            var info = await response.ReadJsonAsync<SystemInfoWire>(cancellationToken).ConfigureAwait(false);
+            if (!PeerTrust.TryNormalizeServerId(info.Id, out var serverId))
+            {
+                return new ProbeResult { Ok = false, Failure = "notJellyfin" };
+            }
+
+            if (inviteSecret is not null && Jellyfin.Plugin.Shoal.Sharing.InviteCrypto.TryParse(request.Invite, out var invitePrefix, out _) && !string.Equals(invitePrefix, serverId[..8], StringComparison.Ordinal))
+            {
+                return new ProbeResult { Ok = false, Failure = "inviteWrongServer" };
+            }
+
+            var handle = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+            var name = TextClean.Display(info.ServerName, 64);
+            var version = TextClean.Display(info.Version, 32);
+            lock (_lock)
+            {
+                PurgeProbes();
+                if (_probes.Count >= MaxProbeHandles)
+                {
+                    var oldest = _probes.OrderBy(p => p.Value.ExpiresUtc).First().Key;
+                    _probes.Remove(oldest);
+                }
+
+                _probes[handle] = new ProbeEntry(address, network, proxy, ack, serverId, existing?.PeerKey, _time.GetUtcNow() + _options.ProbeLifetime, existing?.TlsSpkiPin, existing?.BaseUrl, inviteSecret);
+            }
+
+            var ping = await ShoalPing.DetectAsync(_client, endpoint, cancellationToken).ConfigureAwait(false);
+            return new ProbeResult
+            {
+                Ok = true,
+                ProbeHandle = handle,
+                ServerName = name.Length == 0 ? null : name,
+                Version = version.Length == 0 ? null : version,
+                ServerIdPrefix = serverId[..8],
+                LatencyMs = (int)Math.Min(clock.ElapsedMilliseconds, int.MaxValue),
+                Address = address.BaseUri.AbsoluteUri.TrimEnd('/'),
+                HasShoal = ping == PingOutcome.Yes,
+                ShoalPingThrottled = ping == PingOutcome.Throttled,
+                AlsoWatchesYou = _state.Status == StateStatus.Ready && Jellyfin.Plugin.Shoal.Sharing.FriendLinks.AlsoWatchesYou(_state.Current, serverId)
+            };
+        }
+        catch (PeerCallException ex) when (ex.Kind is PeerFailureKind.BadResponse or PeerFailureKind.TooLarge)
+        {
+            return new ProbeResult { Ok = false, Failure = "notJellyfin" };
+        }
+        catch (PeerCallException)
+        {
+            return new ProbeResult { Ok = false, Failure = "unreachable" };
+        }
+        finally
+        {
+            _client.Forget(probeKey);
+        }
+    }
+
+    // D17: Quick Connect pairing is gone. What an old state still holds is cleaned up at start, silently. A server that was paired that way is paused (it keeps its
+    // libraries, stubs and catalog; the titles stop playing like those of any paused server) until the admin pairs it again by invite. A pairing that was in flight
+    // the old way is dropped, and a stopped one with a legacy reason is cleared; a server that never finished pairing and holds no key is removed as Dismiss does.
+    private async Task MigrateLegacyAsync(CancellationToken cancellationToken)
+    {
+        if (_secrets.Status != SecretStoreStatus.Ready)
+        {
+            return; // the keys cannot be read, so "never paired" cannot be told: nothing is removed or paused now, the next start tries again
+        }
+
+        var legacyKinds = new[] { PairingErrorKind.RequestReplaced, PairingErrorKind.CodesDidNotMatch, PairingErrorKind.QuickConnectOff, PairingErrorKind.QuickConnectUnreachable, PairingErrorKind.LikelySessionLimit };
+        var pause = new List<string>();
+        var drop = new List<string>();
+        var clearPending = new List<string>();
+        foreach (var peer in _state.Current.Home.Peers)
+        {
+            var paired = HasCredential(peer.PeerKey);
+            var legacyPending = peer.PendingPairing is { Method: PairingMethod.Qc };
+            var legacyAbort = _health.GetAbort(peer.PeerKey) is { } abort && legacyKinds.Contains(abort.Kind);
+            if (legacyPending || legacyAbort)
+            {
+                if (legacyAbort)
+                {
+                    _health.ClearAbort(peer.PeerKey);
+                }
+
+                if (legacyPending)
+                {
+                    clearPending.Add(peer.PeerKey);
+                }
+
+                if (!paired && peer.Pairing is null && peer.Libraries.Count == 0)
+                {
+                    drop.Add(peer.PeerKey); // the test Dismiss uses: no pairing, no mapping, no key
+                    continue;
+                }
+            }
+
+            if (peer.Pairing?.Method == PairingMethod.Qc && peer.Enabled)
+            {
+                pause.Add(peer.PeerKey);
+            }
+        }
+
+        if (pause.Count == 0 && drop.Count == 0 && clearPending.Count == 0)
+        {
+            return;
+        }
+
+        await _state.UpdateAsync(
+            state =>
+            {
+                state.Home.Peers.RemoveAll(p => drop.Contains(p.PeerKey));
+                foreach (var peer in state.Home.Peers)
+                {
+                    if (clearPending.Contains(peer.PeerKey))
+                    {
+                        peer.PendingPairing = null;
+                    }
+
+                    if (pause.Contains(peer.PeerKey))
+                    {
+                        peer.Enabled = false;
+                    }
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+        foreach (var key in drop)
+        {
+            DeletePeerFolder(key);
+            _registry.Forget(key);
+        }
+
+        foreach (var key in pause)
+        {
+            await SignOutLegacyAsync(key).ConfigureAwait(false);
+            _logger.LogWarning("Shoal paused server {Peer}: it was paired the old way (Quick Connect, no longer supported). Pair it again with an invite; its libraries and titles stay", Redact.Id(key));
+        }
+    }
+
+    // The old Quick Connect session stays on the friend's server until it is ended: sign it out once, best effort (3 s, never fatal), as the server is paused.
+    private async Task SignOutLegacyAsync(string peerKey)
+    {
+        try
+        {
+            if (FindPeer(peerKey) is not { } peer || _secrets.TryGet(peerKey) is not { } credential || !Uri.TryCreate(peer.BaseUrl, UriKind.Absolute, out var uri))
+            {
+                return;
+            }
+
+            var endpoint = new PeerEndpoint(peerKey, peer.DisplayName, uri, credential.DeviceId, credential.Token).Configured(peer.Network, peer.ProxyUrl, peer.LanCleartextAck, peer.PinnedServerId, peer.TlsSpkiPin);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var response = await _client.SendAsync(endpoint, PeerRequest.Post("/Sessions/Logout", null).WithTrust(TrustRequirement.None).WithoutBreaker(), _options.StepProfile, timeout.Token).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Best effort: the friend can delete the old sharing account.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            // Nothing to do.
+        }
+    }
+
     private async Task RecoverAsync(CancellationToken cancellationToken)
     {
         if (_state.Status != StateStatus.Ready)
         {
             return;
         }
+
+        await MigrateLegacyAsync(cancellationToken).ConfigureAwait(false);
 
         var interrupted = _state.Current.Home.Peers.Where(p => p.PendingPairing is not null).Select(p => (p.PeerKey, Phase: p.PendingPairing!.Phase)).ToList();
         if (interrupted.Count > 0)
@@ -668,22 +754,17 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         private readonly Guid _adminId;
         private readonly CancellationTokenSource _cts = new();
         private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<bool> _decision = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly object _gate = new();
         private readonly string _deviceId;
-        private readonly string _check;
         private readonly DateTime _startedUtc;
         private readonly string _displayName;
-        private string? _secret;
-        private string? _code;
         private string? _token;
-        private Guid _tokenUserId;
         private DateTime? _expiresUtc;
+        private DateTime? _confirmedUtc;
         private bool _silent;
         private bool _shuttingDown;
         private PairingErrorKind? _error;
         private PairingPhase? _errorPhase;
-        private int? _sessionLimit;
         private IReadOnlyList<AccountWarning> _warnings = [];
         private IReadOnlyList<AccountNote> _notes = [];
         private PolicyWire _policy = new();
@@ -701,7 +782,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             _adminId = adminId;
             FirstPairing = firstPairing;
             _startedUtc = startedUtc;
-            _check = PairingValidation.NewCheck();
+            _expiresUtc = startedUtc + Jellyfin.Plugin.Shoal.Sharing.InviteBook.InviteLife; // a deadline from the first moment: Home own window, shortened when the Peer says how long is left
             _deviceId = service.DeviceIdFor(peerKey);
         }
 
@@ -710,6 +791,21 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         public bool FirstPairing { get; }
 
         public bool IsLive => !_finished;
+
+        public bool IsConfirmed => _confirmed;
+
+        public int LibrariesAtConfirm { get; private set; }
+
+        public DateTime? ConfirmedUtc
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _confirmedUtc;
+                }
+            }
+        }
 
         public PairingStep Step => _step;
 
@@ -739,7 +835,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
                         state.Home.Peers.Add(peer);
                     }
 
-                    peer.PendingPairing = new PairingProgress { Phase = PairingPhase.BeforeApproval, StartedUtc = _startedUtc, StartedByUserId = _adminId, Method = Method };
+                    peer.PendingPairing = new PairingProgress { Phase = PairingPhase.BeforeApproval, StartedUtc = _startedUtc, StartedByUserId = _adminId, Method = PairingMethod.Invite };
                 },
                 cancellationToken).ConfigureAwait(false);
         }
@@ -750,15 +846,14 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         {
             lock (_gate)
             {
-                var showCode = !_finished && _step is PairingStep.AwaitingApproval or PairingStep.Redeeming or PairingStep.Validating or PairingStep.AwaitingConfirm;
+                var showCode = !_finished && _step is PairingStep.AwaitingApproval or PairingStep.Validating;
                 return new PairingSessionInfo
                 {
-                    Method = Method,
+                    Method = PairingMethod.Invite,
                     PeerHandle = PeerKey,
                     Step = _step,
                     State = _confirmed ? "confirmed" : _error is not null ? "aborted" : "running",
-                    Code = showCode ? _code : null,
-                    SafetyCode = showCode ? (Method == PairingMethod.Invite ? _sas : _check) : null,
+                    SafetyCode = showCode ? _sas : null,
                     ExpiresUtc = _expiresUtc,
                     Error = _error,
                     Phase = _errorPhase,
@@ -771,8 +866,6 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             }
         }
 
-        public bool TryDecide(bool match) => _step == PairingStep.AwaitingConfirm && !_finished && _decision.TrySetResult(match);
-
         public void Cancel() => _cts.Cancel();
 
         public void Shutdown()
@@ -782,10 +875,10 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         }
 
         private PeerEndpoint Unauthenticated() =>
-            PeerEndpoint.WithoutToken(PeerKey, _displayName, _probe.Address.BaseUri, _deviceId, _check).Configured(_probe.Network, _probe.ProxyUrl, _probe.LanAck, _probe.ServerId, _probe.TlsPin);
+            PeerEndpoint.WithoutToken(PeerKey, _displayName, _probe.Address.BaseUri, _deviceId, null).Configured(_probe.Network, _probe.ProxyUrl, _probe.LanAck, _probe.ServerId, _probe.TlsPin);
 
         private PeerEndpoint Authenticated() =>
-            new PeerEndpoint(PeerKey, _displayName, _probe.Address.BaseUri, _deviceId, _token!, _check).Configured(_probe.Network, _probe.ProxyUrl, _probe.LanAck, _probe.ServerId, _probe.TlsPin);
+            new PeerEndpoint(PeerKey, _displayName, _probe.Address.BaseUri, _deviceId, _token!).Configured(_probe.Network, _probe.ProxyUrl, _probe.LanAck, _probe.ServerId, _probe.TlsPin);
 
         private void SetStep(PairingStep step)
         {
@@ -799,7 +892,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
         {
             try
             {
-                await RunCoreAsync().ConfigureAwait(false);
+                await RunInviteAsync().ConfigureAwait(false);
             }
             catch (AbortException abort)
             {
@@ -825,281 +918,8 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
 
         private void Complete() => _completion.TrySetResult();
 
-        private async Task RunCoreAsync()
-        {
-            if (Method == PairingMethod.Invite)
-            {
-                await RunInviteAsync().ConfigureAwait(false);
-                return;
-            }
-
-            var now = _service._time;
-            await PreflightAsync().ConfigureAwait(false);
-            await ReadSessionLimitAsync().ConfigureAwait(false);
-
-            // Initiating. The local deadline starts when the request is sent.
-            SetStep(PairingStep.Initiating);
-            var deadline = now.GetUtcNow() + _service._options.LocalDeadline;
-            await InitiateAsync().ConfigureAwait(false);
-
-            // Baseline: the first poll must confirm the request before anything is shown.
-            SetStep(PairingStep.GettingCode);
-            await BaselineAsync().ConfigureAwait(false);
-            lock (_gate)
-            {
-                _expiresUtc = deadline.UtcDateTime;
-                _step = PairingStep.AwaitingApproval;
-            }
-
-            var minted = await AwaitApprovalAsync(deadline).ConfigureAwait(false);
-            _token = minted.Token;
-            _tokenUserId = minted.UserId;
-            _secret = null;
-
-            await ValidateAsync().ConfigureAwait(false);
-            await AwaitConfirmAsync().ConfigureAwait(false);
-        }
-
         private async Task<PeerResponse> CallAsync(PeerEndpoint endpoint, PeerRequest request, PeerCallProfile profile) =>
             await _service._client.SendAsync(endpoint, request.WithTrust(TrustRequirement.None).WithoutBreaker(), profile, _cts.Token).ConfigureAwait(false);
-
-        private async Task PreflightAsync()
-        {
-            SetStep(PairingStep.Preflight);
-            try
-            {
-                using (var identity = await CallAsync(Unauthenticated(), PeerRequest.GetAnonymous("/System/Info/Public"), PeerCallProfile.Info).ConfigureAwait(false))
-                {
-                    if (identity.StatusCode != HttpStatusCode.OK)
-                    {
-                        throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-                    }
-
-                    var info = await identity.ReadJsonAsync<SystemInfoWire>(_cts.Token).ConfigureAwait(false);
-                    if (!PeerTrust.TryNormalizeServerId(info.Id, out var id))
-                    {
-                        throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-                    }
-
-                    if (!string.Equals(id, _probe.ServerId, StringComparison.Ordinal))
-                    {
-                        throw new AbortException(PairingErrorKind.ServerChanged);
-                    }
-                }
-
-                using var enabled = await CallAsync(Unauthenticated(), PeerRequest.GetAnonymous("/QuickConnect/Enabled"), _service._options.StepProfile).ConfigureAwait(false);
-                if (enabled.StatusCode == HttpStatusCode.Unauthorized)
-                {
-                    throw new AbortException(PairingErrorKind.QuickConnectOff);
-                }
-
-                if (enabled.StatusCode != HttpStatusCode.OK)
-                {
-                    throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-                }
-
-                var text = (await enabled.ReadUtf8Async(_cts.Token).ConfigureAwait(false)).Trim();
-                if (string.Equals(text, "false", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new AbortException(PairingErrorKind.QuickConnectOff); // no Initiate is sent
-                }
-
-                if (!string.Equals(text, "true", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-                }
-            }
-            catch (PeerCallException)
-            {
-                throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-            }
-        }
-
-        private async Task InitiateAsync()
-        {
-            try
-            {
-                using var response = await CallAsync(Unauthenticated(), PeerRequest.Post("/QuickConnect/Initiate", null, authenticated: false), _service._options.StepProfile).ConfigureAwait(false);
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
-                {
-                    throw new AbortException(PairingErrorKind.QuickConnectOff);
-                }
-
-                if (response.StatusCode != HttpStatusCode.OK)
-                {
-                    throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-                }
-
-                var wire = await response.ReadJsonAsync<QuickConnectWire>(_cts.Token).ConfigureAwait(false);
-                if (!PairingValidation.IsValid(wire, null, null) || wire.Authenticated == true)
-                {
-                    throw new AbortException(PairingErrorKind.BadPeerResponse);
-                }
-
-                _secret = wire.Secret;
-                _code = wire.Code;
-            }
-            catch (PeerCallException ex)
-            {
-                throw new AbortException(ex.Kind is PeerFailureKind.BadResponse or PeerFailureKind.TooLarge ? PairingErrorKind.BadPeerResponse : PairingErrorKind.QuickConnectUnreachable);
-            }
-        }
-
-        private async Task<(PollKind Kind, bool Authenticated)> PollOnceAsync()
-        {
-            _lastPollStart = _service._time.GetUtcNow();
-            try
-            {
-                using var response = await CallAsync(Unauthenticated(), PeerRequest.GetAnonymous("/QuickConnect/Connect?secret=" + _secret), _service._options.PollProfile).ConfigureAwait(false);
-                switch (response.StatusCode)
-                {
-                    case HttpStatusCode.OK:
-                        var wire = await response.ReadJsonAsync<QuickConnectWire>(_cts.Token).ConfigureAwait(false);
-                        if (!PairingValidation.IsValid(wire, _secret, _code))
-                        {
-                            return (PollKind.Invalid, false);
-                        }
-
-                        return wire.Authenticated == true ? (PollKind.Approved, true) : (PollKind.Waiting, false);
-                    case HttpStatusCode.NotFound:
-                        return (PollKind.NotFound, false);
-                    case HttpStatusCode.Unauthorized:
-                        return (PollKind.Off, false);
-                    default:
-                        return ((int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.TooManyRequests ? PollKind.Unreachable : PollKind.Invalid, false);
-                }
-            }
-            catch (PeerCallException ex)
-            {
-                return ex.Kind is PeerFailureKind.Redirect or PeerFailureKind.BadResponse or PeerFailureKind.TooLarge ? (PollKind.NonJson, false) : (PollKind.Unreachable, false);
-            }
-        }
-
-        private async Task BaselineAsync()
-        {
-            var now = _service._time;
-            var end = now.GetUtcNow() + _service._options.BaselineWindow;
-            while (true)
-            {
-                var started = now.GetUtcNow();
-                var (kind, _) = await PollOnceAsync().ConfigureAwait(false);
-                switch (kind)
-                {
-                    case PollKind.Waiting:
-                        return;
-                    case PollKind.NotFound:
-                    case PollKind.NonJson:
-                        throw new AbortException(PairingErrorKind.QuickConnectUnreachable); // never "replaced": nothing was confirmed yet
-                    case PollKind.Off:
-                        throw new AbortException(PairingErrorKind.QuickConnectOff);
-                    case PollKind.Approved:
-                    case PollKind.Invalid:
-                        throw new AbortException(PairingErrorKind.BadPeerResponse);
-                    default:
-                        if (now.GetUtcNow() >= end)
-                        {
-                            throw new AbortException(PairingErrorKind.QuickConnectUnreachable);
-                        }
-
-                        break;
-                }
-
-                await DelayUntilAsync(started + _service._options.PollInterval).ConfigureAwait(false);
-            }
-        }
-
-        // Rule (b) of 4.2a: a re-pair that runs out unapproved while the friend's account shows a session limit is probably the limit.
-        private AbortException DeadlineReached() =>
-            !FirstPairing && _sessionLimit is >= 1
-                ? new AbortException(PairingErrorKind.LikelySessionLimit, PairingPhase.BeforeApproval)
-                : new AbortException(PairingErrorKind.Expired);
-
-        // The Start-time reading of the account (W6 L-1): one GET /Users/Me with the old token of a re-pair. A dead token, a refusal or any
-        // failure leaves the reading unknown. Called only after Preflight proved the server id, so the token never goes to a host that failed the pin.
-        private async Task ReadSessionLimitAsync()
-        {
-            if (FirstPairing || _service._secrets.TryGet(PeerKey) is not { } old)
-            {
-                return;
-            }
-
-            try
-            {
-                var endpoint = new PeerEndpoint(PeerKey, _displayName, _probe.Address.BaseUri, old.DeviceId, old.Token, _check).Configured(_probe.Network, _probe.ProxyUrl, _probe.LanAck, _probe.ServerId, _probe.TlsPin);
-                using var me = await CallAsync(endpoint, PeerRequest.Get("/Users/Me"), PeerCallProfile.Info).ConfigureAwait(false);
-                if (me.StatusCode == HttpStatusCode.OK && (await me.ReadJsonAsync<UserWire>(_cts.Token).ConfigureAwait(false)).Policy?.MaxActiveSessions is { } limit)
-                {
-                    _sessionLimit = limit;
-                }
-            }
-            catch (PeerCallException)
-            {
-                // unknown: the abort then says "expired"
-            }
-        }
-
-        private async Task<(string Token, Guid UserId)> AwaitApprovalAsync(DateTimeOffset deadline)
-        {
-            var now = _service._time;
-            var failures = 0;
-            var lastGood = now.GetUtcNow();
-            while (true)
-            {
-                if (now.GetUtcNow() >= deadline)
-                {
-                    throw DeadlineReached();
-                }
-
-                // One poll every PollInterval, counted from the start of the previous poll (the baseline poll counts as the first).
-                await DelayUntilAsync(_lastPollStart + _service._options.PollInterval).ConfigureAwait(false);
-                if (now.GetUtcNow() >= deadline)
-                {
-                    throw DeadlineReached();
-                }
-
-                var (kind, _) = await PollOnceAsync().ConfigureAwait(false);
-                switch (kind)
-                {
-                    case PollKind.Waiting:
-                        failures = 0;
-                        lastGood = now.GetUtcNow();
-                        SetSilent(false);
-                        break;
-                    case PollKind.Approved:
-                        SetStep(PairingStep.Redeeming);
-                        return await RedeemAsync(afterApproval: true).ConfigureAwait(false) ?? throw new AbortException(PairingErrorKind.Server);
-                    case PollKind.Invalid:
-                    case PollKind.NonJson:
-                        throw new AbortException(PairingErrorKind.BadPeerResponse);
-                    case PollKind.Off:
-                        throw new AbortException(PairingErrorKind.QuickConnectOff);
-                    case PollKind.NotFound:
-                        if (now.GetUtcNow() >= deadline)
-                        {
-                            throw DeadlineReached();
-                        }
-
-                        // The entry is gone: another Initiate drew the same code, the Peer restarted, or its clock expired it early.
-                        // One redeem attempt tells "approved before the replacement" from "replaced".
-                        SetStep(PairingStep.Redeeming);
-                        var late = await RedeemAsync(afterApproval: false).ConfigureAwait(false);
-                        return late ?? throw new AbortException(PairingErrorKind.RequestReplaced);
-                    default:
-                        failures++;
-                        if (failures >= _service._options.SilentAfterFailures)
-                        {
-                            SetSilent(true);
-                        }
-
-                        if (now.GetUtcNow() - lastGood > _service._options.NetworkAbortAfter)
-                        {
-                            throw new AbortException(PairingErrorKind.Network);
-                        }
-
-                        break;
-                }
-            }
-        }
 
         private void SetSilent(bool value)
         {
@@ -1118,48 +938,6 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             }
         }
 
-        // One AuthenticateWithQuickConnect attempt. After an approval the answers 401, 403 and 404 are what a session limit looks like from
-        // outside (the reason is only in the Peer's log), so they map to LikelySessionLimit without ever looking at message text. In the
-        // "entry vanished" path any failure means the request was replaced, and null says so.
-        private async Task<(string Token, Guid UserId)?> RedeemAsync(bool afterApproval)
-        {
-            var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { ["Secret"] = _secret! });
-            try
-            {
-                using var response = await CallAsync(Unauthenticated(), PeerRequest.Post("/Users/AuthenticateWithQuickConnect", body, authenticated: false), _service._options.PollProfile).ConfigureAwait(false);
-                if (response.StatusCode != HttpStatusCode.OK)
-                {
-                    if (!afterApproval)
-                    {
-                        return null;
-                    }
-
-                    throw response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound
-                        ? new AbortException(PairingErrorKind.LikelySessionLimit, PairingPhase.AfterApproval) // rule (a): they approved, then their server refused
-                        : new AbortException(PairingErrorKind.Network);
-                }
-
-                var wire = await response.ReadJsonAsync<AuthenticationWire>(_cts.Token).ConfigureAwait(false);
-                switch (PairingValidation.ReadAuthentication(wire, _probe.ServerId, out var token, out var userId))
-                {
-                    case AuthRead.Ok:
-                        return (token, userId);
-                    case AuthRead.ServerChanged: // the result names another server: reported as a malformed answer (T-PAIR-14)
-                    default:
-                        throw new AbortException(PairingErrorKind.BadPeerResponse);
-                }
-            }
-            catch (PeerCallException ex)
-            {
-                if (ex.Kind is PeerFailureKind.BadResponse or PeerFailureKind.TooLarge)
-                {
-                    throw new AbortException(PairingErrorKind.BadPeerResponse);
-                }
-
-                return afterApproval ? throw new AbortException(PairingErrorKind.Network) : null;
-            }
-        }
-
         private async Task ValidateAsync()
         {
             SetStep(PairingStep.Validating);
@@ -1174,7 +952,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
                     }
 
                     var user = await me.ReadJsonAsync<UserWire>(_cts.Token).ConfigureAwait(false);
-                    if (!PairingValidation.TryGuid(user.Id, out var meId) || (Method == PairingMethod.Qc && meId != _tokenUserId) || user.Policy?.IsAdministrator is null)
+                    if (!PairingValidation.TryGuid(user.Id, out var meId) || user.Policy?.IsAdministrator is null)
                     {
                         throw new AbortException(PairingErrorKind.BadPeerResponse);
                     }
@@ -1227,36 +1005,11 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             }
         }
 
-        private async Task AwaitConfirmAsync()
-        {
-            lock (_gate)
-            {
-                _expiresUtc = (_service._time.GetUtcNow() + _service._options.ConfirmWindow).UtcDateTime;
-                _step = PairingStep.AwaitingConfirm;
-            }
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-            var timeout = Task.Delay(_service._options.ConfirmWindow, _service._time, timeoutCts.Token);
-            var winner = await Task.WhenAny(_decision.Task, timeout).ConfigureAwait(false);
-            if (winner != _decision.Task)
-            {
-                _cts.Token.ThrowIfCancellationRequested();
-                throw new AbortException(PairingErrorKind.Expired);
-            }
-
-            await timeoutCts.CancelAsync().ConfigureAwait(false);
-            if (!await _decision.Task.ConfigureAwait(false))
-            {
-                throw new AbortException(PairingErrorKind.CodesDidNotMatch);
-            }
-
-            await FinalizeAsync().ConfigureAwait(false);
-        }
-
         private async Task FinalizeAsync()
         {
             var service = _service;
-            var credential = new PeerCredential(_token!, _deviceId, service._time.GetUtcNow().UtcDateTime, Method);
+            var credential = new PeerCredential(_token!, _deviceId, service._time.GetUtcNow().UtcDateTime, PairingMethod.Invite);
+            await LogoutOldQuickConnectTokenAsync().ConfigureAwait(false);
             try
             {
                 await service._secrets.PutAsync(PeerKey, credential, CancellationToken.None).ConfigureAwait(false);
@@ -1266,7 +1019,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
                         var peer = state.Home.Peers.First(p => string.Equals(p.PeerKey, PeerKey, StringComparison.Ordinal));
                         peer.Enabled = true;
                         peer.PinnedServerId = _probe.ServerId;
-                        peer.Pairing = new PairingInfo { Method = Method, CheckString = _check, PairedUtc = credential.PairedUtc, PairedByUserId = _adminId };
+                        peer.Pairing = new PairingInfo { Method = PairingMethod.Invite, PairedUtc = credential.PairedUtc, PairedByUserId = _adminId };
                         peer.PendingPairing = null;
                     },
                     CancellationToken.None).ConfigureAwait(false);
@@ -1287,8 +1040,9 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             lock (_gate)
             {
                 _token = null;
-                _code = null;
                 _confirmed = true;
+                _confirmedUtc = service._time.GetUtcNow().UtcDateTime;
+                LibrariesAtConfirm = service.FindPeer(PeerKey)?.Libraries.Count ?? 0;
                 _expiresUtc = null;
                 _warnings = warnings;
                 _notes = notes;
@@ -1296,7 +1050,30 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
                 _finished = true;
             }
 
-            service._logger.LogInformation("Paired with peer {Peer} by {Method}", Redact.Id(PeerKey), Method);
+            service._logger.LogInformation("Paired with peer {Peer} by {Method}", Redact.Id(PeerKey), PairingMethod.Invite);
+        }
+
+        // A server that was paired the old way (Quick Connect) still holds that session on the friend's server. Just before the new credential replaces it, Home signs the old
+        // token out, best effort: 3 seconds, and whatever happens never stops the pairing (the friend can delete the old sharing account).
+        private async Task LogoutOldQuickConnectTokenAsync()
+        {
+            if (FirstPairing || _service._secrets.TryGet(PeerKey) is not { Method: PairingMethod.Qc } old)
+            {
+                return;
+            }
+
+            try
+            {
+                var endpoint = new PeerEndpoint(PeerKey, _displayName, _probe.Address.BaseUri, old.DeviceId, old.Token).Configured(_probe.Network, _probe.ProxyUrl, _probe.LanAck, _probe.ServerId, _probe.TlsPin);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                using var response = await _service._client.SendAsync(endpoint, PeerRequest.Post("/Sessions/Logout", null).WithTrust(TrustRequirement.None).WithoutBreaker(), _service._options.StepProfile, timeout.Token).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // Best effort: the old token is replaced whether or not the friend's server heard us.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // Nothing to do.
+            }
         }
 
         private async Task LogoutTokenAsync()
@@ -1337,8 +1114,6 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             lock (_gate)
             {
                 _token = null;
-                _secret = null;
-                _code = null;
                 _expiresUtc = null;
                 _error = kind;
                 _errorPhase = phase;
@@ -1367,7 +1142,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             }
 
             service._registry.SetStatus(PeerKey, FirstPairing ? PeerStatus.PairingAborted : PeerStatus.Offline);
-            service._logger.LogWarning("The pairing with peer {Peer} stopped: {Kind}", Redact.Id(PeerKey), kind);
+            service._logger.LogInformation("The pairing with peer {Peer} ended without a credential: {Kind} (phase {Phase}, {Method})", Redact.Id(PeerKey), kind, phase?.ToString() ?? "unknown", PairingMethod.Invite);
             if (PairingErrors.IsSafety(kind))
             {
                 await service._notifier.NotifyAdminsAsync("Pairing stopped for your safety", PairingMessages.SafetyText(kind, _displayName)).ConfigureAwait(false);
@@ -1386,8 +1161,6 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
             lock (_gate)
             {
                 _token = null;
-                _secret = null;
-                _code = null;
                 _finished = true;
             }
 
@@ -1429,7 +1202,7 @@ public sealed partial class PairingService : IPairingGate, IHostedService, IDisp
 }
 
 /// <summary>
-/// The fixed texts of the pop-up for the five safety kinds. Only the admin-typed server name is included, cleaned.
+/// The fixed texts of the pop-up for the three safety kinds. Only the admin-typed server name is included, cleaned.
 /// </summary>
 internal static class PairingMessages
 {
@@ -1444,8 +1217,6 @@ internal static class PairingMessages
         var name = Redact.Peer(serverName);
         return kind switch
         {
-            PairingErrorKind.RequestReplaced => name + ": your pairing request was replaced (or the server restarted). Tell your friend NOT to enter the code. If they already did, they should delete the sharing account and you start again with a new one.",
-            PairingErrorKind.CodesDidNotMatch => name + ": the codes did not match. Your friend should delete the sharing account and you start again with a new one.",
             PairingErrorKind.ServerChanged => name + ": the server that answered is not the one you checked. Nothing was saved.",
             PairingErrorKind.AdminAccount => name + ": your friend approved an administrator account. Home refused it and signed it out.",
             PairingErrorKind.BadPeerResponse => name + ": the server sent an answer that Jellyfin would not send. Nothing was saved.",

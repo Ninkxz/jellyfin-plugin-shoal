@@ -119,6 +119,14 @@ public sealed class PeerRegistry
     }
 
     /// <summary>
+    /// Raised with the peer key when a peer is stopped for what is held in memory on its behalf: it was stopped by a failed check, is being paired, was removed, or its key
+    /// is being replaced. A listener must only drop its own memory and never call back into the registry.
+    /// </summary>
+#pragma warning disable CA1003 // A plain callback with the key: internal plumbing, not a public event model.
+    public event Action<string>? PeerStopped;
+#pragma warning restore CA1003
+
+    /// <summary>
     /// Starts a token rotation of a peer if nothing else is rotating it and <paramref name="noStreamsHeld"/> says no stream or conversion slot is held.
     /// The check and the mark are one step under the peer's lock; the mark ends by itself after <see cref="RotationWindow"/>.
     /// </summary>
@@ -143,8 +151,10 @@ public sealed class PeerRegistry
             }
 
             entry.RotatingUntil = now + RotationWindow;
-            return RotationStart.Started;
         }
+
+        PeerStopped?.Invoke(peerKey); // what is held for the old key is dropped
+        return RotationStart.Started;
     }
 
     /// <summary>
@@ -174,6 +184,20 @@ public sealed class PeerRegistry
     /// </summary>
     /// <param name="peerKey">The peer key.</param>
     /// <returns>The status; <see cref="PeerStatus.Offline"/> for a peer nobody has looked at.</returns>
+    public bool IsKnown(string peerKey) => _peers.TryGetValue(peerKey, out var entry) && entry.StatusSinceUtc is not null;
+
+    /// <summary>
+    /// Since when the peer has had its current status (when it last changed), or null when no status was set in this run.
+    /// </summary>
+    /// <param name="peerKey">The peer key.</param>
+    /// <returns>The time, or null.</returns>
+    public DateTimeOffset? StatusSinceUtc(string peerKey) => _peers.TryGetValue(peerKey, out var entry) ? entry.StatusSinceUtc : null;
+
+    /// <summary>
+    /// Gets the status.
+    /// </summary>
+    /// <param name="peerKey">The peer key.</param>
+    /// <returns>The status; <see cref="PeerStatus.Offline"/> for a peer nobody has looked at.</returns>
     public PeerStatus StatusOf(string peerKey) => _peers.TryGetValue(peerKey, out var entry) ? entry.Status : PeerStatus.Offline;
 
     /// <summary>
@@ -184,14 +208,25 @@ public sealed class PeerRegistry
     public void SetStatus(string peerKey, PeerStatus status)
     {
         var entry = _peers.GetOrAdd(peerKey, _ => new Entry());
+        var stopped = status is PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.AuthFailed or PeerStatus.Pairing or PeerStatus.PairingAborted or PeerStatus.Disabled;
         lock (entry)
         {
+            if (entry.StatusSinceUtc is null || entry.Status != status)
+            {
+                entry.StatusSinceUtc = _time.GetUtcNow();
+            }
+
             entry.Status = status;
             if (status is PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.AuthFailed or PeerStatus.Pairing or PeerStatus.PairingAborted or PeerStatus.Disabled)
             {
                 entry.PinVerifiedUtc = null; // whatever was true before no longer counts
                 entry.AuthVerifiedUtc = null;
             }
+        }
+
+        if (stopped)
+        {
+            PeerStopped?.Invoke(peerKey);
         }
     }
 
@@ -266,7 +301,11 @@ public sealed class PeerRegistry
     /// Forgets a peer completely.
     /// </summary>
     /// <param name="peerKey">The peer key.</param>
-    public void Forget(string peerKey) => _peers.TryRemove(peerKey, out _);
+    public void Forget(string peerKey)
+    {
+        _peers.TryRemove(peerKey, out _);
+        PeerStopped?.Invoke(peerKey);
+    }
 
     /// <summary>
     /// When the server id was last confirmed, or null.
@@ -339,6 +378,8 @@ public sealed class PeerRegistry
     private sealed class Entry
     {
         public PeerStatus Status { get; set; } = PeerStatus.Offline;
+
+        public DateTimeOffset? StatusSinceUtc { get; set; }
 
         public DateTimeOffset? PinVerifiedUtc { get; set; }
 

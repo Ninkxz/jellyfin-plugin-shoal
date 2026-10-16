@@ -46,6 +46,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     private readonly TimeProvider _time;
     private readonly IAttachmentRebuilder? _attachments;
     private readonly IVersionResolver? _versions;
+    private readonly OfflineCards? _cards;
     private readonly ILogger<PlaybackInfoHandler> _logger;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _lastCanaryAlert = new();
 
@@ -70,6 +71,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     /// <param name="logger">The logger.</param>
     /// <param name="attachments">Rebuilds the attachments (DESIGN v2.6.6); none means no attachments.</param>
     /// <param name="versions">Maps the media source the client names to a version of the title (DESIGN v2.6.4); none means the title has one version.</param>
+    /// <param name="cards">The offline card (owner request 2026-10-16); none means an offline friend gets the plain refusal.</param>
     public PlaybackInfoHandler(
         GrantStore grants,
         RateLimiter limiter,
@@ -88,8 +90,10 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         TimeProvider time,
         ILogger<PlaybackInfoHandler> logger,
         IAttachmentRebuilder? attachments = null,
-        IVersionResolver? versions = null)
+        IVersionResolver? versions = null,
+        OfflineCards? cards = null)
     {
+        _cards = cards;
         _versions = versions;
         _grants = grants;
         _limiter = limiter;
@@ -175,7 +179,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
 
         // Slot pre-check (6.2 step 1): nothing is reserved; the first byte or segment stays the authoritative check (6.9). One slot per version set.
         var peerState = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey);
-        if (peerState is not null && !_slots.CanStart(caller.UserId, setId.Length == 0 ? request.ItemId : SlotKey.Of(setId), peerKey, peerState.MaxConcurrentStreams))
+        if (peerState is not null && !_slots.CanStart(caller.UserId, setId.Length == 0 ? request.ItemId : SlotKey.Of(setId), peerKey, peerState.MaxConcurrentStreams, new SlotOrigin(entry.Kind == EntryKind.Episode ? entry.PeerSeriesId : string.Empty, caller.DeviceId)))
         {
             return Error(PlaybackErrorCode.RateLimitExceeded);
         }
@@ -199,7 +203,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         {
             if (!await _trust.EnsureAsync(peer, TrustRequirement.PinFresh, cancellationToken).ConfigureAwait(false))
             {
-                return Offline(caller.UserId, peerKey, peer.DisplayName);
+                return await OfflineAsync(request, caller.UserId, peerKey, peer.DisplayName, cancellationToken).ConfigureAwait(false);
             }
 
             using var response = await _client.SendAsync(peer, PeerRequest.Post($"/Items/{peerItemId:N}/PlaybackInfo", body), PeerCallProfile.PlaybackInfo, cancellationToken).ConfigureAwait(false);
@@ -223,7 +227,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
             {
                 PeerFailureKind.Blocked => Error(PlaybackErrorCode.NotAllowed),
                 PeerFailureKind.BadResponse or PeerFailureKind.TooLarge or PeerFailureKind.Redirect => new ShoalResult(StatusCodes.Status502BadGateway),
-                _ => Offline(caller.UserId, peerKey, peer.DisplayName),
+                _ => await OfflineAsync(request, caller.UserId, peerKey, peer.DisplayName, cancellationToken).ConfigureAwait(false),
             };
         }
 
@@ -287,10 +291,22 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
 
     private static ShoalRawJsonResult Error(PlaybackErrorCode code) => new(StatusCodes.Status200OK, PlaybackInfoBuilder.ErrorBody(code));
 
-    private ShoalRawJsonResult Offline(Guid userId, string peerKey, string peerName)
+    private async Task<IActionResult> OfflineAsync(FederatedRequest request, Guid userId, string peerKey, string peerName, CancellationToken cancellationToken)
     {
+        // The alias the admin gave the server, if any, is what Home's users read; the name the friend chose for its server is not (Warden 15 L3).
+        peerName = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey)?.ShownName() ?? peerName;
         _notice.PeerOffline(userId, peerKey, peerName);
-        return Error(PlaybackErrorCode.RateLimitExceeded);
+
+        // The offline card (owner request 2026-10-16): a normal-looking direct-play source for a short clip that says the friend is down. No peer is called, no grant or
+        // stream slot is made, and the play session is Home's own; the reports for it are swallowed by the intercept filter. Off, or no clip: the plain refusal below.
+        if (_cards is { Enabled: true } cards && await cards.GetAsync(peerName, cancellationToken).ConfigureAwait(false) is { } clip && cards.NewSession(userId, request.ItemId) is { } session)
+        {
+            return new ShoalRawJsonResult(StatusCodes.Status200OK, PlaybackInfoBuilder.Serialize(OfflineCards.BuildResponse(request.ItemId, clip, session)));
+        }
+
+        // NotAllowed, not RateLimitExceeded: jellyfin-web words the latter "cannot be played due to rate limits", which is wrong for a server that is down. No error code
+        // can say "offline"; the message the notice sends to the user's sessions does, and NotAllowed ("Playback of this media is not allowed") is at least not a false reason.
+        return Error(PlaybackErrorCode.NotAllowed);
     }
 
     // K14-L1: at most one pop-up per peer per five minutes; a hostile peer cannot flood the admins by being played again and again.

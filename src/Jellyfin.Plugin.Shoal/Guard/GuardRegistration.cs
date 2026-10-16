@@ -127,7 +127,6 @@ public static class GuardRegistration
         services.AddSingleton<GuardShares>();
         services.AddSingleton<GuardCounters>();
         services.AddSingleton<IGuardCounters>(sp => sp.GetRequiredService<GuardCounters>());
-        services.AddSingleton<InitiateShield>();
         services.AddSingleton<SharedItemCache>();
         services.AddSingleton<IGuardItems, JellyfinGuardItems>();
         services.AddSingleton<ITranscodeProbe, JellyfinTranscodeProbe>();

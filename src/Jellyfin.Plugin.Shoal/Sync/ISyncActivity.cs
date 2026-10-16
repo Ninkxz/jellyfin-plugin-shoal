@@ -1,3 +1,6 @@
+using System;
+using System.Threading.Tasks;
+
 namespace Jellyfin.Plugin.Shoal.Sync;
 
 /// <summary>
@@ -11,4 +14,12 @@ public interface ISyncActivity
     /// <param name="peerKey">The server's handle.</param>
     /// <returns>True while one runs.</returns>
     bool IsSyncing(string peerKey);
+
+    /// <summary>
+    /// Ends the running sync of this server early (its time budget is spent, so it stops at the next checkpoint and reports what it did) and waits for it, up to a limit.
+    /// </summary>
+    /// <param name="peerKey">The server's handle.</param>
+    /// <param name="wait">The longest wait.</param>
+    /// <returns>A task that completes when no sync of the server runs any more, or the wait is over.</returns>
+    Task StopAsync(string peerKey, TimeSpan wait) => Task.CompletedTask;
 }

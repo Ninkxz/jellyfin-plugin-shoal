@@ -21,13 +21,16 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Shoal.Peers;
 
 /// <summary>
-/// Keeps the runtime status of every peer true (DESIGN 4.3, 4.4): the identity and the token are re-checked every 60 seconds (the trust window), a
-/// Quick Connect peer gets the session anchor, and every 10 minutes the foreign-device watch looks for a second device on the share account.
+/// Keeps the runtime status of every peer true (DESIGN 4.3, 4.4): the identity and the token are re-checked every 60 seconds (the trust window), and
+/// every 10 minutes the foreign-device watch looks for a second device on the share account.
 /// </summary>
 public sealed class HealthMonitor
 {
     /// <summary>How often a peer is checked.</summary>
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
+
+    /// <summary>How often a peer that is offline is looked at again (the circuit breaker still decides when a probe may go out).</summary>
+    public static readonly TimeSpan OfflineInterval = TimeSpan.FromSeconds(15);
 
     /// <summary>How often the foreign-device watch runs.</summary>
     public static readonly TimeSpan WatchInterval = TimeSpan.FromMinutes(10);
@@ -42,6 +45,7 @@ public sealed class HealthMonitor
     private readonly IAdminNotifier _admins;
     private readonly TimeProvider _time;
     private readonly ILogger<HealthMonitor> _logger;
+    private readonly Jellyfin.Plugin.Shoal.Visibility.IOfflineParking? _parking;
     private readonly ConcurrentDictionary<string, PeerRun> _runs = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -55,8 +59,10 @@ public sealed class HealthMonitor
     /// <param name="admins">The admin notifier.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    public HealthMonitor(IStateStore state, IPeerEndpoints peers, PeerClient client, PeerTrust trust, PeerRegistry registry, IAdminNotifier admins, TimeProvider time, ILogger<HealthMonitor> logger)
+    /// <param name="parking">Hides the libraries of a peer that stays offline, or null.</param>
+    public HealthMonitor(IStateStore state, IPeerEndpoints peers, PeerClient client, PeerTrust trust, PeerRegistry registry, IAdminNotifier admins, TimeProvider time, ILogger<HealthMonitor> logger, Jellyfin.Plugin.Shoal.Visibility.IOfflineParking? parking = null)
     {
+        _parking = parking;
         _state = state;
         _peers = peers;
         _client = client;
@@ -72,17 +78,41 @@ public sealed class HealthMonitor
     /// </summary>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>A task that ends when all peers were checked.</returns>
-    public async Task CheckAllAsync(CancellationToken cancellationToken)
+    public Task CheckAllAsync(CancellationToken cancellationToken) => CheckAllAsync(false, cancellationToken);
+
+    /// <summary>
+    /// Checks the enabled peers once, or only the ones that are offline right now (the quick rounds that notice a recovery sooner).
+    /// </summary>
+    /// <param name="onlyOffline">True to check only peers whose status is Offline.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that ends when the peers were checked.</returns>
+    public async Task CheckAllAsync(bool onlyOffline, CancellationToken cancellationToken)
     {
         if (_state.Status != StateStatus.Ready)
         {
             return;
         }
 
-        foreach (var peer in _state.Current.Home.Peers.Where(static p => p.Enabled).ToList())
+        var enabledPeers = _state.Current.Home.Peers.Where(static p => p.Enabled).ToList();
+        foreach (var peer in enabledPeers)
         {
+            if (onlyOffline && _registry.StatusOf(peer.PeerKey) != PeerStatus.Offline)
+            {
+                continue;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            await CheckAsync(peer.PeerKey, cancellationToken).ConfigureAwait(false);
+            var status = await CheckAsync(peer.PeerKey, cancellationToken).ConfigureAwait(false);
+            if (_parking is not null)
+            {
+                await _parking.ObserveAsync(peer.PeerKey, status, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (_parking is not null)
+        {
+            // A peer that was disabled or removed while hidden, or the setting switched off, must not leave people without those libraries.
+            await _parking.SweepAsync([.. enabledPeers.Select(static p => p.PeerKey)], cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -92,7 +122,7 @@ public sealed class HealthMonitor
     /// <param name="peerKey">The peer.</param>
     /// <returns>The snapshot, or null before the first check.</returns>
     public PeerHealthSnapshot? Snapshot(string peerKey) =>
-        _runs.TryGetValue(peerKey, out var run) && run.LastCheckUtc is { } last ? new PeerHealthSnapshot(last, last + Interval, run.RttMs, run.DeviceLock, run.SessionLimit) : null;
+        _runs.TryGetValue(peerKey, out var run) && run.LastCheckUtc is { } last ? new PeerHealthSnapshot(last, last + Interval, run.RttMs) : null;
 
     /// <summary>
     /// Checks one peer: identity (no token), then the token, then the anchor and, when due, the foreign-device watch.
@@ -157,13 +187,7 @@ public sealed class HealthMonitor
         }
 
         _registry.SetStatus(peerKey, PeerStatus.Online);
-        var recovered = run.WasDown;
         run.WasDown = false;
-        if (state.Pairing?.Method == PairingMethod.Qc)
-        {
-            await AnchorAsync(peer, run, recovered, cancellationToken).ConfigureAwait(false);
-        }
-
         if (state.Pairing is not null && _time.GetUtcNow() - run.LastWatch >= WatchInterval)
         {
             run.LastWatch = _time.GetUtcNow();
@@ -195,28 +219,6 @@ public sealed class HealthMonitor
         return PeerStatus.Offline;
     }
 
-    // The session anchor (6.11): keeps Home's session alive on a stock Peer so MaxActiveSessions=1 refuses a second login. Never sent to a Shoal Peer.
-    private async Task AnchorAsync(PeerEndpoint peer, PeerRun run, bool recovered, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var response = await _client.SendAsync(peer, PeerRequest.Post("/Sessions/Capabilities?supportsPersistentIdentifier=true", null).WithTrust(TrustRequirement.None), PeerCallProfile.Info, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccess && _time.GetUtcNow() - run.LastAnchorLog >= AlertInterval)
-            {
-                run.LastAnchorLog = _time.GetUtcNow();
-                _logger.LogInformation("The session anchor for peer {Peer} was refused (HTTP {Status})", Redact.Id(peer.PeerKey), (int)response.StatusCode);
-            }
-        }
-        catch (PeerCallException ex)
-        {
-            if (_time.GetUtcNow() - run.LastAnchorLog >= AlertInterval)
-            {
-                run.LastAnchorLog = _time.GetUtcNow();
-                _logger.LogInformation("The session anchor for peer {Peer} failed ({Kind}, recovered {Recovered})", Redact.Id(peer.PeerKey), ex.Kind, recovered);
-            }
-        }
-    }
-
     // The foreign-device watch (4.3): core shows a non-admin only its own sessions plus anonymous ones, so keep the share user's and discard the rest.
     private async Task WatchAsync(PeerEndpoint peer, PeerRun run, CancellationToken cancellationToken)
     {
@@ -236,7 +238,6 @@ public sealed class HealthMonitor
                 }
 
                 run.ShareUserId = shareUser;
-                ReadPolicy(peer, run, meDoc.RootElement);
             }
 
             using var response = await _client.SendAsync(peer, PeerRequest.Get("/Sessions").WithTrust(TrustRequirement.None), PeerCallProfile.Sessions, cancellationToken).ConfigureAwait(false);
@@ -290,39 +291,17 @@ public sealed class HealthMonitor
         await _admins.NotifyAdminsAsync("Shoal", text, cancellationToken).ConfigureAwait(false);
     }
 
-    // DESIGN 4.1 "What Home checks": the device lock is confirmed when the share account may sign in from Home's device only; the session limit when it is 1.
-    private static void ReadPolicy(PeerEndpoint peer, PeerRun run, JsonElement user)
-    {
-        if (!user.TryGetProperty("Policy", out var policy) || policy.ValueKind != JsonValueKind.Object)
-        {
-            return;
-        }
-
-        var allDevices = policy.TryGetProperty("EnableAllDevices", out var all) && all.ValueKind == JsonValueKind.True;
-        var devices = policy.TryGetProperty("EnabledDevices", out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Where(static d => d.ValueKind == JsonValueKind.String).Select(static d => d.GetString() ?? string.Empty).ToList()
-            : [];
-        run.DeviceLock = !allDevices && devices.Count == 1 && string.Equals(devices[0], peer.DeviceId, StringComparison.OrdinalIgnoreCase) ? "confirmed" : "missing";
-        run.SessionLimit = policy.TryGetProperty("MaxActiveSessions", out var limit) && limit.ValueKind == JsonValueKind.Number && limit.TryGetInt32(out var sessions) && sessions == 1 ? "ok" : "notSet";
-    }
-
     private sealed class PeerRun
     {
         public bool WasDown { get; set; }
 
         public DateTimeOffset LastWatch { get; set; }
 
-        public DateTimeOffset LastAnchorLog { get; set; }
-
         public Guid? ShareUserId { get; set; }
 
         public DateTimeOffset? LastCheckUtc { get; set; }
 
         public double? RttMs { get; set; }
-
-        public string? DeviceLock { get; set; }
-
-        public string? SessionLimit { get; set; }
 
         public Dictionary<string, DateTimeOffset> LastAlert { get; } = new(StringComparer.Ordinal);
     }
@@ -350,12 +329,14 @@ public sealed class HealthMonitorHost : BackgroundService
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(HealthMonitor.Interval);
+        // A tick every 15 s: all peers once a minute, and in between only the peers that are offline, so a restarted peer is seen again within the breaker's probe delay.
+        using var timer = new PeriodicTimer(HealthMonitor.OfflineInterval);
+        var tick = 0;
         do
         {
             try
             {
-                await _monitor.CheckAllAsync(stoppingToken).ConfigureAwait(false);
+                await _monitor.CheckAllAsync(tick++ % (int)(HealthMonitor.Interval / HealthMonitor.OfflineInterval) != 0, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -390,13 +371,14 @@ public sealed class HealthMonitorHost : BackgroundService
 /// </summary>
 public sealed class ClientOfflineNotice : IOfflineNotice
 {
-    private static readonly TimeSpan Every = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan Every = TimeSpan.FromSeconds(30);
 
     private readonly ISessionManager _sessions;
     private readonly Func<bool> _enabled;
     private readonly TimeProvider _time;
     private readonly ILogger<ClientOfflineNotice> _logger;
     private readonly ConcurrentDictionary<(Guid User, string Peer), DateTimeOffset> _last = new();
+    private readonly Func<(string Service, string Url)>? _requestService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOfflineNotice"/> class.
@@ -405,8 +387,10 @@ public sealed class ClientOfflineNotice : IOfflineNotice
     /// <param name="enabled">Whether clients are told (the setting).</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    public ClientOfflineNotice(ISessionManager sessions, Func<bool> enabled, TimeProvider time, ILogger<ClientOfflineNotice> logger)
+    /// <param name="requestService">Reads the request service name and address for the message; none means no request hint.</param>
+    public ClientOfflineNotice(ISessionManager sessions, Func<bool> enabled, TimeProvider time, ILogger<ClientOfflineNotice> logger, Func<(string Service, string Url)>? requestService = null)
     {
+        _requestService = requestService;
         _sessions = sessions;
         _enabled = enabled;
         _time = time;
@@ -445,7 +429,8 @@ public sealed class ClientOfflineNotice : IOfflineNotice
             return;
         }
 
-        var text = $"{MetadataSanitizer.DisplayName(peerName)} is offline right now. Try again later.";
+        var service = _requestService?.Invoke() ?? (string.Empty, string.Empty);
+        var text = Jellyfin.Plugin.Shoal.Playback.OfflineCardCopy.Toast(MetadataSanitizer.DisplayName(peerName), service.Service, service.Url);
         _ = SendAsync(userId, text);
     }
 
@@ -473,6 +458,4 @@ public sealed class ClientOfflineNotice : IOfflineNotice
 /// <param name="LastCheckUtc">When the last check ran.</param>
 /// <param name="NextCheckUtc">When the next one is due.</param>
 /// <param name="RttMs">The round trip of the identity call, or null.</param>
-/// <param name="DeviceLock"><c>confirmed</c> or <c>missing</c> (read from the share account's policy), or null when not read yet.</param>
-/// <param name="SessionLimit"><c>ok</c> or <c>notSet</c>, or null when not read yet.</param>
-public sealed record PeerHealthSnapshot(DateTimeOffset LastCheckUtc, DateTimeOffset NextCheckUtc, double? RttMs, string? DeviceLock, string? SessionLimit);
+public sealed record PeerHealthSnapshot(DateTimeOffset LastCheckUtc, DateTimeOffset NextCheckUtc, double? RttMs);

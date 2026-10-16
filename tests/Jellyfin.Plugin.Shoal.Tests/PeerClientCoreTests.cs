@@ -163,7 +163,7 @@ public sealed class PeerClientCoreTests
     }
 
     [Fact]
-    public void Breaker_ProbesAt30_60_120_240_AndThenEvery300Seconds()
+    public void Breaker_ProbesAt30_AndThenEveryMinute()
     {
         var time = new ManualTimeProvider();
         var breaker = new CircuitBreaker(time);
@@ -172,7 +172,7 @@ public sealed class PeerClientCoreTests
             breaker.RecordFailure();
         }
 
-        foreach (var expected in new[] { 30, 60, 120, 240, 300, 300 })
+        foreach (var expected in new[] { 30, 60, 60, 60 })
         {
             var due = breaker.NextProbeUtc!.Value;
             Assert.Equal(expected, (due - time.GetUtcNow()).TotalSeconds);
@@ -307,7 +307,7 @@ public sealed class PeerClientCoreTests
     {
         Assert.Equal(TimeSpan.FromSeconds(8), PeerCallProfile.Info.Total);
         Assert.Equal(64 * 1024, PeerCallProfile.Info.MaxBytes);
-        Assert.Equal(TimeSpan.FromSeconds(3), PeerCallProfile.QuickConnect.Total);
+        Assert.Equal(TimeSpan.FromSeconds(3), PeerCallProfile.PairStep.Total);
         Assert.Equal(8 * 1024 * 1024, PeerCallProfile.Items.MaxBytes);
         Assert.Equal(TimeSpan.FromSeconds(12), PeerCallProfile.PlaybackInfo.Total);
         Assert.Null(PeerCallProfile.StaticStream.Total);

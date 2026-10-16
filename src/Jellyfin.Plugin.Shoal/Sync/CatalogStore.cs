@@ -81,6 +81,39 @@ public sealed class CatalogStore
     }
 
     /// <summary>
+    /// Whether an episode's stub path from a catalog is safe to use: <c>series/Season NN/SnnEnn.strm</c>, three plain segments (DESIGN v2.7.1).
+    /// </summary>
+    /// <param name="relativePath">The path as stored (always with '/').</param>
+    /// <returns>True when it is exactly three plain path segments ending in <c>.strm</c>.</returns>
+    public static bool IsSafeEpisodePath(string? relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath) || relativePath.Length > 700)
+        {
+            return false;
+        }
+
+        var parts = relativePath.Split('/');
+        return parts.Length == 3 && parts.All(IsPlainSegment) && parts[2].EndsWith(".strm", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Whether a series or season folder from a catalog is safe to use: one plain segment for a series, two for a season.
+    /// </summary>
+    /// <param name="folderRel">The folder relative to the library folder (always with '/').</param>
+    /// <param name="segments">1 for a series, 2 for a season.</param>
+    /// <returns>True when the folder has exactly that many plain segments.</returns>
+    public static bool IsSafeFolder(string? folderRel, int segments)
+    {
+        if (string.IsNullOrEmpty(folderRel) || folderRel.Length > 600)
+        {
+            return false;
+        }
+
+        var parts = folderRel.Split('/');
+        return parts.Length == segments && parts.All(IsPlainSegment);
+    }
+
+    /// <summary>
     /// Gives a cheap fingerprint of the catalog file (last write and length) so readers can cache a parsed catalog until it changes.
     /// </summary>
     /// <param name="peerKey">A valid peer key.</param>
@@ -109,6 +142,11 @@ public sealed class CatalogStore
             var loaded = TryRead(candidate, peerKey);
             if (loaded is not null)
             {
+                if (loaded.Dropped > 0)
+                {
+                    _logger.LogWarning("The catalog of peer {Peer} dropped {Count} entries that failed validation or passed a cap; their stubs stay on disk until the next sync removes them", Redact.Id(peerKey), loaded.Dropped);
+                }
+
                 return loaded;
             }
         }
@@ -144,6 +182,30 @@ public sealed class CatalogStore
         && segment.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0']) < 0
         && !segment.Any(char.IsControl)
         && segment == segment.Trim(' ', '.');
+
+    // The fields each kind may carry. A movie has no TV fields; a series and a season are folders with no stub; an episode has three-segment paths and numbers in range.
+    private static bool ValidShape(CatalogEntry e)
+    {
+        switch (e.Kind)
+        {
+            case EntryKind.Movie:
+                return (e.StubRelPath is null || IsSafeStubPath(e.StubRelPath))
+                    && (e.State is not (EntryState.Active or EntryState.HeldRemoval) || e.StubRelPath is not null);
+            case EntryKind.Series:
+                // A series Home hides because it has the series itself has no folder.
+                return e.StubRelPath is null && (e.FolderRel is null ? e.State is EntryState.DuplicateLocal or EntryState.DuplicatePeer : IsSafeFolder(e.FolderRel, 1));
+            case EntryKind.Season:
+                return e.StubRelPath is null && IsSafeFolder(e.FolderRel, 2) && IsKey(e.ParentKey) && e.Season is >= 0 and <= TvLimits.MaxSeasonNumber;
+            default:
+                return IsKey(e.ParentKey)
+                    && e.Season is >= 0 and <= TvLimits.MaxSeasonNumber
+                    && e.Episode is >= 0 and <= TvLimits.MaxEpisodeNumber
+                    && (e.EpisodeEnd is null || (e.EpisodeEnd >= e.Episode && e.EpisodeEnd <= e.Episode + TvLimits.MaxEpisodeSpan))
+                    && IsHex32(e.PeerSeriesId)
+                    && (e.StubRelPath is null || IsSafeEpisodePath(e.StubRelPath))
+                    && (e.State is not (EntryState.Active or EntryState.HeldRemoval) || e.StubRelPath is not null);
+        }
+    }
 
     private static bool IsHex32(string? value) =>
         value is { Length: 32 } && value.All(static c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
@@ -187,9 +249,10 @@ public sealed class CatalogStore
     private static void SanitizeSources(CatalogEntry entry)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        Func<string?, bool> safePath = entry.Kind == EntryKind.Episode ? IsSafeEpisodePath : IsSafeStubPath;
         entry.Sources = [.. entry.Sources.Where(s => IsKey(s.StubKey)
             && (s.PeerMediaSourceId.Length == 0 || IsHex32(s.PeerMediaSourceId))
-            && (s.StubRelPath is null || IsSafeStubPath(s.StubRelPath))
+            && (s.StubRelPath is null || safePath(s.StubRelPath))
             && seen.Add(s.StubKey)).Take(CatalogSource.MaxPerTitle)];
         foreach (var source in entry.Sources)
         {
@@ -220,21 +283,53 @@ public sealed class CatalogStore
         var before = document.Entries.Count;
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
         var seenItems = new HashSet<string>(StringComparer.Ordinal);
-        document.Entries = document.Entries.Where(e => IsKey(e.StubKey)
-            && IsHex32(e.PeerItemId)
-            && (e.PeerMediaSourceId.Length == 0 || IsHex32(e.PeerMediaSourceId))
-            && e.State is not EntryState.Removed
-            && (e.StubRelPath is null || IsSafeStubPath(e.StubRelPath))
-            && (e.State is not (EntryState.Active or EntryState.HeldRemoval) || e.StubRelPath is not null)
-            && seenKeys.Add(e.StubKey)
-            && seenItems.Add(e.MappingKey + "/" + e.PeerItemId)).Take(CatalogDocument.MaxEntries).ToList();
+        var playable = 0;
+        var containers = 0;
+        var kept = new List<CatalogEntry>();
+        foreach (var e in document.Entries)
+        {
+            var isContainer = e.Kind is EntryKind.Series or EntryKind.Season;
+            if (!Enum.IsDefined(e.Kind) || !IsKey(e.StubKey) || !IsHex32(e.PeerItemId)
+                || (e.PeerMediaSourceId.Length != 0 && !IsHex32(e.PeerMediaSourceId))
+                || e.State is EntryState.Removed
+                || !ValidShape(e)
+                || !seenKeys.Add(e.StubKey)
+                || !seenItems.Add(e.MappingKey + "/" + e.PeerItemId))
+            {
+                continue;
+            }
+
+            // The cap of playable entries is the old one; series and seasons are counted apart and never push a playable entry out (DESIGN v2.7.2).
+            if (isContainer ? ++containers > TvLimits.MaxContainerEntries : ++playable > CatalogDocument.MaxEntries)
+            {
+                continue;
+            }
+
+            kept.Add(e);
+        }
+
+        // Relationship fields are re-derived from what is valid: an episode or season whose series entry is not there is dropped.
+        var seriesKeys = kept.Where(static e => e.Kind == EntryKind.Series).Select(static e => e.StubKey).ToHashSet(StringComparer.Ordinal);
+        document.Entries = [.. kept.Where(e => e.Kind is EntryKind.Movie or EntryKind.Series || (e.ParentKey is not null && seriesKeys.Contains(e.ParentKey)))];
         foreach (var entry in document.Entries)
         {
             SanitizeSources(entry);
+            entry.PeerEpisodeCount = entry.Kind == EntryKind.Series && entry.PeerEpisodeCount is { } listed ? Math.Clamp(listed, 0, TvLimits.MaxEpisodesPerSeries) : null;
         }
 
-        document.Schema = CatalogDocument.CurrentSchema; // a schema-2 file is migrated by the step above and written as 3
+        document.Schema = CatalogDocument.CurrentSchema; // an older file is migrated by the steps above and written as the current one; nothing on disk is renamed
+        document.PendingDetail = [.. document.PendingDetail.Where(IsHex32).Distinct(StringComparer.Ordinal).Take(TvLimits.MaxEpisodesPerSeries * 5)];
+        document.ImagesPending = [.. document.ImagesPending.Where(IsKey).Distinct(StringComparer.Ordinal).Take(CatalogDocument.MaxEntries)];
+        document.ImageFollowUps = Math.Clamp(document.ImageFollowUps, 0, TvLimits.MaxImageFollowUps);
         document.HeldAdditions = [.. document.HeldAdditions.Where(IsHex32).Distinct(StringComparer.Ordinal)];
+        document.TvHeldAdditions = [.. document.TvHeldAdditions.Where(IsHex32).Distinct(StringComparer.Ordinal).Take(CatalogDocument.MaxEntries + TvLimits.MaxSeriesPerPeer)];
+        document.HeldSeries = [.. document.HeldSeries.Where(static h => IsKey(h.Key) && IsHex32(h.PeerSeriesId) && h.MappingKey.Length is > 0 and <= 64 && h.Title.Length <= 300).DistinctBy(static h => h.Key, StringComparer.Ordinal).Take(TvLimits.MaxSeriesPerPeer)];
+        foreach (var held in document.HeldSeries)
+        {
+            held.Episodes = Math.Clamp(held.Episodes, 0, TvLimits.MaxEpisodesPerSeries);
+            held.Year = held.Year is >= 1870 and <= 2100 ? held.Year : null;
+        }
+
         document.HeldRemovals = [.. document.HeldRemovals.Where(k => document.Entries.Any(e => e.StubKey == k && e.State == EntryState.HeldRemoval))];
         document.Libraries = [.. document.Libraries.Where(l => l.PeerLibraryId.Length == 0 || IsHex32(l.PeerLibraryId))];
         document.LastSync?.Alerts.RemoveAll(static a => a.Length > 40);

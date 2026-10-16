@@ -53,9 +53,9 @@ test('every server state has its chip, hint and action (ui-spec 7)', async () =>
     try {
         const byName = (n) => [...p.page.querySelectorAll('.shoal-card')].find((c) => c.querySelector('.shoal-card__nametext').textContent === n);
         const expect = {
-            Birch: [/Stopped for safety/, /safety codes didn't match, so Shoal saved nothing/, /See what to do/, /Not paired/],
+            Birch: [/Stopped for safety/, /Birch didn't answer like Jellyfin, so Shoal stopped/, /See what to do/, /Not paired/],
             Alder: [/Pairing stopped/, /Lost contact with Alder/, /See what to do/],
-            Elm: [/Pairing stopped/, /Shoal restarted before you confirmed/, /See what to do/],
+            Elm: [/Pairing stopped/, /The invite expired/, /See what to do/],
             Cedar: [/Different server/, /certificate changed/, /Check certificate/],
             Fernwood: [/Online, unstable/, /62 ms jitter, 4% loss/, /Test link again/],
             Granite: [/Offline/, /Retry now/],
@@ -236,4 +236,23 @@ test('S1: with the keys locked, the header offers no Sync now', async () => {
     } finally {
         p.close();
     }
+});
+
+test('a server on a Tailscale relay says why it is slow and what to open', async () => {
+    const p = await overview('default');
+    try {
+        const card = [...p.page.querySelectorAll('.shoal-card')].find((c) => c.querySelector('.shoal-card__nametext').textContent === 'Fernwood');
+        assert.match(card.textContent, /This friend is connected through a Tailscale relay, so speed is limited\. Open UDP 41641 on one side\./);
+    } finally {
+        p.close();
+    }
+});
+
+test('N16: titles on a server paused for a re-pair are called paused, not offline', async () => {
+    const mod = await import('./helpers.mjs').then((h) => h.loadShoal());
+    const fmt = mod.makeFormat ? mod.makeFormat('en-US', () => Date.now()) : null;
+    const paused = { handle: 'a', displayName: 'A', status: 'Disabled', pairingMethod: 'qc', needsRepair: true, titleCount: 7 };
+    const sum = mod.summarizeServers([paused], fmt || { durationSince: () => '', relative: () => '', num: String });
+    assert.equal(sum.titlesPaused, 7);
+    assert.equal(sum.titlesOffline, 0);
 });

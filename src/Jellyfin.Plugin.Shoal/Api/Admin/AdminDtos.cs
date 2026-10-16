@@ -59,6 +59,15 @@ internal record ServerDto
     /// <summary>Gets the status: Online, Degraded, Offline, AuthFailed, IdentityMismatch, TlsKeyChanged, Disabled, Pairing or PairingAborted.</summary>
     public required string Status { get; init; }
 
+    /// <summary>Gets how the server was paired: <c>invite</c>, or <c>qc</c> for one paired the old way, which is paused until it is paired again by invite. Null when never paired.</summary>
+    public string? PairingMethod { get; init; }
+
+    /// <summary>Gets a value indicating whether the server must be paired again by invite (it was paired the old way and is paused).</summary>
+    public bool NeedsRepair { get; init; }
+
+    /// <summary>Gets a value indicating whether that re-pair cannot work as the server is reached today: an invite is never redeemed over plain http outside a Tailnet (D17). The card then says: switch it to Tailscale or https, then pair again, or remove it.</summary>
+    public bool RepairBlockedByHttp { get; init; }
+
     /// <summary>Gets the pairing error kind for PairingAborted.</summary>
     public string? PairingError { get; init; }
 
@@ -100,6 +109,12 @@ internal record ServerDto
 
     /// <summary>Gets the number of titles shared by this server.</summary>
     public int TitleCount { get; init; }
+
+    /// <summary>Gets how many titles of this server have no stub because another server or Home carries them (0 when none).</summary>
+    public int HiddenByDedup { get; init; }
+
+    /// <summary>Gets the name of the server that carries most of them, or null (Home itself, or not known).</summary>
+    public string? DedupWinner { get; init; }
 
     /// <summary>Gets the number of things that need the admin's attention.</summary>
     public int AlertCount { get; init; }
@@ -284,7 +299,8 @@ internal sealed record UsageDto(long DiskBytes, long QuotaBytes, int Stubs, int 
 /// <param name="Priority">Lower wins when two servers carry a title.</param>
 /// <param name="ProxyUrl">The proxy, when set.</param>
 /// <param name="TlsPinned">Whether the certificate key is pinned.</param>
-internal sealed record PeerSettingsDto(int MaxConcurrentStreams, int Priority, string? ProxyUrl, bool TlsPinned);
+/// <param name="Alias">The local name for the offline card and message, or empty (the display name is used).</param>
+internal sealed record PeerSettingsDto(int MaxConcurrentStreams, int Priority, string? ProxyUrl, bool TlsPinned, string Alias = "");
 
 /// <summary>GET Shoal/Admin/Peers/{handle}: the card plus the detail screen's data.</summary>
 internal sealed record ServerDetailDto : ServerDto
@@ -302,15 +318,6 @@ internal sealed record ServerDetailDto : ServerDto
 
     /// <summary>Gets when the server was paired.</summary>
     public DateTime? PairedUtc { get; init; }
-
-    /// <summary>Gets how: invite or qc.</summary>
-    public string? PairingMethod { get; init; }
-
-    /// <summary>Gets the device lock state for Quick Connect pairings: confirmed or missing. Null when not known.</summary>
-    public string? DeviceLock { get; init; }
-
-    /// <summary>Gets the session limit of the share account for Quick Connect pairings: ok or notSet. Null when not known.</summary>
-    public string? SessionLimit { get; init; }
 
     /// <summary>Gets the libraries Shoal made from this server.</summary>
     public IReadOnlyList<object> Libraries { get; init; } = [];

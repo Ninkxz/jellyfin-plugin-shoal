@@ -46,6 +46,39 @@ public sealed class JellyfinLocalMovies : ILocalMovies
 }
 
 /// <summary>
+/// <see cref="ILocalSeries"/> from Jellyfin's library.
+/// </summary>
+public sealed class JellyfinLocalSeries : ILocalSeries
+{
+    private readonly ILibraryManager _library;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="JellyfinLocalSeries"/> class.
+    /// </summary>
+    /// <param name="library">The library manager.</param>
+    public JellyfinLocalSeries(ILibraryManager library) => _library = library;
+
+    /// <inheritdoc />
+    public IReadOnlyList<LocalSeries> List(string stubRoot)
+    {
+        var root = string.IsNullOrWhiteSpace(stubRoot) ? null : Path.GetFullPath(stubRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var series = new List<LocalSeries>();
+        foreach (var item in _library.GetItemList(new InternalItemsQuery { IncludeItemTypes = [BaseItemKind.Series], Recursive = true }))
+        {
+            if (root is not null && item.Path is { Length: > 0 } path && Path.GetFullPath(path).StartsWith(root, comparison))
+            {
+                continue; // a federated series, not Home's own
+            }
+
+            series.Add(new LocalSeries(MetadataSanitizer.CanonicalProviderIds(item.ProviderIds), item.Name ?? string.Empty, item.ProductionYear));
+        }
+
+        return series;
+    }
+}
+
+/// <summary>
 /// <see cref="ILibraryRefresh"/> from Jellyfin's library monitor: a change report goes through core's debounced refresher, so only the
 /// reported folder is refreshed.
 /// </summary>

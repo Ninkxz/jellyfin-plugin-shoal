@@ -91,26 +91,13 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
     }
 
     [Fact]
-    public async Task TheSessionAnchor_IsSentToAQuickConnectPeer_NeverToAnInvitePeer()
+    public async Task NoSessionAnchorIsSentToAnyPeer_AnymoreD17()
     {
         await CheckAsync();
-        var anchors = H.Peer.Requests.Where(static r => r.Path == "/Sessions/Capabilities").ToList();
-        Assert.Equal("?supportsPersistentIdentifier=true", Assert.Single(anchors).Query);
-
         await H.State.UpdateAsync(s => s.Home.Peers[0].Pairing = new PairingInfo { Method = PairingMethod.Invite });
-        H.Peer.Requests.Clear();
         await CheckAsync();
 
         Assert.DoesNotContain(H.Peer.Requests, static r => r.Path == "/Sessions/Capabilities");
-    }
-
-    [Fact]
-    public async Task TheAnchor_FailingNeverChangesTheStatus()
-    {
-        // an anchor refused or unreachable must not move the peer out of Online: the identity and token checks decide
-        var status = await CheckAsync();
-
-        Assert.Equal(PeerStatus.Online, status);
     }
 
 
@@ -138,6 +125,44 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
         Assert.Equal(PeerStatus.Online, status);
         Assert.False(client.BreakerOf(P.Endpoint).IsOpen);
         Assert.Contains(H.Peer.Requests, static r => r.Path == "/System/Ping");
+    }
+
+    [Fact]
+    public void TheProbeDelay_NeverGrowsPastAMinute_SoARestartedPeerIsSeenAgainQuickly()
+    {
+        var time = new ManualTimeProvider();
+        var breaker = new CircuitBreaker(time);
+        for (var i = 0; i < CircuitBreaker.OpenAfterFailures; i++)
+        {
+            breaker.RecordFailure();
+        }
+
+        for (var i = 0; i < 12; i++)
+        {
+            Assert.True((breaker.NextProbeUtc!.Value - time.GetUtcNow()).TotalSeconds <= 60);
+            time.Advance(TimeSpan.FromSeconds(61));
+            Assert.True(breaker.TryAcquire(isProbe: true));
+            breaker.RecordFailure();
+        }
+
+        Assert.True((breaker.NextProbeUtc!.Value - time.GetUtcNow()).TotalSeconds <= 60);
+    }
+
+    [Fact]
+    public async Task TheQuickRound_ChecksOnlyPeersThatAreOffline()
+    {
+        var (_, monitor) = ClockedMonitor();
+        P.Registry.SetStatus(H.World.PeerKey, PeerStatus.Online);
+        H.Peer.Requests.Clear();
+
+        await monitor.CheckAllAsync(onlyOffline: true, default);
+
+        Assert.Empty(H.Peer.Requests);
+        P.Registry.SetStatus(H.World.PeerKey, PeerStatus.Offline);
+
+        await monitor.CheckAllAsync(onlyOffline: true, default);
+
+        Assert.NotEmpty(H.Peer.Requests);
     }
 
     [Fact]
@@ -305,7 +330,8 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
         var body = await response.Content.ReadAsStringAsync();
         watch.Stop();
 
-        Assert.Contains("RateLimitExceeded", body, StringComparison.Ordinal);
+        Assert.Contains("Server offline", body, StringComparison.Ordinal); // the offline card (the harness runs with it on, as the plugin does)
+        Assert.DoesNotContain("ErrorCode\":\"", body, StringComparison.Ordinal);
         Assert.True(watch.ElapsedMilliseconds < 1000, "took " + watch.ElapsedMilliseconds + " ms");
         Assert.DoesNotContain(H.Peer.Requests, static r => r.Path.EndsWith("/PlaybackInfo", StringComparison.Ordinal));
         Assert.Single(P.Notice.Notices);
@@ -319,11 +345,8 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
     }
 
     [Fact]
-    public async Task Pilot04_AHealthyPeer_IsShownOnline_WithRttNextCheckAndTheAccountsLockAndLimit()
+    public async Task Pilot04_AHealthyPeer_IsShownOnline_WithRttAndNextCheck()
     {
-        H.Peer.ExtraPolicy["EnableAllDevices"] = false;
-        H.Peer.ExtraPolicy["EnabledDevices"] = new[] { P.Endpoint.DeviceId };
-        H.Peer.ExtraPolicy["MaxActiveSessions"] = 1;
         P.Registry.SetStatus(H.World.PeerKey, PeerStatus.Offline);
         await CheckAsync();
         var dir = new TempDirectory();
@@ -334,32 +357,7 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
         Assert.Equal("Online", info.Status);
         Assert.NotNull(info.RttMs);
         Assert.Equal(P.Time.GetUtcNow().UtcDateTime + HealthMonitor.Interval, info.NextCheckUtc);
-        Assert.Equal("confirmed", info.DeviceLock);
-        Assert.Equal("ok", info.SessionLimit);
-        H.Peer.ExtraPolicy.Remove("EnableAllDevices");
-        H.Peer.ExtraPolicy.Remove("EnabledDevices");
-        H.Peer.ExtraPolicy.Remove("MaxActiveSessions");
         dir.Dispose();
-    }
-
-    [Theory]
-    [InlineData(true, "[\"x\"]", 0, "missing", "notSet")]
-    [InlineData(false, "[]", 2, "missing", "notSet")]
-    [InlineData(false, "[\"shoal-a1b2c3d4e5f6-4b0c1d2e\",\"another\"]", 1, "missing", "ok")]
-    public async Task Pilot04_AnAccountWithoutTheLockOrTheLimit_IsReportedMissing(bool allDevices, string devicesJson, int limit, string expectedLock, string expectedLimit)
-    {
-        H.Peer.ExtraPolicy["EnableAllDevices"] = allDevices;
-        H.Peer.ExtraPolicy["EnabledDevices"] = System.Text.Json.JsonSerializer.Deserialize<string[]>(devicesJson)!;
-        H.Peer.ExtraPolicy["MaxActiveSessions"] = limit;
-        await CheckAsync();
-
-        var snapshot = _monitor.Snapshot(H.World.PeerKey);
-
-        Assert.Equal(expectedLock, snapshot!.DeviceLock);
-        Assert.Equal(expectedLimit, snapshot.SessionLimit);
-        H.Peer.ExtraPolicy.Remove("EnableAllDevices");
-        H.Peer.ExtraPolicy.Remove("EnabledDevices");
-        H.Peer.ExtraPolicy.Remove("MaxActiveSessions");
     }
 
 
@@ -406,7 +404,7 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
     }
 
     [Fact]
-    public async Task T_PLAY_16_TheOfflineMessage_IsSentOncePerUserAndPeerEveryFiveMinutes_AndOnlyWhenEnabled()
+    public async Task T_PLAY_16_TheOfflineMessage_IsSentOncePerUserAndPeerEveryHalfMinute_AndOnlyWhenEnabled()
     {
         var probe = DispatchProxy.Create<ISessionManager, SessionsProbe>();
         var enabled = true;
@@ -421,7 +419,7 @@ public sealed class HealthMonitorTests : IClassFixture<PlaybackFixture>, IAsyncL
         await Task.Delay(200);
         Assert.Equal(3, counter.SessionReads);
 
-        P.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+        P.Time.Advance(TimeSpan.FromSeconds(31));
         notice.PeerOffline(user, "peer", "Hops");
         await Task.Delay(200);
         Assert.Equal(4, counter.SessionReads);

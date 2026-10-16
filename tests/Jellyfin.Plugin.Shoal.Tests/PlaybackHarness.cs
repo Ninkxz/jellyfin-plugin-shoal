@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Shoal.Authorization;
+using Jellyfin.Plugin.Shoal.Diagnostics;
 using Jellyfin.Plugin.Shoal.Pairing;
 using Jellyfin.Plugin.Shoal.Peers;
 using Jellyfin.Plugin.Shoal.Playback;
@@ -65,6 +66,14 @@ internal sealed class PlaybackParts
 
     public int MaxStreams { get; set; } = 2;
 
+    public int HlsBufferAhead { get; set; } = 3;
+
+    public HlsReadAhead ReadAhead { get; set; } = null!;
+
+    public PassiveTelemetry Telemetry { get; set; } = null!;
+
+    public ReadAheadBudget StaticReadAhead { get; } = new(64L * 1024 * 1024);
+
     public bool HlsSubtitles { get; set; } = true;
 
     public TrickplayCache TrickplayCache { get; set; } = null!;
@@ -72,6 +81,15 @@ internal sealed class PlaybackParts
     public bool TrickplayEnabled { get; set; } = true;
 
     public bool AttachmentsEnabled { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether the offline card is on (the plugin default; a test that pins the plain refusal turns it off).</summary>
+    public bool CardsEnabled { get; set; } = true;
+
+    public string CardServiceName { get; set; } = "Seerr";
+
+    public FakeCardEncoder CardEncoder { get; } = new();
+
+    public OfflineCards Cards { get; set; } = null!;
 
     public IVersionResolver? VersionOverride { get; set; }
 
@@ -117,6 +135,7 @@ internal sealed class PlaybackParts
             });
         }
 
+        TvIds.AddCatalog(document);
         store.Save(document);
         var registry = new PeerRegistry();
         var trust = new PeerTrust(client, registry);
@@ -132,6 +151,7 @@ internal sealed class PlaybackParts
         slots.Real = streamSlots;
         var parts = new PlaybackParts(grants, limiter, registry, devices, notice, admins, endpoint, slots, time, streamSlots);
         partsBox = parts;
+        parts.Cards = new OfflineCards(() => new OfflineCardSettings(parts.CardsEnabled, parts.CardServiceName, string.Empty), parts.CardEncoder, dir.Combine("offline-cards"), time);
         var handler = new PlaybackInfoHandler(
             grants,
             limiter,
@@ -149,9 +169,11 @@ internal sealed class PlaybackParts
             () => parts.HlsSubtitles,
             time,
             new TypedCapture<PlaybackInfoHandler>(log),
-            new AttachmentRebuilder(() => parts.AttachmentsEnabled));
+            new AttachmentRebuilder(() => parts.AttachmentsEnabled),
+            cards: parts.Cards);
         builder.Services.AddSingleton<IPlaybackInfoHandler>(handler);
-        var staticHandler = new StaticStreamHandler(new StubCatalog(store), new FakeEndpoints(endpoint), client, trust, registry, streamSlots, new RateLimiter(time, 1200, 100), state, notice, new TypedCapture<StaticStreamHandler>(log));
+        builder.Services.AddSingleton(parts.Cards);
+        var staticHandler = new StaticStreamHandler(new StubCatalog(store), new FakeEndpoints(endpoint), client, trust, registry, streamSlots, new RateLimiter(time, 1200, 100), state, notice, new TypedCapture<StaticStreamHandler>(log), cards: parts.Cards, readAhead: parts.StaticReadAhead);
         builder.Services.AddSingleton<IStaticStreamHandler>(staticHandler);
         var jobs = new HlsJobControl(new FakeEndpoints(endpoint), client, new TypedCapture<HlsJobControl>(log));
         builder.Services.AddSingleton(jobs);
@@ -161,7 +183,13 @@ internal sealed class PlaybackParts
         parts.Broker = broker;
         builder.Services.AddSingleton(broker);
         builder.Services.AddSingleton<ISubtitleHandler>(subtitles);
-        builder.Services.AddSingleton(new HlsProxyHandler(grants, new FakeEndpoints(endpoint), client, trust, registry, streamSlots, state, notice, subtitles, new RateLimiter(time, 600, 40), time, new TypedCapture<HlsProxyHandler>(log)));
+        var telemetry = new PassiveTelemetry(new SpeedHistoryStore(new ShoalPaths(dir.Combine("speed-root")), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance), streamSlots, time);
+        parts.Telemetry = telemetry;
+        var readAhead = new HlsReadAhead(() => parts.HlsBufferAhead, id => grants.Get(id) is { } held && streamSlots.HoldsOwnSlot(held), time, new TypedCapture<HlsReadAhead>(log)) { Enabled = false };
+        streamSlots.HlsReleased += readAhead.Release;
+        registry.PeerStopped += readAhead.ReleasePeer;
+        parts.ReadAhead = readAhead;
+        builder.Services.AddSingleton(new HlsProxyHandler(grants, new FakeEndpoints(endpoint), client, trust, registry, streamSlots, state, notice, subtitles, new RateLimiter(time, 600, 40), time, new TypedCapture<HlsProxyHandler>(log), telemetry: telemetry, readAhead: readAhead));
         parts.AttachmentLimiter = new RateLimiter(time, 60, 60);
         // The filter asks the same resolver whether a named media source belongs to the title (Warden 10 L5).
         builder.Services.AddSingleton<IVersionResolver>(sp => new LiveResolver(() => parts.VersionOverride, new OwnSourceVersionResolver(sp.GetRequiredService<ShoalIndex>(), new StubCatalog(store))));
@@ -202,6 +230,54 @@ internal sealed class PlaybackParts
     }
 }
 
+/// <summary>
+/// Stands in for ffmpeg: writes a structurally valid MP4 (ftyp, moov, mdat) and remembers what it was asked to draw.
+/// </summary>
+internal sealed class FakeCardEncoder : IOfflineCardEncoder
+{
+    public bool Available { get; set; } = true;
+
+    public bool Works { get; set; } = true;
+
+    public int Calls => Texts.Count;
+
+    public List<string> Texts { get; } = [];
+
+    public int DelayMs { get; set; }
+
+    public static byte[] Mp4(int padding = 4000)
+    {
+        static byte[] Box(string type, byte[] body)
+        {
+            var size = body.Length + 8;
+            return [(byte)(size >> 24), (byte)(size >> 16), (byte)(size >> 8), (byte)size, .. System.Text.Encoding.ASCII.GetBytes(type), .. body];
+        }
+
+        return [.. Box("ftyp", [.. System.Text.Encoding.ASCII.GetBytes("isom"), 0, 0, 2, 0, .. System.Text.Encoding.ASCII.GetBytes("isomiso2avc1mp41")]), .. Box("moov", new byte[100]), .. Box("mdat", new byte[padding])];
+    }
+
+    public async Task<bool> EncodeAsync(string text, string outputPath, CancellationToken cancellationToken)
+    {
+        lock (Texts)
+        {
+            Texts.Add(text);
+        }
+
+        if (DelayMs > 0)
+        {
+            await Task.Delay(DelayMs, cancellationToken);
+        }
+
+        if (!Works)
+        {
+            return false;
+        }
+
+        await System.IO.File.WriteAllBytesAsync(outputPath, Mp4(), cancellationToken);
+        return true;
+    }
+}
+
 internal sealed class FakeDevices : IDeviceCapabilities
 {
     public Dictionary<(Guid User, string Device), DeviceProfile> Profiles { get; } = [];
@@ -238,6 +314,8 @@ internal sealed class FakeSlots : ISlotLedger
     public bool HoldsOwnSlot(Grant grant) => Holding.Contains(grant.GrantId) || (Real?.HoldsOwnSlot(grant) ?? false);
 
     public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax) => Real?.CanStart(userId, itemId, peerKey, peerMax) ?? true;
+
+    public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax, SlotOrigin origin) => Real?.CanStart(userId, itemId, peerKey, peerMax, origin) ?? true;
 
     public bool ConversionsFull(string peerKey, int peerMaxConversions) => Real?.ConversionsFull(peerKey, peerMaxConversions) ?? false;
 }

@@ -84,7 +84,7 @@ public sealed class StubCatalog
     /// Finds the entry of a stub.
     /// </summary>
     /// <param name="peerKey">The peer.</param>
-    /// <param name="folderName">The stub's folder name (the first segment of its stored path).</param>
+    /// <param name="folderName">The stub's folder name (the first segment of its stored path), or for an episode its whole stored path (<see cref="Jellyfin.Plugin.Shoal.Authorization.IndexedStub.FolderName"/>).</param>
     /// <returns>The entry, or null when the catalog has none (or is unreadable).</returns>
     public CatalogEntry? Find(string peerKey, string folderName)
     {
@@ -105,7 +105,8 @@ public sealed class StubCatalog
             var byFolder = new Dictionary<string, CatalogEntry>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
             foreach (var entry in load.Document.Entries.Where(static e => e.StubRelPath is not null))
             {
-                byFolder[entry.StubRelPath!.Split('/')[0]] = entry;
+                // A movie is found by its folder; an episode by its whole path below the library, because every episode of a series shares the first segment.
+                byFolder[entry.Kind == EntryKind.Episode ? entry.StubRelPath! : entry.StubRelPath!.Split('/')[0]] = entry;
             }
 
             cached = new Cached(stamp, byFolder);

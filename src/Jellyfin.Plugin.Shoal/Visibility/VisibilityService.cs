@@ -208,6 +208,231 @@ public sealed class VisibilityService : IDisposable
         return new DriftReport(differences, [.. state.Home.Visibility.ManagedUsers.Keys], [.. _stoppedManaging]);
     }
 
+    /// <summary>
+    /// Whether a peer's libraries are hidden at the moment (offline parking).
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>True while parked.</returns>
+    public bool IsParked(string peerKey) => _state.Status == StateStatus.Ready && _state.Current.Home.Visibility.Parked.ContainsKey(peerKey);
+
+    /// <summary>
+    /// Every peer whose libraries are hidden right now.
+    /// </summary>
+    /// <returns>The peer keys.</returns>
+    public IReadOnlyList<string> ParkedPeerKeys() => _state.Status == StateStatus.Ready ? [.. _state.Current.Home.Visibility.Parked.Keys] : [];
+
+    /// <summary>
+    /// Hides a peer's Shoal libraries while it is offline: removes them from the explicit library list of every account that has them. Nothing is deleted and no
+    /// folder moves, so watch progress stays. An account with "all libraries" is left alone. The exact (account, library) pairs that were removed are recorded in the
+    /// state before anything is written, so <see cref="UnparkPeerAsync"/> puts back those and only those, and a restart in between loses nothing.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>How many (account, library) pairs were removed; 0 when nothing was done.</returns>
+    public async Task<int> ParkPeerAsync(string peerKey, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_state.Status != StateStatus.Ready || _state.Current.Home.Visibility.Parked.ContainsKey(peerKey))
+            {
+                return 0;
+            }
+
+            var state = _state.Current;
+            var libraries = ShoalLibraries(state, _libraries.List()).Where(l => string.Equals(l.PeerKey, peerKey, StringComparison.Ordinal)).ToList();
+            if (libraries.Count == 0)
+            {
+                return 0;
+            }
+
+            var shareUsers = ShareUserIds(state);
+            var ids = libraries.Select(static l => l.Id).ToHashSet();
+            var pairs = new List<ParkedPair>();
+            var writes = new List<(Guid UserId, List<Guid> Folders, string Before)>();
+            var newManaged = state.Home.Visibility.ManagedUsers.ToDictionary(static p => p.Key, static p => p.Value);
+            var stoppedNow = new HashSet<Guid>();
+            var allFolders = 0;
+            foreach (var account in _accounts.List())
+            {
+                if (shareUsers.Contains(account.Id))
+                {
+                    continue;
+                }
+
+                if (account.EnableAllFolders)
+                {
+                    allFolders++;
+                    continue;
+                }
+
+                var current = account.EnabledFolders.ToList();
+                var lost = current.Where(ids.Contains).ToList();
+                if (lost.Count == 0)
+                {
+                    continue;
+                }
+
+                var kept = current.Where(id => !ids.Contains(id)).ToList();
+                pairs.AddRange(lost.Select(id => new ParkedPair { UserId = account.Id, LibraryId = id }));
+                writes.Add((account.Id, kept, HashFolders(current)));
+                if (newManaged.TryGetValue(account.Id, out var entry))
+                {
+                    if (string.Equals(HashFolders(current), entry.LastWrittenFoldersHash, StringComparison.Ordinal))
+                    {
+                        newManaged[account.Id] = new ManagedUser { Since = entry.Since, LastWrittenFoldersHash = HashFolders(kept) };
+                    }
+                    else
+                    {
+                        // An admin edited this list since Shoal wrote it: it is theirs now, and reconcile must not put back what they removed.
+                        newManaged.Remove(account.Id);
+                        stoppedNow.Add(account.Id);
+                    }
+                }
+            }
+
+            // The record goes first: if a write then fails or the server stops, the pairs are known and the next start can still put them back.
+            await _state.UpdateAsync(
+                s =>
+                {
+                    s.Home.Visibility.Parked[peerKey] = new ParkedPeer { ParkedUtc = _time.GetUtcNow().UtcDateTime, Pairs = pairs };
+                    s.Home.Visibility.ManagedUsers = newManaged.ToDictionary(static p => p.Key, static p => p.Value);
+                },
+                cancellationToken).ConfigureAwait(false);
+            _stoppedManaging = [.. _stoppedManaging, .. stoppedNow];
+            foreach (var (userId, kept, before) in writes)
+            {
+                if (ChangedSince(userId, before))
+                {
+                    continue; // edited in the dashboard while this ran: not overwritten
+                }
+
+                try
+                {
+                    await _accounts.SetFoldersAsync(userId, enableAllFolders: false, kept, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning("Shoal could not hide an offline server's libraries for an account ({Error})", ex.GetType().Name);
+                }
+            }
+
+            _logger.LogInformation("Shoal hid the libraries of an offline server from {Accounts} accounts ({Pairs} pairs)", writes.Count, pairs.Count);
+            if (allFolders > 0)
+            {
+                _logger.LogInformation("{Accounts} accounts see all libraries, so they still see the offline server's titles (they can only be hidden by listing libraries for them)", allFolders);
+            }
+
+            return pairs.Count;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Shows a peer's libraries again: puts back exactly the (account, library) pairs <see cref="ParkPeerAsync"/> removed. A pair is skipped when the account was
+    /// deleted, now has "all libraries", already has the library back (an admin did it), or is no longer admitted by the access rules. Everything else in an
+    /// account's list stays as the admin left it.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>How many pairs were put back.</returns>
+    public async Task<int> UnparkPeerAsync(string peerKey, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_state.Status != StateStatus.Ready || !_state.Current.Home.Visibility.Parked.TryGetValue(peerKey, out var parked))
+            {
+                return 0;
+            }
+
+            var state = _state.Current;
+            var shoal = ShoalLibraries(state, _libraries.List()).ToDictionary(static l => l.Id);
+            var shareUsers = ShareUserIds(state);
+            var accounts = _accounts.List().ToDictionary(static a => a.Id);
+            var restored = 0;
+            var newManaged = state.Home.Visibility.ManagedUsers.ToDictionary(static p => p.Key, static p => p.Value);
+            var writes = new List<(Guid UserId, List<Guid> Folders, string Before)>();
+            var stoppedNow = new HashSet<Guid>();
+            foreach (var group in parked.Pairs.GroupBy(static p => p.UserId))
+            {
+                if (!accounts.TryGetValue(group.Key, out var account) || account.EnableAllFolders || shareUsers.Contains(account.Id))
+                {
+                    continue;
+                }
+
+                var list = account.EnabledFolders.ToList();
+                var user = account.ToCallerUser();
+                var added = 0;
+                foreach (var pair in group)
+                {
+                    if (list.Contains(pair.LibraryId) || !shoal.TryGetValue(pair.LibraryId, out var library) || !AccessPolicy.Admitted(user, library.Access, shareUsers))
+                    {
+                        continue;
+                    }
+
+                    list.Add(pair.LibraryId);
+                    added++;
+                }
+
+                if (added == 0)
+                {
+                    continue;
+                }
+
+                restored += added;
+                writes.Add((account.Id, list, HashFolders(account.EnabledFolders)));
+                if (newManaged.TryGetValue(account.Id, out var entry))
+                {
+                    if (string.Equals(HashFolders(account.EnabledFolders), entry.LastWrittenFoldersHash, StringComparison.Ordinal))
+                    {
+                        newManaged[account.Id] = new ManagedUser { Since = entry.Since, LastWrittenFoldersHash = HashFolders(list) };
+                    }
+                    else
+                    {
+                        newManaged.Remove(account.Id);
+                        stoppedNow.Add(account.Id);
+                    }
+                }
+            }
+
+            await _state.UpdateAsync(
+                s =>
+                {
+                    s.Home.Visibility.Parked.Remove(peerKey);
+                    s.Home.Visibility.ManagedUsers = newManaged.ToDictionary(static p => p.Key, static p => p.Value);
+                },
+                cancellationToken).ConfigureAwait(false);
+            _stoppedManaging = [.. _stoppedManaging, .. stoppedNow];
+            foreach (var (userId, folders, before) in writes)
+            {
+                if (ChangedSince(userId, before))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await _accounts.SetFoldersAsync(userId, enableAllFolders: false, folders, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning("Shoal could not show a server's libraries again for an account ({Error})", ex.GetType().Name);
+                }
+            }
+
+            _logger.LogInformation("Shoal showed the libraries of a recovered server again ({Pairs} pairs)", restored);
+            return restored;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
@@ -290,6 +515,13 @@ public sealed class VisibilityService : IDisposable
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
     }
 
+    // True when the list of the account is no longer the one read earlier (an admin edited it, or the account is gone or now sees everything).
+    private bool ChangedSince(Guid userId, string beforeHash)
+    {
+        var fresh = _accounts.List().FirstOrDefault(a => a.Id == userId);
+        return fresh is null || fresh.EnableAllFolders || !string.Equals(HashFolders(fresh.EnabledFolders), beforeHash, StringComparison.Ordinal);
+    }
+
     private static bool SamePath(string location, string expected)
     {
         try
@@ -326,12 +558,16 @@ public sealed class VisibilityService : IDisposable
         var now = _time.GetUtcNow().UtcDateTime;
         var accounts = _accounts.List();
         stopped.IntersectWith(accounts.Select(static a => a.Id));
+        var parkedPairs = state.Home.Visibility.Parked.Values.SelectMany(static p => p.Pairs).Select(static p => (p.UserId, p.LibraryId)).ToHashSet();
 
         foreach (var account in accounts)
         {
             var user = account.ToCallerUser();
-            var admitted = shoal.Where(l => AccessPolicy.Admitted(user, l.Access, shareUsers)).Select(static l => l.Id).ToList();
+            var admittedAll = shoal.Where(l => AccessPolicy.Admitted(user, l.Access, shareUsers)).Select(static l => l.Id).ToList();
             var current = account.EnabledFolders.ToList();
+
+            // A library Shoal hid while its server is offline stays hidden from that account; one an admin put back by hand is left alone.
+            var admitted = parkedPairs.Count == 0 || account.EnableAllFolders ? admittedAll : admittedAll.Where(id => !parkedPairs.Contains((account.Id, id)) || current.Contains(id)).ToList();
 
             if (shareUsers.Contains(account.Id))
             {
@@ -370,7 +606,7 @@ public sealed class VisibilityService : IDisposable
 
             if (entry is not null)
             {
-                if (admitted.Count == shoal.Count)
+                if (admittedAll.Count == shoal.Count && admitted.Count == admittedAll.Count)
                 {
                     writes.Add((account.Id, true, []));
                     newManaged.Remove(account.Id);
@@ -391,7 +627,7 @@ public sealed class VisibilityService : IDisposable
 
             if (account.EnableAllFolders)
             {
-                if (admitted.Count == shoal.Count)
+                if (admittedAll.Count == shoal.Count && admitted.Count == admittedAll.Count)
                 {
                     continue; // sees everything, and is admitted to everything
                 }

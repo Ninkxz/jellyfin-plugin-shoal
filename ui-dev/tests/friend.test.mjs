@@ -25,7 +25,7 @@ test('header: name, status chip, sharing account and the help under Pause', asyn
     try {
         assert.equal(p.page.querySelector('[data-shoal-view="friend"] h1').textContent, 'Sam');
         const header = p.page.querySelector('.shoal-detail__header');
-        assert.match(header.textContent, /Active/);
+        assert.match(header.textContent, /Waiting for friend/);
         assert.match(header.textContent, /Sharing account shoal-sam · since /);
         assert.match(header.textContent, /Signs Sam's server out at once\. Its titles stay listed on their side but won't play\./);
         assert.ok(buttonIn(header, 'Pause'));
@@ -201,6 +201,12 @@ test('stop sharing: the button stays off until the name is typed, then the resul
         assert.match(text, /Two more steps/);
         assert.match(text, /Tailscale admin console/);
         assert.match(text, /Protect your shared videos/);
+        // Pilot 07 D19: no arrows, the mode is explained, and the two extra steps are numbered 1 and 2.
+        assert.doesNotMatch(text, />|Log only/);
+        assert.match(text, /open Machines, then this server, then Share/);
+        assert.match(text, /Choose Require sign in in Settings/);
+        const numbers = [...p.page.querySelectorAll('.shoal-result .shoal-checklist')].at(-1).querySelectorAll('.shoal-checklist__n');
+        assert.deepEqual([...numbers].map((n) => n.textContent), ['1', '2']);
     } finally {
         p.close();
     }
@@ -218,7 +224,7 @@ test('stop sharing: a device that would not sign out is reported in words, not h
         const text = p.text();
         assert.match(text, /1 device is still signed in\./);
         assert.match(text, /Shoal couldn't delete the account\./);
-        assert.match(text, /Dashboard > Users/);
+        assert.match(text, /Dashboard, then Users/);
     } finally {
         p.close();
     }
