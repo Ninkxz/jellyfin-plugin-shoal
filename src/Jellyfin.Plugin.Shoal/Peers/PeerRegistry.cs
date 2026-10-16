@@ -124,6 +124,11 @@ public sealed class PeerRegistry
     /// </summary>
 #pragma warning disable CA1003 // A plain callback with the key: internal plumbing, not a public event model.
     public event Action<string>? PeerStopped;
+
+    /// <summary>
+    /// Raised after a peer's status changed, with the key, the old status, the new status and since when the old one had stood. A listener must only record and never call back into the registry.
+    /// </summary>
+    public event Action<string, PeerStatus, PeerStatus, DateTimeOffset?>? StatusChanged;
 #pragma warning restore CA1003
 
     /// <summary>
@@ -209,8 +214,12 @@ public sealed class PeerRegistry
     {
         var entry = _peers.GetOrAdd(peerKey, _ => new Entry());
         var stopped = status is PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.AuthFailed or PeerStatus.Pairing or PeerStatus.PairingAborted or PeerStatus.Disabled;
+        PeerStatus was;
+        DateTimeOffset? wasSince;
         lock (entry)
         {
+            was = entry.Status;
+            wasSince = entry.StatusSinceUtc;
             if (entry.StatusSinceUtc is null || entry.Status != status)
             {
                 entry.StatusSinceUtc = _time.GetUtcNow();
@@ -222,6 +231,11 @@ public sealed class PeerRegistry
                 entry.PinVerifiedUtc = null; // whatever was true before no longer counts
                 entry.AuthVerifiedUtc = null;
             }
+        }
+
+        if (was != status)
+        {
+            StatusChanged?.Invoke(peerKey, was, status, wasSince);
         }
 
         if (stopped)

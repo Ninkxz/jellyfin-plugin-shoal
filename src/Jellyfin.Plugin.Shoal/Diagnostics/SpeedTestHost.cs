@@ -197,7 +197,7 @@ public sealed class LinkBudgetLimits : ISystemLimits
     public static int? BudgetOf(IReadOnlyList<SpeedSample> history, bool autoFit, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(history);
-        if (!autoFit || VerdictEngine.Throughput(history) is not { } t)
+        if (!autoFit || VerdictEngine.BudgetThroughput(history) is not { } t)
         {
             return null;
         }
@@ -230,8 +230,9 @@ public sealed class LinkBudgetLimits : ISystemLimits
         var autoFit = _settings.Current.AutoFitQualityToLink;
         var budget = BudgetOf(_history.Read(peerKey), autoFit, _time.GetUtcNow());
 
-        // A link that dropped since the last test: what the segments of the last 30 seconds show wins at once if it is lower, without waiting for the next test.
-        if (autoFit && _passive?.SlowLinkMbps(peerKey) is { } live)
+        // A link that dropped since the last test: what the segments of the last 30 seconds show wins at once if it is lower, without waiting for the next test, and it stays
+        // (LinkLimitMbps) until fresh tests show the link recovered.
+        if (autoFit && _passive?.LinkLimitMbps(peerKey) is { } live)
         {
             // Advice only: it can lower the budget, never below the lowest rate worth a conversion, and never raise it.
             var fromLive = Math.Max(FromThroughput(live), (int)(VerdictEngine.MinUsableMbps * 1_000_000));

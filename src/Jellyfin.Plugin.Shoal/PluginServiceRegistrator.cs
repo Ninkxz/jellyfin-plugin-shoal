@@ -88,6 +88,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddShoalTvSync();
         serviceCollection.AddSingleton<ISyncActivity>(sp => sp.GetRequiredService<CatalogSyncService>());
         serviceCollection.AddHostedService<SyncScheduler>();
+        serviceCollection.AddSingleton<DedupSettler>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<DedupSettler>());
 
         // Who may see a Shoal library (DESIGN 5.6).
         serviceCollection.TryAddSingleton(TimeProvider.System);

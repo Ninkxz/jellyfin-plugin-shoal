@@ -586,7 +586,7 @@ export function createMock(options) {
         return {
             direction: 'watch', method: s.method, peerHandle: s.peerHandle || '', step, state: s.error ? 'aborted' : s.state === 'done' ? 'confirmed' : 'running',
             code: s.method === 'qc' && s.state !== 'gettingCode' ? s.code : null,
-            safetyCode: s.method === 'qc' && s.state === 'gettingCode' ? null : s.safetyCode,
+            safetyCode: (s.method === 'qc' && s.state === 'gettingCode') || (opt.lateCode && age < 3000) ? null : s.safetyCode,
             expiresUtc: opt.noExpiry ? null : iso(s.state === 'awaitingConfirm' ? s.confirmDeadline : s.createdAt + s.lifetimeMs),
             error: s.error || null, phase: s.phase || null, peerSilent: !!s.peerSilent, paired: !!s.rePair, accountWarnings: [], accountNotes: [], startedUtc: iso(s.createdAt)
         };
@@ -1040,7 +1040,15 @@ export function createMock(options) {
 
         return ok(pairingView(), 201);
     });
-    route('GET', 'Pairing', () => (session ? ok(pairingView()) : ok(null, 204)));
+    route('GET', 'Pairing', () => {
+        if (session && opt.endOnConfirm && session.state === 'done') {
+            // The server closes a confirmed pairing by itself (N13): the page then finds no session.
+            session = null;
+            return ok(null, 204);
+        }
+
+        return session ? ok(pairingView()) : ok(null, 204);
+    });
     route('POST', 'Pairing/Confirm', (m, body) => {
         if (!session) {
             return fail(404);

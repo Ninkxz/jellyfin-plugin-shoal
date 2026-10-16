@@ -49,6 +49,19 @@ public static class VerdictEngine
         return last.Count == 0 ? null : last.Count % 2 == 1 ? last[last.Count / 2] : (last[(last.Count / 2) - 1] + last[last.Count / 2]) / 2;
     }
 
+    /// <summary>
+    /// The throughput the auto-fit budget is built on: the lower of the last two measures. A drop counts at once (the newest test decides, not a median of old ones), and a
+    /// recovered link raises the budget only after two measures in a row are good. With one measure, that one.
+    /// </summary>
+    /// <param name="history">The samples, oldest first.</param>
+    /// <returns>The throughput in Mbps, or null when nothing has been measured.</returns>
+    public static double? BudgetThroughput(IEnumerable<SpeedSample> history)
+    {
+        ArgumentNullException.ThrowIfNull(history);
+        var last = history.Where(s => s.HasSpeed && s.Kind != SpeedKinds.Playback && s.SharedWithStreams != true).OrderBy(s => s.T).TakeLast(2).Select(s => s.Mbps!.Value).ToList();
+        return last.Count == 0 ? null : last.Min();
+    }
+
     /// <summary>The bitrate auto-fit would cap a stream at: T divided by the headroom.</summary>
     /// <param name="throughputMbps">T.</param>
     /// <returns>The cap in Mbps.</returns>

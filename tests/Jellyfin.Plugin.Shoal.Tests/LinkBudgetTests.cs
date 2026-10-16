@@ -43,7 +43,7 @@ public sealed class LinkBudgetTests
         var budget = LinkBudgetLimits.BudgetOf(DerpHistory(), autoFit: true, Now);
 
         Assert.NotNull(budget);
-        Assert.InRange(budget!.Value, 3_800_000, 4_000_000); // T is 5.85 (the playback samples are not used), 5.85 / 1.5 = 3.9 Mbps: above the 1.5 Mbps floor, so it is the budget itself
+        Assert.InRange(budget!.Value, 3_600_000, 3_800_000); // T is 5.6, the lower of the last two tests (the playback samples are not used): 5.6 / 1.5 = 3.7 Mbps, above the 1.5 Mbps floor, so it is the budget itself
         var limits = new BitrateLimits(0, budget);
         var moonfin = new Caller(new CallerUser(Guid.NewGuid(), false, false, true, true, true, false, null), "token-0123456789abcdef0123456789abcdef", "device-1", false);
         Assert.Equal(budget, PlaybackInfoBuilder.ComputeMaxStreamingBitrate(120_000_000, moonfin, limits));

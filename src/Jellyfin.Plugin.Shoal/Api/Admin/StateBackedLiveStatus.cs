@@ -320,7 +320,7 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
 
         string? best = null;
         var bestCount = 0;
-        foreach (var other in _state.Current.Home.Peers.Where(p => p.PeerKey != peerKey))
+        foreach (var other in _state.Current.Home.Peers.Where(p => p.PeerKey != peerKey && (_registry is null || CatalogSyncService.IsReachable(_registry.StatusOf(p.PeerKey)))))
         {
             var load = _catalogs.Load(other.PeerKey);
             if (load.Unreadable)

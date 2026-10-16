@@ -70,7 +70,7 @@ public sealed class PassiveTelemetryTests : IDisposable
     }
 
     [Fact]
-    public void ALinkThatDropsDuringPlayback_ShrinksTheBudgetAtOnce_WithoutANewTest_AndTheEvidenceExpires()
+    public void ALinkThatDropsDuringPlayback_ShrinksTheBudgetAtOnce_WithoutANewTest_AndTheLimitIsKept()
     {
         var limits = Limits(12); // the last test said 12 Mbps: a budget of 8
         var play = NewGrant("drop");
@@ -92,7 +92,47 @@ public sealed class PassiveTelemetryTests : IDisposable
 
         _time.Advance(PassiveTelemetry.EvidenceWindow + TimeSpan.FromSeconds(1)); // the evidence is 30 seconds old
         Assert.Null(_telemetry.SlowLinkMbps(Peer));
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000); // F12: the limit stays; the link is not known to be better
+    }
+
+    [Fact]
+    public void F12_TheLoweredBudgetStaysWhenThePlayerStops_UntilTwoFreshTestsInARowShowTheLinkRecovered()
+    {
+        var limits = Limits(12);
+        var play = NewGrant("flap");
+        for (var i = 0; i < 3; i++)
+        {
+            _ = _telemetry.Begin(play, 6, i);
+            _telemetry.Record(play, 6, i, 1000, 4_575_000, TimeSpan.FromSeconds(12.2));
+            _time.Advance(TimeSpan.FromSeconds(6));
+        }
+
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000);
+        _time.Advance(TimeSpan.FromSeconds(35)); // the player stopped; the old evidence has passed
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000); // not 8 Mbps again
+
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = 2.9 }); // a fresh test: still slow
+        _time.Advance(TimeSpan.FromMinutes(30));
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000);
+
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = 12 }); // one good test is not enough
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_100_000);
+        _time.Advance(TimeSpan.FromMinutes(30));
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = 12 }); // the second good one in a row
         Assert.Equal(8_000_000, limits.ForPeer(Peer).LinkBudget);
+    }
+
+    [Fact]
+    public void F12_ADropIsBelievedAtOnce_ByTheNewestTest_NotByTheMedianOfOldOnes()
+    {
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = 9.6 });
+        _time.Advance(TimeSpan.FromHours(1));
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = 9.6 });
+        _time.Advance(TimeSpan.FromHours(1));
+        _history.Append(Peer, new SpeedSample { T = _time.GetUtcNow(), Kind = SpeedKinds.Light, Mbps = 2.9 });
+        var limits = new LinkBudgetLimits(new FixedLimits(), _history, new OnSettings(), _time, _telemetry);
+
+        Assert.InRange(limits.ForPeer(Peer).LinkBudget!.Value, 1_900_000, 2_000_000); // 2.9 / 1.5, not 9.6 / 1.5
     }
 
     private void SlowSegments(Grant grant, int count = 3, double copySeconds = 12.2)

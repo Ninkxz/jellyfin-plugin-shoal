@@ -672,6 +672,7 @@ internal sealed class SyncRun
                 entry.ImageTags = [];
                 _report.Removed++;
                 _report.Duplicates++;
+                _promoted = true; // the better-ranked copy is back: the stub is gone and core is asked once (one scan, as for a promotion)
             }
             else
             {

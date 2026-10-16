@@ -65,6 +65,24 @@ public sealed class StateBackedLiveStatusTests
     [Fact]
     public async Task TitlesWithoutAStubBecauseAnotherServerCarriesThem_AreCountedWithTheWinnersName()
     {
+        var card = await WinnerCardAsync(null);
+
+        Assert.Equal(2, card.HiddenByDedup);
+        Assert.Equal("Hop_Media", card.DedupWinner);
+    }
+
+    [Fact]
+    public async Task WhileTheWinnerIsPaused_TheCardDoesNotNameItAsTheWinner()
+    {
+        var card = await WinnerCardAsync(Jellyfin.Plugin.Shoal.Peers.PeerStatus.Disabled);
+
+        Assert.Null(card.DedupWinner); // F11: stale text on the other servers' cards
+        var online = await WinnerCardAsync(Jellyfin.Plugin.Shoal.Peers.PeerStatus.Online);
+        Assert.Equal("Hop_Media", online.DedupWinner);
+    }
+
+    private static async Task<Jellyfin.Plugin.Shoal.Api.Admin.ServerDto> WinnerCardAsync(Jellyfin.Plugin.Shoal.Peers.PeerStatus? winnerStatus)
+    {
         using var rig = new PairingRig();
         await rig.State.UpdateAsync(StateSamples.Fill);
         await rig.State.UpdateAsync(s => s.Home.Peers.Add(new Jellyfin.Plugin.Shoal.State.PeerState { PeerKey = StateSamples.PeerKeyB, DisplayName = "Hop_Media", BaseUrl = "http://other.tail1234.ts.net:8096" }));
@@ -81,14 +99,19 @@ public sealed class StateBackedLiveStatusTests
         winner.Entries.Add(new Jellyfin.Plugin.Shoal.Sync.CatalogEntry { StubKey = "bbbbbbbbbbbbbbb1", PeerItemId = new string('2', 32), MappingKey = "m", Title = "One", State = Jellyfin.Plugin.Shoal.Sync.EntryState.Active, StubRelPath = "m/one.strm" });
         winner.Entries.Add(new Jellyfin.Plugin.Shoal.Sync.CatalogEntry { StubKey = "bbbbbbbbbbbbbbb2", PeerItemId = new string('2', 32), MappingKey = "m", Title = "Two", State = Jellyfin.Plugin.Shoal.Sync.EntryState.Active, StubRelPath = "m/two.strm" });
         catalogs.Save(winner);
-        var live = new StateBackedLiveStatus(rig.Health, new Gate(), catalogs, state: rig.State);
+        Jellyfin.Plugin.Shoal.Peers.PeerRegistry? registry = null;
+        if (winnerStatus is { } status)
+        {
+            registry = new Jellyfin.Plugin.Shoal.Peers.PeerRegistry(new ManualTimeProvider());
+            registry.SetStatus(StateSamples.PeerKeyB, status);
+        }
+
+        var live = new StateBackedLiveStatus(rig.Health, new Gate(), catalogs, registry: registry, state: rig.State);
 
         var info = live.ForPeer(StateSamples.PeerKeyA);
-        var card = Jellyfin.Plugin.Shoal.Api.Admin.AdminStatusBuilder.Server(rig.State.Current.Home.Peers.First(p => p.PeerKey == StateSamples.PeerKeyA), info);
 
         Assert.Equal(1, info.TitleCount);
-        Assert.Equal(2, card.HiddenByDedup);
-        Assert.Equal("Hop_Media", card.DedupWinner);
+        return Jellyfin.Plugin.Shoal.Api.Admin.AdminStatusBuilder.Server(rig.State.Current.Home.Peers.First(p => p.PeerKey == StateSamples.PeerKeyA), info);
     }
 
     [Fact]

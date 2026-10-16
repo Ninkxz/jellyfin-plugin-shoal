@@ -82,6 +82,9 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
     /// <summary>How far back the live evidence of a slow link reaches.</summary>
     public static readonly TimeSpan EvidenceWindow = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long a lowered limit that live evidence set stays at most when no fresh test ever shows the link recovered.</summary>
+    public static readonly TimeSpan HoldMax = TimeSpan.FromHours(6);
+
     private const int MinSegments = 3;
     private const int FirstMeasuredIndex = 3;
 
@@ -91,6 +94,7 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
     private readonly ConcurrentDictionary<string, Play> _plays = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, List<Observation>> _recent = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, bool> _remeasure = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (double Mbps, DateTimeOffset Since)> _held = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PassiveTelemetry"/> class.
@@ -171,6 +175,38 @@ public sealed class PassiveTelemetry : ISegmentTelemetry
         var bytes = slow.Sum(static g => g.Bytes);
         var copy = slow.Sum(static g => g.Copy);
         return copy > 0 ? Math.Round(bytes * 8 / 1e6 / copy, 2) : null;
+    }
+
+    /// <summary>
+    /// The limit live evidence puts on a link, and keeps: once the segments showed the link too slow, the limit stays after the evidence window has passed (a player that
+    /// stopped, a pause) until two fresh speed tests in a row, taken after that evidence, both show the link at least 1.5 times as fast as the evidence did. One good test
+    /// is not enough, and old tests do not count. At most <see cref="HoldMax"/>.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>The rate in Mbps the link is held to, or null.</returns>
+    public double? LinkLimitMbps(string peerKey)
+    {
+        var now = _time.GetUtcNow();
+        if (SlowLinkMbps(peerKey) is { } live)
+        {
+            _held[peerKey] = (live, now);
+            return live;
+        }
+
+        if (!_held.TryGetValue(peerKey, out var held))
+        {
+            return null;
+        }
+
+        var fresh = _history.Read(peerKey).Where(s => s.HasSpeed && s.Kind != SpeedKinds.Playback && s.SharedWithStreams != true && s.T > held.Since).OrderBy(static s => s.T).TakeLast(2).ToList();
+        var recovered = fresh.Count == 2 && fresh.All(s => s.Mbps!.Value >= held.Mbps * 1.5);
+        if (recovered || now - held.Since > HoldMax)
+        {
+            _held.TryRemove(peerKey, out _);
+            return null;
+        }
+
+        return held.Mbps;
     }
 
     /// <summary>Says, once, that a peer link was seen too slow while it streamed, so a light test runs when the stream is over.</summary>

@@ -211,6 +211,11 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         return reports;
     }
 
+    /// <summary>Whether a server has any title in its catalog (a server with none has nothing to settle).</summary>
+    /// <param name="peerKey">The server.</param>
+    /// <returns>True when its catalog lists a title.</returns>
+    public bool HasTitles(string peerKey) => _d.Store.Load(peerKey).Document.Entries.Count > 0;
+
     /// <inheritdoc />
     public bool IsSyncing(string peerKey) => string.Equals(_syncing, peerKey, StringComparison.Ordinal);
 

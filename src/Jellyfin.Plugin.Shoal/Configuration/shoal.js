@@ -157,6 +157,7 @@ const STRINGS = {
     pv2ChangeAddress: "Change the address",
     pv2CodeTitle: "Read this code to your friend",
     pv2CodeBody: "Your friend types this code into the box on their Shoal. It proves you are talking to the right person.",
+    pv2GettingCode: "Getting the code from {server}. This takes a few seconds.",
     pv2CodeSay: "Open Shoal. There is a request from {home}. Type this code when it asks. I'll read it slowly: {code}.",
     pv2NoRequestTitle: "My friend doesn't see a request",
     pv2NoRequestBody: "Make sure they opened Shoal on {server} and chose the request from {home}. If there is nothing there, cancel and check the address with them.",
@@ -423,9 +424,11 @@ const STRINGS = {
     rangeLabel_24h: "last 24 hours",
     rangeLabel_7d: "last 7 days",
     rangeLabel_30d: "last 30 days",
-    speedSub_24h: "Last 24 hours · {tests} tests and {plays} plays, measured from your server",
-    speedSub_7d: "Last 7 days · {tests} tests and {plays} plays, measured from your server",
-    speedSub_30d: "Last 30 days · {tests} tests and {plays} plays, measured from your server",
+    testWord: ["test", "tests"],
+    playWord: ["play", "plays"],
+    speedSub_24h: "Last 24 hours · {tests} {testWord} and {plays} {playWord}, measured from your server",
+    speedSub_7d: "Last 7 days · {tests} {testWord} and {plays} {playWord}, measured from your server",
+    speedSub_30d: "Last 30 days · {tests} {testWord} and {plays} {playWord}, measured from your server",
     kpiNow: "Speed now",
     kpiLatency: "Latency",
     kpiStability: "Stability",
@@ -2719,7 +2722,7 @@ function spellOut(chars) {
  * groups. The accessible name spells the code character by character; the visible text is hidden from readers.
  */
 function codeBox(kind, value) {
-    const raw = String(value).replace(/[\s-]/g, '');
+    const raw = value === null || value === undefined || value === 'undefined' ? '' : String(value).replace(/[\s-]/g, '');
     let groups;
     if (kind === 'safety') {
         groups = [raw.slice(0, 4), raw.slice(4)];
@@ -3125,7 +3128,7 @@ function classifyCode(value, where) {
 
 /** A safety code in two groups of four: K7QM2XA4 reads "K7QM 2XA4". */
 function inFours(value) {
-    return String(value || '').replace(/\s+/g, '').replace(/(.{4})(?=.)/g, '$1 ');
+    return String(value === 'undefined' ? '' : value || '').replace(/\s+/g, '').replace(/(.{4})(?=.)/g, '$1 ');
 }
 
 /* ---------- pairing v2 components (docs/ui-spec-pairing-v2.md, section 3) ---------- */
@@ -4512,7 +4515,7 @@ function createSpeedPanel(ctx, o) {
         const model = describeServer(cur, ctx.fmt);
         const samples = data.samples || [];
         const tests = samples.filter((s) => s.kind !== 'playback').length;
-        sub.textContent = t('speedSub_' + rangeKey, { tests, plays: samples.length - tests });
+        sub.textContent = t('speedSub_' + rangeKey, { tests, plays: samples.length - tests, testWord: t('testWord', { n: tests }), playWord: t('playWord', { n: samples.length - tests }) });
         const k = data.kpis || {};
         const offline = model.key === 'offline';
         // "Speed now" is the newest point of the chart, so the card and the chart never give two different latest speeds.
@@ -6538,7 +6541,7 @@ ctx.toast(t('settingsSaved'));
 
         p.body.append(
             paragraph(t('protectIntro')),
-            el('p', { class: 'shoal-protect__current' }, chip(tone, 'shield', t(modeName[h.mode])), el('span', { class: 'shoal-meta', text: t('protectSince', { date: ctx.fmt.date(h.sinceUtc) }) })));
+            el('p', { class: 'shoal-protect__current' }, chip(tone, 'shield', t(modeName[h.mode])), toMs(h.sinceUtc) ? el('span', { class: 'shoal-meta', text: t('protectSince', { date: ctx.fmt.date(h.sinceUtc) }) }) : null));
 
         const change = async (mode, opener) => {
             const toEnforce = mode === 'Enforce';
@@ -7683,11 +7686,12 @@ function addressHints(reading, onFix) {
         const wrap = el('div', { class: 'shoal-step__body' });
         poller.start();
         const approved = s.state === 'approved' || s.state === 'awaitingConfirm';
+        const hasCode = typeof s.safetyCode === 'string' && s.safetyCode.length > 0;
         appendKids(wrap, [
             head(t('pv2CodeTitle'), 'you'),
             paragraph(t('pv2CodeBody')),
-            el('div', { class: 'shoal-codeblock' }, labelledCode('safety', s.safetyCode, 'safetyCodeWord'), copyButton(ctx, () => normalizeCode(s.safetyCode), 'copyCode', 'announceCodeCopied')),
-            sayBox(ctx, t('pv2CodeSay', { home: homeName(), code: inFours(s.safetyCode) })),
+            hasCode ? el('div', { class: 'shoal-codeblock' }, labelledCode('safety', s.safetyCode, 'safetyCodeWord'), copyButton(ctx, () => normalizeCode(s.safetyCode), 'copyCode', 'announceCodeCopied')) : statusRow('info', 'clock', t('pv2GettingCode', { server }), 'shoal-pairwait'),
+            hasCode ? sayBox(ctx, t('pv2CodeSay', { home: homeName(), code: inFours(s.safetyCode) })) : null,
             approved ? statusRow('ok', 'ok', t('pv2ApprovedConnecting'), 'shoal-pairwait') : statusRow('info', 'clock', t('waitingForFriend', { server }), 'shoal-pairwait'),
             countdownNode(s.expiresUtc, () => showOutcome('expired', { method: 'invite' }), 'invite'),
             typeof wiz.inviteLeftMin === 'number' ? paragraph(t('pv2InviteLeft', { m: wiz.inviteLeftMin, n: wiz.inviteLeftMin }), 'shoal-meta') : null,
@@ -7755,7 +7759,7 @@ function addressHints(reading, onFix) {
             go('choose');
         } else if (s.error) {
             showOutcome(s.error, { method: s.method, phase: s.phase, code: s.code, afterApproval: s.phase === 'awaitingConfirm', retryAfter: s.retryAfter, minutes: s.retryAfter ? Math.ceil(s.retryAfter / 60) : 1 });
-        } else if (!before || before.state !== s.state || (!!before.code !== !!s.code) || !!before.peerSilent !== !!s.peerSilent) {
+        } else if (!before || before.state !== s.state || before.step !== s.step || (!!before.code !== !!s.code) || (!!before.safetyCode !== !!s.safetyCode) || !!before.peerSilent !== !!s.peerSilent) {
             if (s.state === 'awaitingConfirm' || s.state === 'approved') {
                 ctx.announce(t('announceApproved', { server: serverName() }));
             }
@@ -7779,6 +7783,10 @@ function addressHints(reading, onFix) {
             wiz.known = peer;
             if (peer.pairingError) {
                 showOutcome(peer.pairingError, { method: peer.pairingMethod, phase: peer.pairingPhase, afterApproval: peer.pairingPhase === 'awaitingConfirm', stoppedUtc: peer.pairingStoppedUtc });
+            } else if (peer.paired !== false && peer.status !== 'Pairing' && wiz.step === 'pair') {
+                // The pairing finished and the server closed it: the server is paired, so go on to choosing libraries.
+                ctx.announce(t('announcePaired', { server: serverName() }));
+                go('choose');
             } else {
                 go('connect');
             }
@@ -8597,7 +8605,7 @@ function addressHints(reading, onFix) {
 
             // Coming back to the page: an old red error and the old address do not belong to a new visit. A running pairing is kept (it lives on the server);
             // one the server no longer has is dropped.
-            if (!wiz.session && !wiz.peerHandle && wiz.step !== 'done') {
+            if (wiz.step === 'done' || (!wiz.session && !wiz.peerHandle)) {
                 restartWizard();
             } else if (wiz.session && wiz.step !== 'done') {
                 ctx.api.pairing().then((now) => {

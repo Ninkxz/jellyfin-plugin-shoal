@@ -1,7 +1,7 @@
 // Pairing v2 (docs/ui-spec-pairing-v2.md): "Pair a server" and "Share", both directions, against the mock admin API.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mountPage, makeClock, JUNK } from './helpers.mjs';
+import { mountPage, makeClock, JUNK, loadShoal } from './helpers.mjs';
 
 async function pair(opts) {
     const clock = makeClock(Date.UTC(2026, 9, 15, 12, 0, 0));
@@ -1480,6 +1480,58 @@ test('N11: a pairing session with no expiry yet is not an expired invite', async
         p.clock.advance(5000);
         await p.poll();
         assert.doesNotMatch(StepText(p), /ran out/i);
+    } finally {
+        p.close();
+    }
+});
+
+test('N20: the safety code is never "undefined": the page waits for the polled code and then shows it', async () => {
+    const p = await pair({ lateCode: true });
+    try {
+        await startInvite(p);
+        let text = StepText(p);
+        assert.doesNotMatch(text, /undefined|unde fined/i);
+        assert.match(text, /Getting the code/);
+        assert.doesNotMatch(text, /K7QM/);
+        assert.doesNotMatch(text, /read it slowly: ./);
+        p.clock.advance(4000);
+        await p.poll();
+        text = StepText(p);
+        assert.doesNotMatch(text, /undefined|unde fined/i);
+        assert.match(text, /K7QM 2XA4/);
+        assert.match(text, /I'll read it slowly: K7QM 2XA4./);
+        assert.equal(p.page.querySelector('.shoal-code').dataset.copy, 'K7QM2XA4');
+    } finally {
+        p.close();
+    }
+});
+
+test('N20: the pure helpers never print undefined', async () => {
+    const mod = await loadShoal();
+    assert.equal(mod.inFours(undefined), '');
+    assert.equal(mod.inFours('undefined'), '');
+    assert.equal(mod.inFours('K7QM2XA4'), 'K7QM 2XA4');
+});
+
+test('N21: when the server closes a confirmed pairing the wizard goes on to the libraries, and a new visit starts a new wizard', async () => {
+    const p = await pair({ endOnConfirm: true });
+    try {
+        await startInvite(p);
+        p.clock.advance(7000);
+        await p.poll();
+        await p.wait(250);
+        assert.match(StepText(p), /Choose what to add/);
+        buttonIn(p.page, 'Add and start syncing');
+        const rows = [...p.page.querySelectorAll('.shoal-libpick__item')];
+        rows.find((r) => r.textContent.includes('Movies') && !r.textContent.includes('Everything')).querySelector('input').click();
+        await p.wait(30);
+        buttonIn(p.page, 'Add and start syncing').click();
+        await p.wait(250);
+        assert.match(StepText(p), /Willow is paired/);
+        p.handle.screen().show();
+        await p.wait(300);
+        assert.doesNotMatch(step(p).textContent, /Willow is paired/);
+        assert.match(p.text(), /What do you want to do?|Server address/);
     } finally {
         p.close();
     }
