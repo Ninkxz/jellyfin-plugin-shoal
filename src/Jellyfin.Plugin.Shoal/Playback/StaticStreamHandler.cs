@@ -123,6 +123,8 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
     private readonly IVersionResolver? _versions;
     private readonly OfflineCards? _cards;
     private readonly ReadAheadBudget? _readAhead;
+    private readonly IGroupPlayback? _groups;
+    private readonly GrantStore? _grants;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StaticStreamHandler"/> class.
@@ -140,6 +142,8 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
     /// <param name="versions">Maps the media source the client names to a version of the title (DESIGN v2.6.4); none means the title has one version.</param>
     /// <param name="cards">The offline card; none means its media source is not served.</param>
     /// <param name="readAhead">The byte budget for the read-ahead buffer of each stream, or null for none.</param>
+    /// <param name="groups">Follows the server a grouped title's PlaybackInfo picked (PLAN v2.9 K42); none means every title streams from its stub's server.</param>
+    /// <param name="grants">The grants, where the picked server is recorded.</param>
     public StaticStreamHandler(
         StubCatalog catalog,
         IPeerEndpoints peers,
@@ -153,8 +157,12 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
         ILogger<StaticStreamHandler> logger,
         IVersionResolver? versions = null,
         OfflineCards? cards = null,
-        ReadAheadBudget? readAhead = null)
+        ReadAheadBudget? readAhead = null,
+        IGroupPlayback? groups = null,
+        GrantStore? grants = null)
     {
+        _groups = groups;
+        _grants = grants;
         _readAhead = readAhead;
         _cards = cards;
         _versions = versions;
@@ -249,11 +257,48 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
             versionSource = entry.Sources.FirstOrDefault(s => s.StubKey == version.StubKey) ?? versionSource;
         }
 
+        // K42: a grouped title streams from the server its PlaybackInfo picked (the caller's grant for this item and device), so the stream never switches;
+        // with no grant, from the best server that is up now. The extra versions are hidden, so only the item itself is named.
+        if (_groups is not null && (namedSource is null || namedSource == request.ItemId.ToString("N")))
+        {
+            var grant = _grants?.ForUser(caller.UserId).Where(g => g.LocalItemId == request.ItemId && g.CallerDeviceId == caller.DeviceId).OrderByDescending(static g => g.CreatedUtc).FirstOrDefault();
+            var member = grant is not null
+                ? _groups.Member(peerKey, entry, grant.PeerKey, grant.PeerItemId)
+                : (request.Stub.IsCopy ? _groups.CandidatesForCopy(peerKey, entry, caller.User, request.Stub.LibKey) : _groups.Candidates(peerKey, entry, caller.User)) is { Count: > 0 } candidates ? candidates[0] : null;
+
+            // Warden 10 L2: a grant's member is checked again against the caller's libraries on every request (access may have been taken away since).
+            if (grant is not null && member is not null && !_groups.Admits(peerKey, entry, member, caller.User, request.Stub.IsCopy ? request.Stub.LibKey : null))
+            {
+                return new ShoalResult(StatusCodes.Status404NotFound);
+            }
+
+            if (request.Stub.IsCopy && member is null)
+            {
+                return new ShoalResult(StatusCodes.Status404NotFound); // K45: an extra copy never falls back to the owner's server
+            }
+
+            if (member is not null)
+            {
+                peerKey = member.PeerKey;
+                entry = member.Entry;
+                peerItemId = member.PeerItemId;
+                peerSourceId = member.PeerMediaSourceId;
+                versionSource = entry.Sources.Count > 0 ? entry.Sources[0] : null;
+            }
+        }
+
         var peer = _peers.Find(peerKey);
         var peerState = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey);
         if (peer is null || peerState is null || _registry.StatusOf(peerKey) is PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled)
         {
             return new ShoalResult(StatusCodes.Status503ServiceUnavailable);
+        }
+
+        // K51: a file over the connection's quality limit (the one stored now, and the one the caller's grant holds) is never streamed as it is.
+        if (OverLimit(caller.UserId, caller.DeviceId, request.ItemId, peerState, entry, versionSource))
+        {
+            _logger.LogInformation("A static stream of item {Item} was refused: over the quality limit of peer {Peer}", Redact.Id(request.ItemId), Redact.Id(peerKey));
+            return new ShoalResult(StatusCodes.Status403Forbidden);
         }
 
         // 2. the trust window must cover the pin and the token (4.4)
@@ -339,6 +384,24 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
     }
 
     /// <summary>Validates the Peer's answer (DESIGN 6.3 step 5) and works out what Home may say about it.</summary>
+    // K51: the size of what is streamed comes from the caller's grant (the Peer's answer at PlaybackInfo) where it has one, else from the catalog. An unknown size is over
+    // any box, so with a limit and nothing known the file is refused, never assumed small.
+    private bool OverLimit(Guid userId, string deviceId, Guid itemId, PeerState peerState, CatalogEntry entry, CatalogSource? source)
+    {
+        var grant = _grants?.ForUser(userId).Where(g => g.LocalItemId == itemId && g.CallerDeviceId == deviceId && g.PeerKey == peerState.PeerKey).OrderByDescending(static g => g.CreatedUtc).FirstOrDefault();
+        QualityCap?[] caps = [QualityCap.From(peerState.QualityLimit), grant?.Cap];
+        if (caps.All(static c => c is null))
+        {
+            return false;
+        }
+
+        var (width, height) = grant is { SourceWidth: > 0, SourceHeight: > 0 } ? (grant.SourceWidth, grant.SourceHeight)
+            : source is { Width: > 0, Height: > 0 } ? (source.Width, source.Height)
+            : (entry.Width, entry.Height);
+        long bitrate = grant is { SourceBitrate: > 0 } ? grant.SourceBitrate : source is { Bitrate: > 0 } ? source.Bitrate : entry.Bitrate;
+        return caps.Any(c => c is not null && !c.Allows(width, height, bitrate));
+    }
+
     // The size bound of a version is its own source's, not the primary's (DESIGN v2.6.4).
     private static CatalogEntry EntryOf(CatalogEntry entry, CatalogSource source) => new() { SizeBytes = source.SizeBytes, Container = source.Container ?? entry.Container };
 

@@ -108,6 +108,11 @@ public static class StateReconciler
 
             foreach (var mapping in peer.Libraries)
             {
+                if (LibraryFolders.FedBy(state, peer.PeerKey, mapping.CollectionType) is not null)
+                {
+                    continue; // its titles are in a shared library, checked below as a library
+                }
+
                 var expected = stubRoot.Length == 0 ? null : Normalize(Path.Combine(stubRoot, peer.PeerKey, mapping.Subfolder));
                 var found = expected is not null
                     && inputs.Libraries.Any(l => l.Paths.Count == 1 && string.Equals(Normalize(l.Paths[0]), expected, comparison));
@@ -115,6 +120,19 @@ public static class StateReconciler
                 {
                     findings.Add(new ReconcileFinding(ReconcileKind.LibraryMissing, peer.PeerKey, mapping.LocalLibraryName));
                 }
+            }
+        }
+
+        // K44: a shared library of its own must exist with exactly its folder; one added into a main library needs a library that holds its folder.
+        foreach (var layout in state.Home.Libraries.Where(static l => !l.IsLegacy))
+        {
+            var expected = stubRoot.Length == 0 ? null : LibraryFolders.PathOf(stubRoot, layout) is { } path ? Normalize(path) : null;
+            var found = expected is not null && inputs.Libraries.Any(l => layout.Placement == LibraryPlacement.Shoal
+                ? l.Paths.Count == 1 && string.Equals(Normalize(l.Paths[0]), expected, comparison)
+                : l.Paths.Any(p => string.Equals(Normalize(p), expected, comparison)));
+            if (!found)
+            {
+                findings.Add(new ReconcileFinding(ReconcileKind.LibraryMissing, null, layout.Name));
             }
         }
 
@@ -144,7 +162,19 @@ public static class StateReconciler
                         continue;
                     }
 
-                    var firstSegment = normalized[prefix.Length..].Split(Path.DirectorySeparatorChar)[0];
+                    var segments = normalized[prefix.Length..].Split(Path.DirectorySeparatorChar);
+                    var firstSegment = segments[0];
+                    if (string.Equals(firstSegment, ShoalLibrary.LibsFolder, comparison))
+                    {
+                        if (segments.Length < 2 || !state.Home.Libraries.Any(l => !l.IsLegacy && string.Equals(l.LibKey, segments[1], comparison)))
+                        {
+                            findings.Add(new ReconcileFinding(ReconcileKind.LibraryWithoutPeer, null, library.Name));
+                            break;
+                        }
+
+                        continue;
+                    }
+
                     if (!peerKeys.Contains(firstSegment))
                     {
                         findings.Add(new ReconcileFinding(ReconcileKind.LibraryWithoutPeer, null, library.Name));

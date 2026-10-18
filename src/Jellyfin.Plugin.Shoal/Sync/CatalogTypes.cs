@@ -288,6 +288,18 @@ public sealed class CatalogEntry
     /// <summary>Gets or sets a hash of the sanitized fields the stub, NFO and images were written from, so a peer-side Etag storm rewrites nothing (DESIGN v2.7.2), or null.</summary>
     public string? ContentHash { get; set; }
 
+    /// <summary>
+    /// Gets or sets the <see cref="FriendLabel.Version"/> the entry's NFO was last written with (PLAN v2.9 K48); 0 in an older file. A movie, series or
+    /// episode entry below the current version is rewritten once. Seasons carry no label and keep 0.
+    /// </summary>
+    public int LabelVersion { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the extra versions of this stub were removed because its title group has two or more servers (PLAN v2.9 K42);
+    /// false in an older file. When the group falls back to one server, the title is looked at again so its extras come back.
+    /// </summary>
+    public bool ExtrasHidden { get; set; }
+
     /// <summary>Gets or sets the random key of the stub (16 lower-case letters and digits).</summary>
     public string StubKey { get; set; } = string.Empty;
 

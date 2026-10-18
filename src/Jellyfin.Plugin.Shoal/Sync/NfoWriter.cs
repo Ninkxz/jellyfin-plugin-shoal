@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -29,8 +30,9 @@ public static class NfoWriter
     /// </summary>
     /// <param name="movie">The sanitized movie.</param>
     /// <param name="peerDisplayName">The peer's display name, for the <c>Shoal: &lt;Peer&gt;</c> tag; cleaned here to 64 characters.</param>
+    /// <param name="extraTags">More tags (the library tag of a shared library folder, K44), or null.</param>
     /// <returns>The file content.</returns>
-    public static byte[] Write(SanitizedMovie movie, string peerDisplayName)
+    public static byte[] Write(SanitizedMovie movie, string peerDisplayName, IReadOnlyList<string>? extraTags = null)
     {
         ArgumentNullException.ThrowIfNull(movie);
         using var stream = new MemoryStream();
@@ -51,7 +53,7 @@ public static class NfoWriter
                 Text(xml, "premiered", premiered.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             }
 
-            Text(xml, "plot", movie.Overview);
+            Text(xml, "plot", FriendLabel.Apply(movie.Overview));
             Text(xml, "tagline", movie.Tagline);
             Text(xml, "mpaa", movie.OfficialRating ?? string.Empty);
             if (movie.CommunityRating is { } rating)
@@ -83,6 +85,11 @@ public static class NfoWriter
             if (peer.Length > 0)
             {
                 Text(xml, "tag", "Shoal: " + peer);
+            }
+
+            foreach (var tag in extraTags ?? [])
+            {
+                Text(xml, "tag", tag);
             }
 
             xml.WriteEndElement();

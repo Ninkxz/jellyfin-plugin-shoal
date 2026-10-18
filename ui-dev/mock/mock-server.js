@@ -91,7 +91,14 @@ export function createMock(options) {
         { id: 'u-share-sam', name: 'shoal-sam', imageTag: null, isAdmin: false, isDisabled: false, allLibraries: false, managedByShoal: false, restricted: false, isShareUser: true }
     ];
 
-    const self = { homeName: 'Rich’s Jellyfin', currentUserId: 'u-rich' };
+    // opt.guidIds: local account ids as the real server writes them (GUIDs), to prove none reaches the page.
+    const GUID_IDS = { 'u-rich': '6f1c2a90-1b2c-4d3e-8f40-0a1b2c3d4e5f', 'u-sam': '7a2d3b01-2c3d-4e4f-9051-1b2c3d4e5f60', 'u-alex': '8b3e4c12-3d4e-4f50-a162-2c3d4e5f6071', 'u-kit': '9c4f5d23-4e5f-4061-b273-3d4e5f607182', 'u-mum': 'ad506e34-5f60-4172-8384-4e5f60718293', 'u-jo': 'be617f45-6071-4283-9495-5f60718293a4', 'u-share-sam': 'cf728056-7182-4394-a5a6-60718293a4b5' };
+    const gid = (id) => (opt.guidIds && GUID_IDS[id]) || id;
+    if (opt.guidIds) {
+        users.forEach((u) => { u.id = gid(u.id); });
+    }
+
+    const self = { homeName: 'Rich’s Jellyfin', currentUserId: gid('u-rich') };
 
     /* ---------------- servers ---------------- */
     const t0 = now();
@@ -223,7 +230,7 @@ export function createMock(options) {
 
     if (opt.scenario !== 'empty') {
         addShare({
-            handle: 'f-sam', friendName: hostile ? XSS : 'Sam', playingNow: 2, transcodingNow: 1,
+            handle: 'f-sam', friendName: hostile ? XSS : 'Sam', playingNow: opt.nobodyPlaying ? 0 : 2, transcodingNow: opt.nobodyPlaying ? 0 : 1,
             devices: [{ deviceHandle: 'd-1', name: hostile ? XSS : 'Shoal: Sam’s Jellyfin (K7QM)', app: 'Shoal', version: '0.1.0', firstSeenUtc: iso(t0 - 9 * DAY), lastSeenUtc: iso(t0 - 4 * MIN), expected: true, signedOut: false }]
         });
         addShare({
@@ -486,7 +493,8 @@ export function createMock(options) {
             localApiAvailable: s.network === 'Tailnet',
             cooldowns: {},
             route: s.path === 'derp' ? { kind: 'derp', region: s.derpRegion } : s.path === 'derp?' ? { kind: 'maybe' } : s.path === 'direct' ? { kind: 'direct' } : { kind: 'unknown' },
-            hints: s.hints || []
+            // opt.speedHints: the hints a Speed answer carries (Pilot 14: one that repeats the bottleneck)
+            hints: opt.speedHints || s.hints || []
         };
     }
 
@@ -504,6 +512,10 @@ export function createMock(options) {
                 { q: 'sd', bothCount: 12, localBytes: 0.02e12, gainCount: 32, peerBytes: 0.0e12 }
             ],
             betterCopyCount: s.handle === 'h-hops' ? 14 : undefined,
+            // K53 (docs/kiro-v2.9-04.md): absent without groups. opt.backups: 'first' (default with playOrder), 'only' (backup for, plays none first), 'none'.
+            backups: opt.playOrder && opt.backups !== 'none' && (s.handle === 'h-hops' || s.handle === 'h-fern')
+                ? (opt.backups === 'only' ? { sharedWithOthers: 12, playsFirst: 0, backupFor: 12 } : { sharedWithOthers: 250, playsFirst: 238, backupFor: 12 })
+                : undefined,
             tv: opt.tvShows === true ? { sharedSeries: 12, sharedSeriesEpisodes: 310, gainSeries: 8, gainEpisodes: 150 } : undefined
         };
     }
@@ -644,6 +656,11 @@ export function createMock(options) {
                 ]
             },
             orphanAccounts: Array.from(orphans.values()).map(clone),
+            // opt.nfoMains: main libraries holding friends' titles whose NFO saver is on (Pilot 15 R6, docs/kiro-v2.9-09.md item 4)
+            mainLibrariesSavingNfo: Array.isArray(opt.nfoMains) ? opt.nfoMains.slice() : [],
+            // opt.notLocked: Jellyfin libraries holding a Shoal folder beside other folders (Warden 12 L2)
+            shoalLibrariesNotLocked: Array.isArray(opt.notLocked) ? opt.notLocked.slice() : [],
+            mainLibrariesMissing: Array.isArray(opt.mainsMissing) ? opt.mainsMissing.slice() : [],
             currentUserId: self.currentUserId,
             imageCredit: opt.scenario === 'default' ? 'Demo art: Blender Foundation open movies (CC BY).' : undefined
         });
@@ -944,6 +961,142 @@ export function createMock(options) {
         return ok({});
     });
     route('GET', 'Peers/([^/]+)/Overlap', (m) => ok(overlapFor(servers.get(decodeURIComponent(m[1])))));
+
+    /* ---------------- quality limits and play order (K53, docs/kiro-v2.9-04.md) ----------------
+     * opt.playOrder: GET PlayOrder answers (true, or 'odd' for an unknown reason, 'one' for a single server); without it a bare 404 (older server).
+     * opt.quality: GET Peers/{h}/Quality answers (true; 'rec' adds the speed-test card for Fernwood; 'limited' starts Fernwood at 1080p from a suggestion).
+     * opt.qualityChanged: the first PUT finds another admin's limit (409 changed). opt.recStale: the first Dismiss is stale.
+     * opt.priorityRoute === false: PUT Peers/{h}/Priority answers a bare 404 (an older server). */
+    const tiers = new Map([['h-gran', 'Backup']]);
+    const limits = new Map();
+    const dismissedRec = new Set();
+    if (opt.quality === 'limited') {
+        limits.set('h-fern', { maxClass: '1080', maxMbps: null, setUtc: iso(t0 - 3 * HOUR), origin: 'Recommendation' });
+    }
+
+    const limitOf = (h) => limits.get(h) || { maxClass: 'Off', maxMbps: null, setUtc: null, origin: 'Manual' };
+    const effectiveOf = (l) => {
+        const box = { 480: [854, 480], 720: [1280, 720], 1080: [1920, 1080], 2160: [3840, 2160] }[l.maxClass];
+        const label = { 480: '480p', 720: '720p', 1080: '1080p', 2160: '4K' }[l.maxClass];
+        const limited = !!box || l.maxMbps !== null;
+        return { maxClass: l.maxClass, maxMbps: l.maxMbps, maxWidth: box ? box[0] : null, maxHeight: box ? box[1] : null, limited, text: limited ? 'Up to ' + [label, l.maxMbps ? l.maxMbps + ' Mbps' : null].filter(Boolean).join(', ') : 'No limit' };
+    };
+    const CLASS_RANK = { 480: 1, 720: 2, 1080: 3, 2160: 4, Off: 5 };
+    function recFor(h) {
+        const s = servers.get(h);
+        if (opt.quality !== 'rec' || h !== 'h-fern' || !s || dismissedRec.has(h) || CLASS_RANK[limitOf(h).maxClass] <= CLASS_RANK['1080']) {
+            return null;
+        }
+
+        return { suggestedClass: '1080', slowForClass: '2160', throughputMbps: 17, titlesAbove: 120, titlesKnown: 386, text: 'This link is slow for 4K. Limit ' + s.displayName + ' to 1080p?' };
+    }
+
+    function playOrderRowsMock() {
+        const order = opt.playOrder === 'one' ? ['h-hops'] : ['h-hops', 'h-fern', 'h-gran', 'h-gone'];
+        const reasons = { 'h-hops': 'fastest link', 'h-fern': 'slower link', 'h-gran': opt.playOrder === 'odd' ? 'something new' : 'offline', 'h-gone': 'fastest link' };
+        const rank = (h) => ({ Prefer: 0, Normal: 1, Backup: 2 })[tiers.get(h) || 'Normal'];
+        const sorted = order.slice().sort((a, b) => rank(a) - rank(b) || order.indexOf(a) - order.indexOf(b));
+        return sorted.map((h, i) => {
+            const s = servers.get(h);
+            const tier = tiers.get(h) || 'Normal';
+            const prefix = { Prefer: 'Always prefer', Normal: 'Automatic', Backup: 'Backup only' }[tier];
+            return { peerKey: h, name: s ? s.displayName : 'Gone', tier, position: i + 1, count: sorted.length, reason: reasons[h], label: prefix + ': ' + (i + 1) + ' of ' + sorted.length + ' (' + reasons[h] + ')', effective: effectiveOf(limitOf(h)) };
+        });
+    }
+
+    route('GET', 'PlayOrder', () => (opt.playOrder ? ok({ playOrder: playOrderRowsMock() }) : fail(404)));
+    route('PUT', 'Peers/([^/]+)/Priority', (m, body) => {
+        const h = decodeURIComponent(m[1]);
+        if (opt.priorityRoute === false) {
+            return fail(404);
+        }
+
+        if (!servers.has(h)) {
+            return fail(404, 'notFound');
+        }
+
+        if (!body || !['Prefer', 'Normal', 'Backup'].includes(body.tier)) {
+            return fail(400, 'invalid');
+        }
+
+        if (body.expectedCurrent !== (tiers.get(h) || 'Normal')) {
+            return { status: 409, body: { error: 'changed', current: tiers.get(h) || 'Normal' }, headers: {} };
+        }
+
+        tiers.set(h, body.tier);
+        const row = playOrderRowsMock().find((r) => r.peerKey === h);
+        return ok({ tier: body.tier, rank: row ? { position: row.position, count: row.count, tier: row.tier, reason: row.reason, label: row.label } : null });
+    });
+    route('GET', 'Peers/([^/]+)/Quality', (m) => {
+        const h = decodeURIComponent(m[1]);
+        if (!opt.quality) {
+            return fail(404);
+        }
+
+        const s = servers.get(h);
+        if (!s) {
+            return fail(404, 'notFound');
+        }
+
+        const l = limitOf(h);
+        const eff = effectiveOf(l);
+        const row = opt.playOrder ? playOrderRowsMock().find((r) => r.peerKey === h) : null;
+        return ok({
+            limit: { maxClass: l.maxClass, maxMbps: l.maxMbps, setUtc: l.setUtc, origin: l.origin },
+            effective: eff,
+            costText: eff.limited ? 'Titles above this quality will be converted by ' + s.displayName + ". That uses their computer's power." : null,
+            recommendation: recFor(h),
+            dismissed: [],
+            rank: row ? { position: row.position, count: row.count, tier: row.tier, reason: row.reason, label: row.label } : null
+        });
+    });
+    let qualityChangedOnce = !!opt.qualityChanged;
+    route('PUT', 'Peers/([^/]+)/QualityLimit', (m, body) => {
+        const h = decodeURIComponent(m[1]);
+        if (!opt.quality || !servers.has(h)) {
+            return fail(404, opt.quality ? 'notFound' : undefined);
+        }
+
+        if (qualityChangedOnce) {
+            qualityChangedOnce = false;
+            limits.set(h, { maxClass: '720', maxMbps: null, setUtc: iso(now()), origin: 'Manual' });
+        }
+
+        const okClass = body && ['Off', '480', '720', '1080', '2160'].includes(body.maxClass);
+        const okMbps = body && (body.maxMbps === null || body.maxMbps === undefined || (Number.isInteger(body.maxMbps) && body.maxMbps >= 1 && body.maxMbps <= 1000));
+        if (!okClass || !okMbps || !body.expectedCurrent) {
+            return { status: 400, body: { error: 'invalid', detail: 'maxClass' }, headers: {} };
+        }
+
+        const cur = limitOf(h);
+        if (body.expectedCurrent.maxClass !== cur.maxClass || (body.expectedCurrent.maxMbps ?? null) !== (cur.maxMbps ?? null)) {
+            return { status: 409, body: { error: 'changed', current: cur }, headers: {} };
+        }
+
+        const next = { maxClass: body.maxClass, maxMbps: body.maxMbps ?? null, setUtc: iso(now()), origin: body.fromRecommendation ? 'Recommendation' : 'Manual' };
+        limits.set(h, next);
+        return ok({ limit: next, effective: effectiveOf(next) });
+    });
+    let recStaleOnce = !!opt.recStale;
+    route('POST', 'Peers/([^/]+)/Recommendations/Dismiss', (m, body) => {
+        const h = decodeURIComponent(m[1]);
+        if (!opt.quality || !servers.has(h)) {
+            return fail(404);
+        }
+
+        if (!body || !['480', '720', '1080', '2160'].includes(body.suggestedClass)) {
+            return fail(400, 'invalid');
+        }
+
+        const card = recFor(h);
+        if (recStaleOnce || !card || card.suggestedClass !== body.suggestedClass) {
+            recStaleOnce = false;
+            return fail(409, 'stale');
+        }
+
+        dismissedRec.add(h);
+        return ok({ dismissed: true });
+    });
     route('GET', 'Peers/([^/]+)/Speed', (m, body, query) => {
         const s = servers.get(decodeURIComponent(m[1]));
         return s ? ok(speedFor(s, query.range || '24h')) : fail(404);
@@ -1120,6 +1273,372 @@ export function createMock(options) {
         }
 
         return ok({});
+    });
+
+    /* ---------------- library layouts (PLAN v2.9 K44/K45; shapes of AdminLayoutsController) ---------------- */
+    // The mockup's layout: Hops alone in two own libraries, Fernwood in Shoal Movies, Granite added into the main Movies library, Fernwood and Granite in Shoal TV Shows.
+    const layout = { preset: opt.layoutPreset || 'Custom', defaultTargets: { movies: 'lk-shoalmov', tvshows: 'lk-shoaltv' } };
+    const conn = (h) => (servers.has(h) ? [{ peerKey: h, name: servers.get(h).displayName }] : []);
+    const layoutLibs = [];
+    const addLib = (def) => layoutLibs.push(Object.assign({ placement: 'Shoal', legacy: false, access: { mode: 'Everyone', selectedUserIds: [], includeRestricted: false } }, def));
+    if (servers.size && opt.scenario !== 'problems') {
+        // opt.mainTarget (Pilot 16): the real shape. The Main row has its own Shoal name and records its target main library's id; the target's name
+        // comes only from mainLibraries (opt.mainLibraries). Without it the row is named after its target, as the older mock did.
+        addLib(opt.mainTarget
+            ? { libKey: 'lk-main', name: X('Friends in Movies'), type: 'movies', placement: 'Main', jellyfinLibraryId: 'main-movies', connections: conn('h-gran'), titleCount: 612 }
+            : { libKey: 'lk-main', name: X('Movies'), type: 'movies', placement: 'Main', connections: conn('h-gran'), titleCount: opt.layoutCounts === false ? undefined : 612 });
+        if (opt.secondMain) {
+            addLib({ libKey: 'lk-main2', name: X('Friends in Shows'), type: 'tvshows', placement: 'Main', jellyfinLibraryId: 'main-shows', connections: conn('h-hops'), titleCount: 20 });
+        }
+        addLib({ libKey: 'lk-hopsmov', name: X('Hops Movies'), type: 'movies', connections: conn('h-hops'), titleCount: opt.layoutCounts === false ? undefined : 1204 });
+        addLib({ libKey: 'lk-shoalmov', name: X('Shoal Movies'), type: 'movies', connections: conn('h-fern'), access: { mode: 'Selected', selectedUserIds: [gid('u-rich'), gid('u-sam')], includeRestricted: false }, titleCount: opt.layoutCounts === false ? undefined : 386 });
+        addLib({ libKey: 'lk-hopstv', name: X('Hops TV Shows'), type: 'tvshows', connections: conn('h-hops'), titleCount: opt.layoutCounts === false ? undefined : 86 });
+        addLib({ libKey: 'lk-shoaltv', name: X('Shoal TV Shows'), type: 'tvshows', connections: conn('h-fern').concat(conn('h-gran')), titleCount: opt.layoutCounts === false ? undefined : 140 });
+        if (opt.layoutLegacy) {
+            addLib({ libKey: 'lk-legacy', name: 'Old Movies', type: 'movies', legacy: true, connections: [] });
+        }
+    }
+
+    const layoutOrder = layoutLibs.map((l) => l.libKey);
+    const hiddenFriendTitles = [gid('u-kit')];
+    const idleJob = () => ({ running: false, moves: 0, movesDone: 0, steps: 0, stepsDone: 0, lostAccess: [] });
+    let layoutJob = opt.layoutJob === 'running'
+        ? { running: true, phase: 'Running', moves: 1, movesDone: 0, steps: 612, stepsDone: 380, lostAccess: [] }
+        : opt.layoutJob === 'stopped' ? { running: false, phase: 'Running', moves: 1, movesDone: 0, steps: 612, stepsDone: 380, lostAccess: [] } : idleJob();
+    if (opt.layoutJobCurrent && layoutJob.running) {
+        layoutJob.current = { peerName: 'Granite', type: 'movies', toName: 'Movies' };
+    }
+
+    const jobStep = opt.layoutJobStep || 200;
+    const startLayoutJob = (steps, lost) => {
+        layoutJob = { running: true, phase: 'Planned', moves: 1, movesDone: 0, steps, stepsDone: 0, lostAccess: lost || [] };
+    };
+    const layoutView = () => ({
+        layout: clone(layout), libraries: clone(layoutLibs.map((l) => Object.fromEntries(Object.entries(l).filter(([, v]) => v !== undefined)))), order: layoutOrder.slice(),
+        hiddenFriendTitles: hiddenFriendTitles.slice(), job: clone(layoutJob), mainLibrariesSavingNfo: Array.isArray(opt.nfoMains) ? opt.nfoMains.slice() : [], shoalLibrariesNotLocked: Array.isArray(opt.notLocked) ? opt.notLocked.slice() : [], mainLibrariesMissing: Array.isArray(opt.mainsMissing) ? opt.mainsMissing.slice() : [],
+        ...(opt.mainLibraries ? { mainLibraries: [{ id: 'main-movies', name: 'Movies', type: 'movies' }, { id: 'main-shows', name: 'Shows', type: 'tvshows' }] } : {})
+    });
+    const libByKey = (k) => layoutLibs.find((l) => l.libKey === k);
+    const jobBusy = () => layoutJob.running || ['Planned', 'Running', 'Cleanup'].includes(layoutJob.phase);
+
+    // opt.layoutsRoute === false: an older server without layouts (bare 404); Libraries & access then lists the per-friend mappings.
+    route('GET', 'Layouts/Libraries', () => (opt.layoutsRoute === false ? fail(404) : ok(layoutView())));
+    route('PUT', 'Layouts/Libraries', (m, body) => {
+        const order = body && Array.isArray(body.order) ? body.order : null;
+        if (!order || order.length !== layoutLibs.length || new Set(order).size !== order.length || order.some((k) => !libByKey(k))) {
+            return fail(400, 'invalid');
+        }
+
+        layoutOrder.splice(0, layoutOrder.length, ...order);
+        return ok({ order: layoutOrder.slice() });
+    });
+    route('POST', 'Layouts/Libraries', (m, body) => {
+        if (!body || !body.name || !['movies', 'tvshows'].includes(body.type) || !['Shoal', 'Main'].includes(body.placement)) {
+            return fail(400, 'invalid');
+        }
+
+        if (layoutLibs.some((l) => l.name.toLowerCase() === String(body.name).toLowerCase())) {
+            return fail(409, 'nameInUse');
+        }
+
+        const libKey = 'lk-new' + layoutLibs.length;
+        addLib({ libKey, name: body.name, type: body.type, placement: body.placement, connections: [], access: { mode: 'Selected', selectedUserIds: [self.currentUserId], includeRestricted: false } });
+        layoutOrder.push(libKey);
+        return ok({ libKey }, 201);
+    });
+    route('PUT', 'Layouts/Libraries/([^/]+)', (m, body) => {
+        const lib = libByKey(decodeURIComponent(m[1]));
+        if (!lib) {
+            return fail(404, 'notFound');
+        }
+
+        // opt.renameFailsAfterAccess (Warden 12 L4): the access part was saved, then the rename failed.
+        if (opt.renameFailsAfterAccess && body && typeof body.name === 'string') {
+            return { status: 500, body: { error: 'failed', accessChanged: true, gaining: [], losing: [] }, headers: {} };
+        }
+
+        let losing = [];
+        if (body && body.access) {
+            const a = body.access;
+            const admitted = (acc) => users.filter((u) => !u.isShareUser && (acc.mode === 'Everyone' ? !u.restricted || acc.includeRestricted : acc.selectedUserIds.includes(u.id))).map((u) => u.id);
+            const before = admitted(lib.access);
+            lib.access = { mode: a.mode, selectedUserIds: a.selectedUserIds || [], includeRestricted: !!a.includeRestricted };
+            const after = admitted(lib.access);
+            losing = before.filter((id) => !after.includes(id));
+        }
+
+        if (body && typeof body.name === 'string') {
+            if (layoutLibs.some((l) => l !== lib && l.name.toLowerCase() === body.name.toLowerCase())) {
+                return fail(409, 'nameInUse');
+            }
+
+            lib.name = body.name;
+        }
+
+        return ok({ library: clone(lib), gaining: [], losing });
+    });
+    route('DELETE', 'Layouts/Libraries/([^/]+)', (m) => {
+        const lib = libByKey(decodeURIComponent(m[1]));
+        if (!lib) {
+            return fail(404, 'notFound');
+        }
+
+        if (lib.connections.length) {
+            return fail(409, 'notEmpty');
+        }
+
+        if (lib.legacy) {
+            return fail(409, 'legacy');
+        }
+
+        layoutLibs.splice(layoutLibs.indexOf(lib), 1);
+        layoutOrder.splice(layoutOrder.indexOf(lib.libKey), 1);
+        return ok({ removed: true });
+    });
+    const presetPlan = (preset) => {
+        const moves = [];
+        // opt.layoutMatches: the libraries already are what every preset would make (no moves).
+        if (opt.layoutMatches) {
+            return { preset, created: [], removed: [], moves, titlesCollapsing: 0, usersLosingAccess: [] };
+        }
+
+        const has = (h) => servers.has(h);
+        if (preset === 'PerFriend') {
+            if (has('h-fern')) {
+                moves.push({ peerKey: 'h-fern', peerName: servers.get('h-fern').displayName, type: 'movies', from: ['Shoal Movies'], to: 'Fernwood Movies' });
+                moves.push({ peerKey: 'h-fern', peerName: servers.get('h-fern').displayName, type: 'tvshows', from: ['Shoal TV Shows'], to: 'Fernwood TV Shows' });
+            }
+
+            if (has('h-gran')) {
+                moves.push({ peerKey: 'h-gran', peerName: servers.get('h-gran').displayName, type: 'movies', from: ['Added into Movies'], to: 'Granite Movies' });
+                moves.push({ peerKey: 'h-gran', peerName: servers.get('h-gran').displayName, type: 'tvshows', from: ['Shoal TV Shows'], to: 'Granite TV Shows' });
+            }
+
+            return { preset, created: [{ name: 'Fernwood Movies', type: 'movies' }, { name: 'Granite Movies', type: 'movies' }], removed: [{ libKey: 'lk-shoalmov', name: 'Shoal Movies' }], moves, titlesCollapsing: 0, usersLosingAccess: [] };
+        }
+
+        if (preset === 'AllMixed') {
+            if (has('h-hops')) {
+                moves.push({ peerKey: 'h-hops', peerName: servers.get('h-hops').displayName, type: 'movies', from: ['Hops Movies'], to: 'Shoal Movies' });
+                moves.push({ peerKey: 'h-hops', peerName: servers.get('h-hops').displayName, type: 'tvshows', from: ['Hops TV Shows'], to: 'Shoal TV Shows' });
+            }
+
+            if (has('h-gran')) {
+                moves.push({ peerKey: 'h-gran', peerName: servers.get('h-gran').displayName, type: 'movies', from: ['Added into Movies'], to: 'Shoal Movies' });
+            }
+
+            return { preset, created: [], removed: [{ libKey: 'lk-hopsmov', name: 'Hops Movies' }, { libKey: 'lk-hopstv', name: 'Hops TV Shows' }], moves, titlesCollapsing: opt.layoutCollapse || 41, usersLosingAccess: [gid('u-alex')] };
+        }
+
+        return { preset, created: [], removed: [], moves: [], titlesCollapsing: 0, usersLosingAccess: [] };
+    };
+    // Preview answers a planHash that Apply must send back (Warden 10 L3): missing = 400 invalid, a plan that changed since = 409 planChanged.
+    // opt.planChangedOnce: the first Apply finds the plan changed (a friend was added meanwhile).
+    let planVersion = 1;
+    let planChangedOnce = !!opt.planChangedOnce;
+    const PRESETS = ['AllMixed', 'PerFriend', 'CombineIntoMine', 'Custom'];
+    const hashOf = (preset, targets) => 'ph-' + preset + '-' + planVersion + (preset === 'CombineIntoMine' ? '-' + JSON.stringify(targets || {}) : '');
+    /*
+     * Combine into my libraries (owner decision; Kiro's PresetPreview.Targets shape): the admin's own libraries per type as candidates.
+     * opt.combine: 'one' (default: one Movies and one TV Shows library, chosen for the admin), 'many' (two movie libraries: the admin picks; Movies saves NFO
+     * files), 'noTv' (no TV library of their own). Apply answers targetRequired while a type with candidates has none chosen.
+     */
+    const COMBINE_IDS = { movies: ['0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b', '1a2b3c4d-5e6f-4a1b-9c2d-3e4f5a6b7c8d'], tvshows: ['2b3c4d5e-6f7a-4b2c-8d3e-4f5a6b7c8d9e'] };
+    function combineTargets(sent) {
+        const mode = opt.combine || 'one';
+        const movies = mode === 'many'
+            ? [{ id: COMBINE_IDS.movies[0], name: X('Movies'), savesNfo: true }, { id: COMBINE_IDS.movies[1], name: 'Kids Movies', savesNfo: false }]
+            : [{ id: COMBINE_IDS.movies[0], name: X('Movies'), savesNfo: false }];
+        const tv = mode === 'noTv' ? [] : [{ id: COMBINE_IDS.tvshows[0], name: 'TV Shows', savesNfo: false }];
+        return [['movies', movies], ['tvshows', tv]].map(([type, candidates]) => {
+            const want = sent && sent[type];
+            const ok = candidates.find((c) => c.id === want);
+            const chosen = ok ? ok.id : candidates.length === 1 ? candidates[0].id : null;
+            return { type, chosen, candidates, rejected: !!want && !ok };
+        });
+    }
+
+    function combinePlan(sent) {
+        const targets = combineTargets(sent);
+        const moves = [];
+        const nameOf = (c) => c.candidates.find((x) => x.id === c.chosen).name;
+        for (const c of targets.filter((x) => x.chosen)) {
+            for (const h of ['h-hops', 'h-fern', 'h-gran'].filter((x) => servers.has(x))) {
+                moves.push({ peerKey: h, peerName: servers.get(h).displayName, type: c.type, from: [servers.get(h).displayName + (c.type === 'movies' ? ' Movies' : ' TV Shows')], to: 'Added into ' + nameOf(c) });
+            }
+        }
+
+        return {
+            preset: 'CombineIntoMine', created: [], removed: [], moves, titlesCollapsing: 12, usersLosingAccess: [], usersGainingAccess: [], restrictedGainingAccess: [],
+            targets, needsTargets: targets.some((c) => c.candidates.length && !c.chosen),
+            targetsSavingNfo: targets.filter((c) => c.chosen).flatMap((c) => c.candidates.filter((x) => x.id === c.chosen && x.savesNfo).map((x) => x.name)),
+            targetsRewritingTitles: targets.filter((c) => c.chosen).flatMap((c) => c.candidates.filter((x) => x.id === c.chosen && (x.savesNfo || x.fetchesMetadata)).map((x) => x.name)),
+            shoalLibrariesNotLocked: Array.isArray(opt.notLocked) ? opt.notLocked.slice() : []
+        };
+    }
+
+    const planOf = (preset, targets) => (preset === 'CombineIntoMine' ? combinePlan(targets) : presetPlan(preset));
+    route('POST', 'Layouts/Preview', (m, body) => (body && PRESETS.includes(body.preset) ? ok(Object.assign(planOf(body.preset, body.targets), { planHash: hashOf(body.preset, body.targets) })) : fail(400, 'invalid')));
+    route('POST', 'Layouts/Apply', (m, body) => {
+        if (!body || !PRESETS.includes(body.preset)) {
+            return fail(400, 'invalid');
+        }
+
+        if (body.preset === 'CombineIntoMine' && combinePlan(body.targets).needsTargets) {
+            return fail(409, 'targetRequired');
+        }
+
+        if (typeof body.planHash !== 'string' || !body.planHash) {
+            return fail(400, 'invalid');
+        }
+
+        if (planChangedOnce) {
+            planChangedOnce = false;
+            planVersion += 1;
+        }
+
+        if (body.planHash !== hashOf(body.preset, body.targets)) {
+            return fail(409, 'planChanged');
+        }
+
+        if (jobBusy()) {
+            return fail(409, 'busy');
+        }
+
+        const plan = planOf(body.preset, body.targets);
+        layout.preset = body.preset;
+        if (!plan.moves.length) {
+            // Nothing to move (Custom, or already that layout): no job starts, the preset is remembered.
+            return ok({ job: { running: false, phase: 'Done', steps: 0, stepsDone: 0 } }, 202);
+        }
+
+        startLayoutJob(plan.moves.length * 100, plan.usersLosingAccess);
+        return ok({ job: clone(layoutJob) }, 202);
+    });
+    route('PUT', 'Connections/([^/]+)/Library', (m, body) => {
+        const h = decodeURIComponent(m[1]);
+        if (!servers.has(h)) {
+            return fail(404, 'notFound');
+        }
+
+        if (!body || !['movies', 'tvshows'].includes(body.type)) {
+            return fail(400, 'invalid');
+        }
+
+        if (jobBusy()) {
+            return fail(409, 'busy');
+        }
+
+        let target = body.libKey ? libByKey(body.libKey) : null;
+        if (body.libKey && (!target || target.type !== body.type)) {
+            return fail(404, 'notFound');
+        }
+
+        if (!body.libKey) {
+            const n = body.newLibrary;
+            if (!n || !n.name || !['Shoal', 'Main'].includes(n.placement)) {
+                return fail(400, 'invalid');
+            }
+
+            if (layoutLibs.some((l) => l.name.toLowerCase() === String(n.name).toLowerCase())) {
+                return fail(409, 'createFailed');
+            }
+
+            const libKey = 'lk-new' + layoutLibs.length;
+            addLib({ libKey, name: n.name, type: body.type, placement: n.placement, connections: [] });
+            layoutOrder.push(libKey);
+            target = libByKey(libKey);
+        }
+
+        // The state switch happens at once (the job then moves the files): the connection now feeds the target.
+        const source = layoutLibs.find((l) => l.type === body.type && l.connections.some((c) => c.peerKey === h));
+        const entry = source ? source.connections.find((c) => c.peerKey === h) : { peerKey: h, name: servers.get(h).displayName };
+        if (source) {
+            source.connections = source.connections.filter((c) => c.peerKey !== h);
+        }
+
+        target.connections.push(entry);
+        startLayoutJob(source && typeof source.titleCount === 'number' ? source.titleCount : 300, []);
+        return ok({ job: clone(layoutJob) }, 202);
+    });
+    route('GET', 'Layouts/Job', () => {
+        if (layoutJob.running) {
+            layoutJob.phase = 'Running';
+            layoutJob.stepsDone = Math.min(layoutJob.steps, layoutJob.stepsDone + jobStep);
+            if (layoutJob.stepsDone >= layoutJob.steps) {
+                Object.assign(layoutJob, { running: false, phase: 'Done', movesDone: layoutJob.moves });
+            }
+        }
+
+        return ok(clone(layoutJob));
+    });
+    route('PUT', 'Users/([^/]+)/FriendTitles', (m, body) => {
+        const id = decodeURIComponent(m[1]);
+        if (!users.some((u) => u.id === id && !u.isShareUser)) {
+            return fail(404, 'notFound');
+        }
+
+        if (!body || typeof body.hidden !== 'boolean') {
+            return fail(400, 'invalid');
+        }
+
+        const i = hiddenFriendTitles.indexOf(id);
+        if (body.hidden && i < 0) {
+            hiddenFriendTitles.push(id);
+        } else if (!body.hidden && i >= 0) {
+            hiddenFriendTitles.splice(i, 1);
+        }
+
+        return ok({ hidden: body.hidden });
+    });
+    // PUT Layouts/Default (bb89634): { preset, defaultTargets } -> { preset, defaultTargets }. opt.layoutDefaultRoute === false = an older server (bare 404).
+    route('PUT', 'Layouts/Default', (m, body) => {
+        if (opt.layoutDefaultRoute === false) {
+            return fail(404);
+        }
+
+        if (!body || !['AllMixed', 'PerFriend', 'Custom'].includes(body.preset)) {
+            return fail(400, 'invalid');
+        }
+
+        layout.preset = body.preset;
+        if (body.defaultTargets && typeof body.defaultTargets === 'object') {
+            layout.defaultTargets = Object.assign({}, layout.defaultTargets, body.defaultTargets);
+        }
+
+        return ok({ preset: layout.preset, defaultTargets: clone(layout.defaultTargets || {}) });
+    });
+    // K49 (af33bc8): GET -> the card; POST -> { sent, explainer }. Problems come back inside the card (installed:false, error refused|failed).
+    // opt.inbox: 'ok' (not posted), 'posted', 'missing' (posted, 2 newer accounts lack it), 'noMoonfin', 'refused'; absent = an older server (bare 404).
+    const inbox = { posted: ['posted', 'missing'].includes(opt.inbox), postedUtc: ['posted', 'missing'].includes(opt.inbox) ? iso(t0 - 2 * HOUR) : null, missing: opt.inbox === 'missing' ? 2 : 0 };
+    const INBOX_TITLE = 'Why might a title not work?';
+    const INBOX_BODY = "**Why might a title not work?** Some titles come from a friend's server. If that server is turned off or its internet is slow, the title may buffer or not play. Quality may be lowered to keep it smooth. Subtitles may be different from what you expect. If something won't play, try again later.";
+    const inboxCardOf = () => ({
+        installed: opt.inbox !== 'noMoonfin',
+        posted: opt.inbox !== 'noMoonfin' && opt.inbox !== 'refused' && inbox.posted,
+        postedUtc: inbox.postedUtc,
+        recipients: inbox.posted ? 3 : 0,
+        missingRecipients: inbox.posted ? inbox.missing : 3,
+        title: INBOX_TITLE,
+        body: INBOX_BODY,
+        buttonNote: "Moonfin shows the inbox button only when it is turned on in Moonfin's settings.",
+        fallbackNote: opt.inbox === 'noMoonfin' ? "Moonbase isn't installed. Each friend's title still says where it comes from." : null,
+        error: opt.inbox === 'refused' ? 'refused' : null
+    });
+    route('GET', 'Inbox/Explainer', () => (opt.inbox ? ok(inboxCardOf()) : fail(404)));
+    route('POST', 'Inbox/Explainer', () => {
+        if (!opt.inbox) {
+            return fail(404);
+        }
+
+        if (opt.inbox === 'noMoonfin' || opt.inbox === 'refused' || (inbox.posted && inbox.missing === 0)) {
+            return ok({ sent: false, explainer: inboxCardOf() });
+        }
+
+        inbox.posted = true;
+        inbox.missing = 0;
+        inbox.postedUtc = iso(now());
+        return ok({ sent: true, explainer: inboxCardOf() });
     });
 
     route('GET', 'Settings', () => ok(clone(settings)));
@@ -1366,6 +1885,12 @@ export function createMock(options) {
             return fail(500, 'server');
         }
 
+        // A refusal word for one route ({ re, status, error }): the layout routes answer their errors this way.
+        const refusal = (opt.refuse || []).find((r) => r.re.test(method + ' ' + path));
+        if (refusal) {
+            return fail(refusal.status || 409, refusal.error);
+        }
+
         for (const r of routes) {
             if (r.method !== method) {
                 continue;
@@ -1388,6 +1913,6 @@ export function createMock(options) {
             Object.assign(opt, patch);
         },
         getSession: () => session,
-        stores: { servers, mappings, shares, settings, hardening, users }
+        stores: { servers, mappings, shares, settings, hardening, users, layoutLibs, layoutOrder, hiddenFriendTitles, layout, getJob: () => layoutJob }
     };
 }

@@ -32,7 +32,7 @@ page.on('console', (m) => {
     }
 });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-await page.goto('http://127.0.0.1:5174/?' + query, { waitUntil: 'load' });
+await page.goto('http://127.0.0.1:' + (process.env.PORT || 5174) + '/?' + query, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 for (const [kind, arg] of actions) {
     if (kind === '--click') {

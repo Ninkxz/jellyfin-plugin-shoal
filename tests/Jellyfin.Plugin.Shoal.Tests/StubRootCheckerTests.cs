@@ -85,6 +85,38 @@ public sealed class StubRootCheckerTests
         Assert.False(Directory.Exists(Path.Combine(dir.Path, "not")));
     }
 
+    // Pilot 14: Shoal's own libraries inside the stub root are not a conflict, in the v2.9 libs/<libKey> tree as well as the per-friend <peerKey> tree.
+    [Theory]
+    [InlineData("libs/0123456789abcdef")]
+    [InlineData("libs/0123456789abcdef/sub")]
+    [InlineData("0123456789abcdef0123456789abcdef")]
+    [InlineData("0123456789abcdef")]
+    public void ShoalsOwnLibrariesInsideTheRoot_AreFine(string rel)
+    {
+        using var dir = new TempDirectory();
+        var root = Path.Combine(dir.Path, "shoal-stubs");
+        var library = Path.Combine([root, .. rel.Split('/')]);
+        Directory.CreateDirectory(library);
+
+        Assert.Equal(StubRootCheck.Ok, With(library).Check(root));
+    }
+
+    [Theory]
+    [InlineData("libs")]
+    [InlineData("libs/Movies")]
+    [InlineData("libs/0123")]
+    [InlineData("media")]
+    [InlineData("0123456789ABCDEF")]
+    public void AnyOtherLibraryInsideTheRoot_IsStillRefused(string rel)
+    {
+        using var dir = new TempDirectory();
+        var root = Path.Combine(dir.Path, "shoal-stubs");
+        var library = Path.Combine([root, .. rel.Split('/')]);
+        Directory.CreateDirectory(library);
+
+        Assert.Equal(StubRootCheck.InsideLibrary, With(library).Check(root));
+    }
+
     [Fact]
     public void ThePutPath_CreatesAndProvesTheFolder()
     {

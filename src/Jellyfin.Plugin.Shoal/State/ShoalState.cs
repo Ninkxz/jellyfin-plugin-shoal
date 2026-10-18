@@ -87,8 +87,11 @@ public enum HardeningMode
 /// </summary>
 public sealed class ShoalState
 {
-    /// <summary>The schema this build reads and writes. A higher number on disk is never downgraded (DESIGN 3.7).</summary>
-    public const int CurrentSchema = 2;
+    /// <summary>
+    /// The schema this build writes. A higher number on disk is never downgraded (DESIGN 3.7). Schema 2 is still read and upgraded in memory
+    /// (<see cref="StateUpgrade"/>); the file itself is rewritten only by the next change.
+    /// </summary>
+    public const int CurrentSchema = 3;
 
     /// <summary>Gets or sets the schema number.</summary>
     public int Schema { get; set; } = CurrentSchema;
@@ -121,6 +124,34 @@ public sealed class HomeState
 
     /// <summary>Gets or sets the visibility bookkeeping (DESIGN 5.6).</summary>
     public VisibilityState Visibility { get; set; } = new();
+
+    /// <summary>Gets or sets the Shoal libraries (schema 3, PLAN v2.9 K41). Until K44 the peer mappings stay the source of truth for sync, paths and access.</summary>
+    public List<ShoalLibrary> Libraries { get; set; } = [];
+
+    /// <summary>Gets or sets the layout settings (schema 3).</summary>
+    public LibraryLayout Layout { get; set; } = new();
+
+    /// <summary>Gets or sets the library keys in the order the admin set; a title shows in the first library a user can open.</summary>
+    public List<string> LibraryOrder { get; set; } = [];
+
+    /// <summary>Gets or sets the Moonfin inbox explainer bookkeeping (PLAN v2.9 K49); optional, absent in older files.</summary>
+    public InboxState Inbox { get; set; } = new();
+}
+
+/// <summary>
+/// The Moonfin inbox explainer (PLAN v2.9 K49): the message Moonbase answered for it, so a second post replaces it in place instead of making a duplicate.
+/// Holds no key or token.
+/// </summary>
+public sealed class InboxState
+{
+    /// <summary>Gets or sets Moonbase's id of the explainer message, or null when it was never posted.</summary>
+    public Guid? ExplainerMessageId { get; set; }
+
+    /// <summary>Gets or sets when it was last posted (UTC), or null.</summary>
+    public DateTime? ExplainerPostedUtc { get; set; }
+
+    /// <summary>Gets or sets the accounts it was addressed to at the last post (Moonbase's "users" audience reaches only these; a newer account needs a re-post).</summary>
+    public List<Guid> TargetUserIds { get; set; } = [];
 }
 
 /// <summary>
@@ -193,6 +224,18 @@ public sealed class PeerState
 
     /// <summary>Gets or sets when the token was last rotated (UTC), or null.</summary>
     public DateTime? LastRotatedUtc { get; set; }
+
+    /// <summary>Gets or sets the priority tier (schema 3); Normal by default. <see cref="Priority"/> stays as a hidden tiebreak.</summary>
+    public PriorityTier PriorityTier { get; set; } = PriorityTier.Normal;
+
+    /// <summary>Gets or sets the automatic ranking (schema 3).</summary>
+    public AutoRank AutoRank { get; set; } = new();
+
+    /// <summary>Gets or sets the quality limit of this connection (PLAN v2.9 K50); Off by default.</summary>
+    public QualityLimit QualityLimit { get; set; } = new();
+
+    /// <summary>Gets or sets the speed-test recommendations the admin dismissed, newest last (the validator keeps the newest 20).</summary>
+    public List<DismissedRecommendation> Dismissed { get; set; } = [];
 
     /// <summary>
     /// The name shown to Home's users on the offline card and message: the alias when there is one, else the display name.
@@ -304,6 +347,15 @@ public sealed class VisibilityState
     /// so only those are put back. Survives a restart.
     /// </summary>
     public Dictionary<string, ParkedPeer> Parked { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the <c>BlockedTags</c> entries Shoal added to each account (PLAN v2.9 K45, <c>managedBlockedTagUsers</c>): library tags, alternate-copy tags and the
+    /// hide-all tag. Shoal removes only what it recorded here, so a tag an admin set by hand is never taken away.
+    /// </summary>
+    public Dictionary<Guid, List<string>> ManagedBlockedTags { get; set; } = [];
+
+    /// <summary>Gets or sets the accounts that hide friends' titles ("Hide friends' titles", the global <c>Shoal</c> tag); playback refuses them too.</summary>
+    public List<Guid> HiddenFriendTitles { get; set; } = [];
 }
 
 /// <summary>

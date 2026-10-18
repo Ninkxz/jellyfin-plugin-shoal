@@ -254,7 +254,13 @@ public sealed class MatrixHarness : IAsyncDisposable
     public async Task ResetAsync()
     {
         await SetAccessAsync(AccessMode.Selected, false, MatrixWorld.Admin, MatrixWorld.Selected);
-        await State.UpdateAsync(s => s.Home.Peers.ForEach(static p => p.Enabled = true));
+        await State.UpdateAsync(s =>
+        {
+            s.Home.Peers.ForEach(static p => p.Enabled = true);
+            s.Home.Peers.ForEach(static p => p.QualityLimit = new Jellyfin.Plugin.Shoal.State.QualityLimit());
+            s.Home.Libraries.RemoveAll(static l => !l.IsLegacy);
+            s.Home.Visibility.HiddenFriendTitles.Clear();
+        });
         World.Principals.Clear();
         foreach (var id in new[] { MatrixWorld.Admin, MatrixWorld.Selected, MatrixWorld.Other, MatrixWorld.NewUser, MatrixWorld.ShareUser, MatrixWorld.Child })
         {

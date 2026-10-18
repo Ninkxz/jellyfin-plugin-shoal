@@ -21,7 +21,9 @@ namespace Jellyfin.Plugin.Shoal.Visibility;
 /// <param name="PeerKey">The peer.</param>
 /// <param name="MappingKey">The mapping.</param>
 /// <param name="Access">The library's access mode and selection.</param>
-internal sealed record ShoalLibrary(Guid Id, string PeerKey, string MappingKey, LibraryAccess Access);
+/// <param name="LibKey">The layout library (v2.9) when it is one of those, else empty; then <paramref name="MappingKey"/> is empty and <paramref name="PeerKey"/> names its one
+/// connection, or is empty when several connections feed it (such a library is never parked as a whole).</param>
+internal sealed record ShoalLibrary(Guid Id, string PeerKey, string MappingKey, LibraryAccess Access, string LibKey = "");
 
 /// <summary>
 /// Layer 2 of the visibility rule (DESIGN 5.6): sets each account's core library access to the Shoal libraries to <c>Admitted(user, L)</c>, so
@@ -40,6 +42,7 @@ public sealed class VisibilityService : IDisposable
     private readonly IAccountSource _accounts;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
+    private readonly TagService? _tags;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private HashSet<Guid> _stoppedManaging = [];
 
@@ -51,8 +54,9 @@ public sealed class VisibilityService : IDisposable
     /// <param name="accounts">Jellyfin's accounts.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    public VisibilityService(IStateStore state, ILibrarySource libraries, IAccountSource accounts, TimeProvider time, ILogger<VisibilityService> logger)
-        : this(state, libraries, accounts, time, (ILogger)logger)
+    /// <param name="tags">The Shoal tags in BlockedTags (K45): reconciled after every library access reconcile, or null.</param>
+    public VisibilityService(IStateStore state, ILibrarySource libraries, IAccountSource accounts, TimeProvider time, ILogger<VisibilityService> logger, TagService? tags = null)
+        : this(state, libraries, accounts, time, (ILogger)logger, tags)
     {
     }
 
@@ -64,13 +68,15 @@ public sealed class VisibilityService : IDisposable
     /// <param name="accounts">Jellyfin accounts.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    internal VisibilityService(IStateStore state, ILibrarySource libraries, IAccountSource accounts, TimeProvider time, ILogger logger)
+    /// <param name="tags">The tag service, or null.</param>
+    internal VisibilityService(IStateStore state, ILibrarySource libraries, IAccountSource accounts, TimeProvider time, ILogger logger, TagService? tags = null)
     {
         _state = state;
         _libraries = libraries;
         _accounts = accounts;
         _time = time;
         _logger = logger;
+        _tags = tags;
     }
 
     /// <summary>
@@ -110,6 +116,12 @@ public sealed class VisibilityService : IDisposable
             _gate.Release();
         }
     }
+
+    /// <summary>
+    /// The accounts as the visibility rules see them (the add-friend wizard's gain report, Warden 10 M1).
+    /// </summary>
+    /// <returns>The accounts.</returns>
+    public IReadOnlyList<AccountInfo> Accounts() => _accounts.List();
 
     /// <summary>
     /// The uninstall rule of DESIGN 5.6 (W6 L-5, "narrow, never widen"). It deletes nothing. An account Shoal manages whose list still is the
@@ -243,6 +255,13 @@ public sealed class VisibilityService : IDisposable
             var libraries = ShoalLibraries(state, _libraries.List()).Where(l => string.Equals(l.PeerKey, peerKey, StringComparison.Ordinal)).ToList();
             if (libraries.Count == 0)
             {
+                // K47: a server that feeds only shared libraries is parked by its stubs alone (the tag service hides them).
+                if (state.Home.Peers.Any(p => string.Equals(p.PeerKey, peerKey, StringComparison.Ordinal) && p.Libraries.Count > 0))
+                {
+                    await _state.UpdateAsync(s => s.Home.Visibility.Parked[peerKey] = new ParkedPeer { ParkedUtc = _time.GetUtcNow().UtcDateTime }, cancellationToken).ConfigureAwait(false);
+                    await ReconcileTagsAsync(cancellationToken).ConfigureAwait(false);
+                }
+
                 return 0;
             }
 
@@ -317,6 +336,7 @@ public sealed class VisibilityService : IDisposable
                 }
             }
 
+            await ReconcileTagsAsync(cancellationToken).ConfigureAwait(false); // K47: its stubs in shared libraries too
             _logger.LogInformation("Shoal hid the libraries of an offline server from {Accounts} accounts ({Pairs} pairs)", writes.Count, pairs.Count);
             if (allFolders > 0)
             {
@@ -424,6 +444,7 @@ public sealed class VisibilityService : IDisposable
                 }
             }
 
+            await ReconcileTagsAsync(cancellationToken).ConfigureAwait(false); // K47: its stubs come back too
             _logger.LogInformation("Shoal showed the libraries of a recovered server again ({Pairs} pairs)", restored);
             return restored;
         }
@@ -466,6 +487,22 @@ public sealed class VisibilityService : IDisposable
                 {
                     result.Add(new ShoalLibrary(library.Id, peer.PeerKey, mapping.MappingKey, mapping.Access));
                 }
+            }
+        }
+
+        // K44/K45: a layout library of its own (placement Shoal) is a Shoal library too; its access is its own. A library added into a main library (placement
+        // Main) is not: the main library is the admin's, and its titles are hidden per user by the shoal-lib tag instead (TagService).
+        foreach (var layout in state.Home.Libraries.Where(static l => !l.IsLegacy && l.Placement == LibraryPlacement.Shoal))
+        {
+            if (LibraryFolders.PathOf(state.StubRoot, layout) is not { } expected)
+            {
+                continue;
+            }
+
+            var library = libraries.FirstOrDefault(l => l.Locations.Any(location => SamePath(location, expected)));
+            if (library is not null && result.All(r => r.Id != library.Id))
+            {
+                result.Add(new ShoalLibrary(library.Id, layout.Feeds.Count == 1 ? layout.Feeds[0] : string.Empty, string.Empty, layout.Access, layout.LibKey));
             }
         }
 
@@ -680,6 +717,12 @@ public sealed class VisibilityService : IDisposable
             _logger.LogInformation("Shoal re-applied library access ({Count} accounts)", done.Count(static c => c.Kind != VisibilityChangeKind.StoppedManaging));
         }
 
+        // K45: the tags follow the same access (and the library lists just written, for the shoal-alt tags).
+        if (_tags is not null)
+        {
+            await _tags.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         return new ReconcileResult(done);
     }
 
@@ -701,5 +744,23 @@ public sealed class VisibilityService : IDisposable
         }
 
         return true;
+    }
+
+    // K47: the park tags follow the parked set (the tag service has its own gate).
+    private async Task ReconcileTagsAsync(CancellationToken cancellationToken)
+    {
+        if (_tags is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _tags.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("Shoal could not update the park tags ({Error})", ex.GetType().Name);
+        }
     }
 }

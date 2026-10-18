@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { mountPage } from './helpers.mjs';
 
 async function libraries(scenario, extra) {
-    return mountPage(Object.assign({ scenario, params: { view: 'libraries' }, settleMs: 350 }, extra || {}));
+    // These tests drive the per-friend list, which a server without layouts still shows; the v2.9 list is tested in librarieslayout.test.mjs.
+    return mountPage(Object.assign({ scenario, params: { view: 'libraries' }, settleMs: 350, layoutsRoute: false }, extra || {}));
 }
 
 const block = (p, name) => [...p.page.querySelectorAll('.shoal-libblock')].find((b) => b.querySelector('.shoal-row__title').textContent === name);

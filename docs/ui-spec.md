@@ -1463,7 +1463,7 @@ Mark each item with the evidence used (screenshot at the stated width and theme,
 - [ ] C4 Jellyfin's `.raised:focus` and `.button-submit:focus` color changes do not appear inside Shoal.
 
 **D. States and copy**
-- [ ] D1 Every state in 8.1.5, 7, 8.2.5 (both tables), 8.3.9, 8.4.6, 8.7, 8.8 and 9 reachable in the lab (fakepeer or stopped jf-peer) and screenshotted.
+- [ ] D1 Every state in 8.1.5, 7, 8.2.5 (both tables), 8.3.9, 8.4.6, 8.7, 8.8 and 9 reachable in the lab (fakepeer or stopped lab-server) and screenshotted.
 - [ ] D2 All copy matches section 8 (diff `STRINGS` against this file); none of the words banned in 11 (peer, federated, SAS, `LogOnly`, `Enforce`…), HTTP codes or raw errors in the UI.
 - [ ] D3 Offline server: stored backdrop greyed out (owner D5), "Offline for …" copy, titles described as still listed.
 - [ ] D4 (v2.1) Both "Pairing stopped for your safety" paths save nothing (API check): `codesDidNotMatch` from "They don't match" on the Quick Connect path, and `requestReplaced` from fakepeer's vanished request; each shows its 8.2.5 copy, stays on its Overview card after a reload **and after a Home restart** (T-PAIR-16), clears only on Dismiss or a successful pairing, and "Start again" then requires the new-account checkbox. A network blip, an expired code and `interrupted` show "Pairing stopped" (warn), never "Stopped for safety". (v2.2) Only the five safety kinds send the Jellyfin pop-up; `expired`, `network`, `interrupted`, `denied` and `codeMismatch` send none (check the dashboard of a second admin).

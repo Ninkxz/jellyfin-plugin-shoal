@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Shoal.Peers;
@@ -210,6 +211,7 @@ public sealed record TvGuardSettings(int MassDeletionMinCount, int MassDeletionP
 /// <param name="HeldAdditionIds">The peer item ids (32 hex) held back by an earlier sync; they stay held until released. Optional (K36).</param>
 /// <param name="ReleasedSeries">Peer series ids the admin released by hand: their held additions and removals go through the guards (DESIGN v2.7.2, release works by series group). Optional.</param>
 /// <param name="OtherPlayable">How many playable entries (movies and episodes) the catalog already holds in other mappings. The 50,000 cap is per catalog, so this mapping may have the rest (Warden 12 M2).</param>
+/// <param name="PeerOwned">PLAN v2.9 K43: the series another (higher-ranked) server already shows, by dedup key, with the episodes it has. Optional.</param>
 public sealed record TvPlanInput(
     string MappingKey,
     IReadOnlyList<CatalogEntry> Existing,
@@ -224,7 +226,8 @@ public sealed record TvPlanInput(
     bool BypassAdditions,
     IReadOnlySet<string>? HeldAdditionIds = null,
     int OtherPlayable = 0,
-    IReadOnlySet<Guid>? ReleasedSeries = null);
+    IReadOnlySet<Guid>? ReleasedSeries = null,
+    IReadOnlyDictionary<string, TvOwnedSeries>? PeerOwned = null);
 
 /// <summary>A series whose additions are held back by the new-items guard, so the admin can release it alone.</summary>
 /// <param name="PeerSeriesId">The peer's series id.</param>
@@ -257,6 +260,8 @@ public sealed record TvCounts(int SkippedNoNumber, int SkippedVirtual, int Skipp
 /// <param name="Counts">What was skipped or dropped.</param>
 /// <param name="Alerts">Alert codes (<c>SyncAlert</c> names).</param>
 /// <param name="HeldAdditionGroups">The series behind <paramref name="HeldAdditionPeerIds"/>, one per series, for release by series. Optional.</param>
+/// <param name="HiddenEpisodes">PLAN v2.9 K43: episodes kept as hidden sources of another server's series (no stub). Optional.</param>
+/// <param name="PeerOwnedSeries">PLAN v2.9 K43: peer series ids (32 hex) another server shows, to the stub key of that server's series. Optional.</param>
 public sealed record TvPlan(
     IReadOnlyList<SanitizedSeries> AddSeries,
     IReadOnlyList<SanitizedSeason> AddSeasons,
@@ -270,7 +275,9 @@ public sealed record TvPlan(
     IReadOnlyList<string> PendingDetail,
     TvCounts Counts,
     IReadOnlyList<string> Alerts,
-    IReadOnlyList<TvHeldGroup>? HeldAdditionGroups = null)
+    IReadOnlyList<TvHeldGroup>? HeldAdditionGroups = null,
+    IReadOnlyList<TvHiddenEpisode>? HiddenEpisodes = null,
+    IReadOnlyDictionary<string, string>? PeerOwnedSeries = null)
 {
     /// <summary>Gets the plan that does nothing.</summary>
     public static TvPlan Empty { get; } = new([], [], [], [], [], [], [], [], [], [], new TvCounts(0, 0, 0, 0, 0), []);
@@ -334,3 +341,39 @@ public interface ITvImageWork
     /// <returns>The jobs.</returns>
     IReadOnlyList<TvImageJob> Queue(IReadOnlyList<CatalogEntry> entries, IReadOnlyCollection<string> pendingKeys, bool episodeThumbs);
 }
+
+/// <summary>
+/// A series another server already shows (PLAN v2.9 K43): its owner, its series stub (the group's copy) and the episode numbers it has.
+/// </summary>
+/// <param name="OwnerPeerKey">The server that shows it.</param>
+/// <param name="OwnerSeriesStubKey">Its series entry's stub key.</param>
+/// <param name="SameFolder">Whether the owner writes into the same library folder as this mapping (then this server's other episodes join the series through
+/// the library's series grouping; otherwise they stay hidden).</param>
+/// <param name="Episodes">The owner's episodes.</param>
+public sealed record TvOwnedSeries(string OwnerPeerKey, string OwnerSeriesStubKey, bool SameFolder, IReadOnlyList<TvOwnedEpisode> Episodes)
+{
+    /// <summary>
+    /// The owner's episode an episode overlaps (same season, number ranges meet), or null. Overlapping ranges keep the owner's numbering.
+    /// </summary>
+    /// <param name="season">The season.</param>
+    /// <param name="number">The first episode number.</param>
+    /// <param name="numberEnd">The last episode number, or null for one.</param>
+    /// <returns>The owner's episode, or null.</returns>
+    public TvOwnedEpisode? Overlap(int season, int number, int? numberEnd)
+    {
+        var end = numberEnd ?? number;
+        return Episodes.FirstOrDefault(e => e.Season == season && e.Number <= end && number <= e.End);
+    }
+}
+
+/// <summary>One episode of a series another server shows.</summary>
+/// <param name="Season">The season.</param>
+/// <param name="Number">The first episode number.</param>
+/// <param name="End">The last episode number (the first for one).</param>
+/// <param name="StubKey">Its stub key on that server.</param>
+public sealed record TvOwnedEpisode(int Season, int Number, int End, string StubKey);
+
+/// <summary>An episode kept as a hidden source (PLAN v2.9 K43).</summary>
+/// <param name="Episode">The episode as listed.</param>
+/// <param name="DuplicateOf">The owner's episode stub key it stands in for, or null when the owner has no such episode (legacy layout: it stays hidden).</param>
+public sealed record TvHiddenEpisode(SanitizedEpisode Episode, string? DuplicateOf);

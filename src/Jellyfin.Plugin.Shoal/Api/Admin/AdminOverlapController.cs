@@ -22,16 +22,19 @@ public class AdminOverlapController : ControllerBase
 {
     private readonly IStateStore _state;
     private readonly CatalogStore _catalogs;
+    private readonly QualityAdmin? _quality;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdminOverlapController"/> class.
     /// </summary>
     /// <param name="state">The state store.</param>
     /// <param name="catalogs">The catalogs.</param>
-    public AdminOverlapController(IStateStore state, CatalogStore catalogs)
+    /// <param name="quality">The backup counts (PLAN v2.9), or null.</param>
+    public AdminOverlapController(IStateStore state, CatalogStore catalogs, QualityAdmin? quality = null)
     {
         _state = state;
         _catalogs = catalogs;
+        _quality = quality;
     }
 
     /// <summary>
@@ -66,9 +69,10 @@ public class AdminOverlapController : ControllerBase
 
         var load = _catalogs.Load(handle);
         var report = load.Document.Report;
+        var backups = _quality?.Backups(handle);
         if (load.Unreadable || report is null)
         {
-            return AdminReply.Json(StatusCodes.Status200OK, new OverlapDto());
+            return AdminReply.Json(StatusCodes.Status200OK, new OverlapDto { Backups = backups });
         }
 
         var both = load.Document.Entries.Where(static e => e.State == EntryState.DuplicateLocal && e.Kind is EntryKind.Movie or EntryKind.Episode).ToList();
@@ -93,6 +97,7 @@ public class AdminOverlapController : ControllerBase
                 Tv = load.Document.Entries.Any(static e => e.Kind != EntryKind.Movie)
                     ? new OverlapTvDto(report.SharedSeries, report.SharedSeriesEpisodes, report.GainSeries, report.GainEpisodes)
                     : null,
+                Backups = backups,
             });
     }
 }
@@ -116,6 +121,9 @@ internal sealed class OverlapDto
 
     /// <summary>Gets the TV lines (absent when the server has no TV entries): "N shows you already have, K episodes of them", "M shows, E episodes gained".</summary>
     public OverlapTvDto? Tv { get; init; }
+
+    /// <summary>Gets the backup counts (PLAN v2.9): titles another friend also has, how many this server plays first, how many it backs up; absent without groups.</summary>
+    public BackupCountsDto? Backups { get; init; }
 }
 
 /// <summary>

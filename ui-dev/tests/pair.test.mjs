@@ -111,11 +111,14 @@ test('the address step: Who label, the fields in order, the helper, and the netw
         assert.match(StepText(p), /You do this/);
         const labels = [...p.page.querySelectorAll('.shoal-field > label')].filter((l) => !l.closest('details')).map((l) => l.textContent.trim());
         assert.deepEqual(labels, ['Name for this server', 'Server address', 'How you reach it']);
-        assert.match(p.text(), /Ask your friend to send it\. For example http:\/\/myserver\.tail1234\.ts\.net:8096/);
+        assert.match(p.text(), /Ask your friend to send it\. For example https:\/\/movies\.example\.com\. A Tailscale name also works\./);
         assert.equal(input(p, 'Server address').getAttribute('autocomplete'), 'off');
         assert.equal(input(p, 'Server address').getAttribute('autocapitalize'), 'off');
         const options = [...input(p, 'How you reach it').options].map((o) => o.textContent);
-        assert.deepEqual(options, ['Tailscale (private)', 'Private address (home network or Tailscale router)', 'Internet (https only)']);
+        // HTTPS is the recommended way and comes first; Tailscale is also supported. The empty form starts on Internet (https).
+        assert.deepEqual(options, ['Internet with https (recommended)', 'Tailscale (also supported)', 'Private address (home network or Tailscale router)']);
+        assert.equal(input(p, 'How you reach it').value, 'Public');
+        assert.match(p.text(), /Recommended\. Needs an https address with a valid certificate\./);
         assert.equal(field(p, 'Invite'), undefined, 'the invite is not asked for here any more');
 
         // P4: a private address over https on 8096 selects Private address and says both things.
@@ -176,17 +179,22 @@ test('the connection helper: four setups, each with a Use this setup button, and
         const helper = [...p.page.querySelectorAll('details')].find((d) => d.querySelector('summary').textContent.trim() === 'Not sure which address to use?');
         const t = helper.textContent.replace(/\s+/g, ' ');
         assert.match(t, /The address must be one that works from your server, not from your friend's living room\./);
-        assert.match(t, /Say to your friend: Please send me the address of your Jellyfin that I can reach from my server\./);
-        for (const title of ['Your friend shared their server with you in Tailscale', 'Your friend shares their home network through a Tailscale router', 'Your friend has a public https address', 'Your friend put their server in a DMZ or opened a port on the router']) {
-            assert.ok(t.includes(title), title);
-        }
+        assert.match(t, /Say to your friend: Please send me the https address of your Jellyfin that I can reach from my server, for example https:\/\/movies\.example\.com\. If we use Tailscale instead, send the Tailscale name\./);
+        // In this order: https first, then the two Tailscale setups marked as also supported.
+        const titles = [...helper.querySelectorAll('.shoal-setup__title')].map((h) => h.textContent);
+        assert.deepEqual(titles, ['Your friend has a public https address (recommended)', 'Your friend put their server in a DMZ or opened a port on the router', 'Your friend shared their server with you in Tailscale (also supported)', 'Your friend shares their home network through a Tailscale router (also supported)']);
 
         assert.match(t, /Same house\? Use the home address, for example http:\/\/192\.168\.1\.20:8096, and choose Private address\./);
         const uses = [...helper.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Use this setup');
         assert.equal(uses.length, 4);
-        uses[1].click();
+        uses[3].click();
         assert.equal(input(p, 'How you reach it').value, 'LAN');
         uses[2].click();
+        assert.equal(input(p, 'How you reach it').value, 'Tailnet');
+        assert.equal(document.activeElement, input(p, 'Server address'));
+        uses[1].click();
+        assert.equal(input(p, 'How you reach it').value, 'Public');
+        uses[0].click();
         assert.equal(input(p, 'How you reach it').value, 'Public');
         assert.equal(document.activeElement, input(p, 'Server address'));
     } finally {
@@ -719,11 +727,10 @@ test('share step 2: how your friend reaches you, with the address to send filled
         await toReach(p);
         let t = StepText(p);
         assert.match(t, /How will Riley reach your server\?/);
-        assert.match(t, /Through Tailscale\. I shared this server with Riley/);
+        assert.match(t, /Through a public https address \(recommended\).*Through Tailscale \(also supported\)\. I shared this server with Riley.*Through my home network or a Tailscale router/);
         assert.match(t, /Their address will look like http:\/\/myserver\.tail1234\.ts\.net:8096/);
-        assert.match(t, /Through a public https address/);
-        assert.match(t, /Through my home network or a Tailscale router/);
-        assert.match(t, /Use only if Riley is on the same network or routes it\. Invites do not work over plain http, so give Riley a Tailscale name or an https address\./);
+                assert.match(t, /Through my home network or a Tailscale router/);
+        assert.match(t, /Use only if Riley is on the same network or routes it\. Invites do not work over plain http, so give Riley an https address or a Tailscale name\./);
         assert.match(t, /Say to Riley: I'm making the invite now\. It lasts 15 minutes\. Tell me when you're ready to paste it\./);
         assert.equal(buttonIn(step(p), 'Create invite').disabled, true);
         await chooseTransport(p, 'tailnet');
@@ -1359,8 +1366,8 @@ test('D17: an invite over plain http outside Tailscale is a dead end with the re
         await fillConnect(p, { url: 'http://192.168.1.40:8096', network: 'LAN' });
         await submit(p);
         assert.equal(p.wiz().step, 'check');
-        assert.match(p.text(), /Invites need Tailscale or an https address so nobody on the network can copy them\. There is no other way to pair over plain http\./);
-        assert.match(p.text(), /Use a Tailscale name or an https address instead./);
+        assert.match(p.text(), /Invites need an https address \(or Tailscale\) so nobody on the network can copy them\. There is no other way to pair over plain http\./);
+        assert.match(p.text(), /Use an https address or a Tailscale name instead./);
         assert.equal(buttonIn(step(p), 'Yes, this is it'), undefined, 'no way past');
         assert.equal(step(p).querySelector('.shoal-btn--primary').textContent.trim(), 'Change the address');
         assert.doesNotMatch(p.text(), /Quick Connect|could not reach that address/);
@@ -1437,7 +1444,7 @@ test('D17: a server paired the old way is paused, says Needs re-pair by invite, 
     const p = await pair({ params: { view: 'overview' }, legacy: true });
     try {
         assert.match(p.text(), /1 server was paired the old way and is paused\. Re-pair it with an invite\./);
-        const card = [...p.page.querySelectorAll('.shoal-card')].find((c) => c.textContent.includes('Old Friend'));
+        const card = [...p.page.querySelectorAll('.shoal-lanerow')].find((c) => c.textContent.includes('Old Friend'));
         assert.match(card.textContent, /Needs re-pair by invite/);
         assert.ok(buttonIn(card, 'Re-pair with an invite'));
     } finally {
@@ -1462,7 +1469,7 @@ test('Lumen 05: the plain http reason shows under the address as soon as it is t
     const p = await pair();
     try {
         setValue(input(p, 'Server address'), 'http://192.168.1.40:8096');
-        assert.match(p.page.querySelector('.shoal-addrblock').textContent, /Invites need Tailscale or an https address/);
+        assert.match(p.page.querySelector('.shoal-addrblock').textContent, /Invites need an https address \(or Tailscale\)/);
         setValue(input(p, 'Server address'), 'http://myserver.tail1234.ts.net:8096');
         assert.equal(p.page.querySelector('.shoal-addrblock').textContent, '', 'a Tailscale address is fine over http');
     } finally {
@@ -1554,7 +1561,7 @@ test('N15: a plain http address for the home route warns that the friend cannot 
         const address = input(p, 'The address to send');
         setValue(address, 'http://192.168.1.20:8096');
         await p.wait(30);
-        assert.match(p.text(), /That address is plain http\. Invites need Tailscale or an https address/);
+        assert.match(p.text(), /That address is plain http\. Invites need an https address \(or Tailscale\)/);
         setValue(address, 'https://movies.example.com');
         await p.wait(30);
         assert.doesNotMatch(p.text(), /That address is plain http/);

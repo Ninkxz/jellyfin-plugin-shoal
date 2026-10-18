@@ -417,12 +417,12 @@ public sealed partial class StateStore : IStateStore, IDisposable
                 return Evaluation.Bad(name, "not a state document");
             }
 
-            if (schema > ShoalState.CurrentSchema)
+            if (schema.Value > ShoalState.CurrentSchema)
             {
                 return Evaluation.Bad(name, "written by a newer Shoal", newerSchema: true);
             }
 
-            if (schema != ShoalState.CurrentSchema)
+            if (!StateUpgrade.IsReadable(schema.Value))
             {
                 return Evaluation.Bad(name, "unsupported schema");
             }
@@ -437,7 +437,17 @@ public sealed partial class StateStore : IStateStore, IDisposable
                 return Evaluation.Bad(name, "not valid for this schema");
             }
 
-            var notes = new List<string>();
+            // A schema 2 file is upgraded in memory only (PLAN v2.9 K41): nothing is written here, and the next change writes schema 3.
+            List<string> notes;
+            try
+            {
+                notes = [.. StateUpgrade.Upgrade(state)];
+            }
+            catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException or ArgumentException)
+            {
+                return Evaluation.Bad(name, "state document is malformed");
+            }
+
             var fatal = StateValidator.Validate(state, notes);
             return fatal is null
                 ? new Evaluation(new StateCandidate(name, true, true, null, state.Generation, state.WrittenUtc), bytes, state, false, notes)

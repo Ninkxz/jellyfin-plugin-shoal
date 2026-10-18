@@ -103,7 +103,7 @@ public sealed class SettingsTests
             <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
               <Peers>
                 <PeerConfiguration>
-                  <Id>peer</Id><Name>jf-peer</Name><Url>http://jf-peer:8096</Url><Token>SPIKE-TOKEN-0123456789</Token>
+                  <Id>peer</Id><Name>lab-server</Name><Url>http://lab-server:8096</Url><Token>SPIKE-TOKEN-0123456789</Token>
                   <DeviceId>shoal-jfhome-lab</DeviceId><Enabled>true</Enabled>
                 </PeerConfiguration>
               </Peers>

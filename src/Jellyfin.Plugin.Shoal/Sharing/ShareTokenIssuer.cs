@@ -50,7 +50,7 @@ internal static class ShareTokenIssuer
             },
             cancellationToken).ConfigureAwait(false);
         var current = state.Current.PeerRole.Shares.First(x => x.ShareId == shareId);
-        await users.ApplyPolicyAsync(current.ShareUserId, ShareService.PolicyOf(current), cancellationToken).ConfigureAwait(false);
+        await users.ApplyPolicyAsync(current.ShareUserId, ShareService.PolicyOf(current, state.Current), cancellationToken).ConfigureAwait(false);
         if (!state.Current.PeerRole.Shares.First(x => x.ShareId == shareId).Enabled)
         {
             return null; // a pause landed after the share was read: it wins, and no token is minted for a paused share

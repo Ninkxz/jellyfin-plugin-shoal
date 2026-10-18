@@ -40,7 +40,7 @@ public sealed class TvNfoWriter : ITvNfoWriter
             Text(xml, "premiered", Date(series.Premiered));
             Text(xml, "enddate", Date(series.EndDate));
             Text(xml, "status", series.Status);
-            Text(xml, "plot", series.Overview);
+            Text(xml, "plot", FriendLabel.Apply(series.Overview));
             Text(xml, "mpaa", series.OfficialRating);
             Text(xml, "rating", series.CommunityRating?.ToString("0.0##", CultureInfo.InvariantCulture));
             foreach (var genre in series.Genres)
@@ -90,7 +90,7 @@ public sealed class TvNfoWriter : ITvNfoWriter
             xml.WriteElementString("episode", episode.Number.ToString(CultureInfo.InvariantCulture));
             Text(xml, "episodenumberend", episode.NumberEnd?.ToString(CultureInfo.InvariantCulture));
             Text(xml, "aired", Date(episode.Aired));
-            Text(xml, "plot", episode.Overview);
+            Text(xml, "plot", FriendLabel.Apply(episode.Overview));
             Text(xml, "rating", episode.CommunityRating?.ToString("0.0##", CultureInfo.InvariantCulture));
             Tags(xml, tags);
         });

@@ -47,6 +47,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     private readonly IAttachmentRebuilder? _attachments;
     private readonly IVersionResolver? _versions;
     private readonly OfflineCards? _cards;
+    private readonly IGroupPlayback? _groups;
     private readonly ILogger<PlaybackInfoHandler> _logger;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _lastCanaryAlert = new();
 
@@ -72,6 +73,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     /// <param name="attachments">Rebuilds the attachments (DESIGN v2.6.6); none means no attachments.</param>
     /// <param name="versions">Maps the media source the client names to a version of the title (DESIGN v2.6.4); none means the title has one version.</param>
     /// <param name="cards">The offline card (owner request 2026-10-16); none means an offline friend gets the plain refusal.</param>
+    /// <param name="groups">Picks the server of a grouped title per play (PLAN v2.9 K42); none means every title plays from its stub's server.</param>
     public PlaybackInfoHandler(
         GrantStore grants,
         RateLimiter limiter,
@@ -91,8 +93,10 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         ILogger<PlaybackInfoHandler> logger,
         IAttachmentRebuilder? attachments = null,
         IVersionResolver? versions = null,
-        OfflineCards? cards = null)
+        OfflineCards? cards = null,
+        IGroupPlayback? groups = null)
     {
+        _groups = groups;
         _cards = cards;
         _versions = versions;
         _grants = grants;
@@ -114,6 +118,9 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         _logger = logger;
     }
 
+    /// <summary>Gets or sets the most time one PlaybackInfo spends on the servers it tries (Warden 11 L7: 20 seconds; tests shorten it).</summary>
+    internal TimeSpan AttemptBudget { get; set; } = TimeSpan.FromSeconds(20);
+
     /// <inheritdoc />
     public async Task<IActionResult> HandleAsync(FederatedRequest request, CancellationToken cancellationToken)
     {
@@ -127,7 +134,9 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
             return Error(PlaybackErrorCode.RateLimitExceeded);
         }
 
-        if (_state.Status != StateStatus.Ready || _registry.StatusOf(peerKey) is PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled)
+        // A stopped stub server refuses at once, unless the title is grouped: then another server may play it (K42; checked again below for the server picked).
+        var stubStopped = Stopped(peerKey);
+        if (_state.Status != StateStatus.Ready || (stubStopped && !IsGrouped(request)))
         {
             return Error(PlaybackErrorCode.NotAllowed);
         }
@@ -152,88 +161,183 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         }
 
         var peerMediaSourceId = Guid.TryParseExact(entry.PeerMediaSourceId, "N", out var sourceId) ? sourceId : peerItemId;
+        var stubEntry = entry;
 
         // The version the client means (DESIGN v2.6.4): its own source unless it names another member of the title's set; any other id is a 400.
         Guid? versionItemId = null;
         var setId = string.Empty;
         var runtimeTicks = entry.RuntimeTicks;
         var named = parsed.Request!.MediaSourceId;
-        if (_versions is not null)
-        {
-            var version = _versions.Resolve(request.ItemId, named?.ToString("N"));
-            if (version is null)
-            {
-                return new ShoalResult(named is null ? StatusCodes.Status404NotFound : StatusCodes.Status400BadRequest);
-            }
 
-            versionItemId = version.VersionItemId;
-            setId = version.SetId;
-            peerItemId = version.PeerItemId;
-            peerMediaSourceId = version.PeerMediaSourceId;
-            runtimeTicks = entry.Sources.FirstOrDefault(s => s.StubKey == version.StubKey) is { RuntimeTicks: > 0 } own ? own.RuntimeTicks : entry.RuntimeTicks;
-        }
-        else if (named is not null && named != request.ItemId)
+        // K42: a title two or more servers carry plays from the best server that is up now and whose library the caller may open. The choice is made here, per
+        // play, and the grant holds it, so a running stream never switches. The extra versions are hidden, so the client names the item itself (or nothing).
+        var candidates = _groups is not null && (named is null || named == request.ItemId)
+            ? (request.Stub.IsCopy ? _groups.CandidatesForCopy(peerKey, entry, caller.User, request.Stub.LibKey) : _groups.Candidates(peerKey, entry, caller.User))
+            : null;
+        if (request.Stub.IsCopy && candidates is not { Count: > 0 })
         {
-            return new ShoalResult(StatusCodes.Status400BadRequest);
-        }
-
-        // Slot pre-check (6.2 step 1): nothing is reserved; the first byte or segment stays the authoritative check (6.9). One slot per version set.
-        var peerState = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey);
-        if (peerState is not null && !_slots.CanStart(caller.UserId, setId.Length == 0 ? request.ItemId : SlotKey.Of(setId), peerKey, peerState.MaxConcurrentStreams, new SlotOrigin(entry.Kind == EntryKind.Episode ? entry.PeerSeriesId : string.Empty, caller.DeviceId)))
-        {
-            return Error(PlaybackErrorCode.RateLimitExceeded);
-        }
-
-        var peer = _peers.Find(peerKey);
-        if (peer is null)
-        {
+            // K45: an extra copy plays only from a member whose library the caller may open; it never falls back to the owner's server.
             return Error(PlaybackErrorCode.NotAllowed);
         }
 
-        // 3. build the body (6.2.1) from validated values only
+        // K46: when the server picked does not answer, the next candidate is tried in the same call (only candidates of this title's group the caller may open).
+        IReadOnlyList<MemberChoice?> attempts = candidates is { Count: > 0 } ? [.. candidates.Take(GroupsDocument.MaxMembers)] : [null];
+        MemberChoice? pick = null;
+        PeerState? peerState = null;
+        PeerEndpoint? peer = null;
+        QualityCap? cap = null;
+        PlaybackInfoResponse? answer = null;
+        IActionResult? lastFailure = null;
+        var stubPeerKey = peerKey;
+        var stubPeerItemId = peerItemId;
+        var stubSourceId = peerMediaSourceId;
+
+        // Warden 11 L7: one PlaybackInfo buys at most this much time across all the servers it tries.
+        using var budget = new CancellationTokenSource(AttemptBudget, _time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budget.Token);
+        var callToken = linked.Token;
         var client = parsed.Request!;
-        var maxBitrate = PlaybackInfoBuilder.ComputeMaxStreamingBitrate(client.MaxStreamingBitrate, caller, _limits.ForPeer(peerKey));
-        var clientProfile = client.DeviceProfile ?? _devices.ProfileFor(caller.UserId, caller.DeviceId);
-        var profile = clientProfile is null ? null : DeviceProfileRebuilder.Rebuild(clientProfile, maxBitrate, _hlsSubtitles());
-        var body = PlaybackInfoBuilder.BuildPeerBody(client, caller.User, peerMediaSourceId, runtimeTicks, profile, maxBitrate);
-
-        // 4. ask the Peer
-        PlaybackInfoResponse? answer;
-        try
+        for (var attempt = 0; attempt < attempts.Count; attempt++)
         {
-            if (!await _trust.EnsureAsync(peer, TrustRequirement.PinFresh, cancellationToken).ConfigureAwait(false))
+            var isLast = attempt == attempts.Count - 1;
+            if (budget.IsCancellationRequested)
             {
-                return await OfflineAsync(request, caller.UserId, peerKey, peer.DisplayName, cancellationToken).ConfigureAwait(false);
+                break; // out of time: the last failure stands
             }
 
-            using var response = await _client.SendAsync(peer, PeerRequest.Post($"/Items/{peerItemId:N}/PlaybackInfo", body), PeerCallProfile.PlaybackInfo, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
+            pick = attempts[attempt];
+            if (pick is not null)
             {
-                _logger.LogWarning("Peer {Peer} answered PlaybackInfo with HTTP {Status}", Redact.Id(peerKey), (int)response.StatusCode);
-                return response.StatusCode switch
+                peerKey = pick.PeerKey;
+                entry = pick.Entry;
+                peerItemId = pick.PeerItemId;
+                peerMediaSourceId = pick.PeerMediaSourceId;
+                runtimeTicks = entry.RuntimeTicks > 0 ? entry.RuntimeTicks : stubEntry.RuntimeTicks;
+            }
+            else
+            {
+                peerKey = stubPeerKey;
+                entry = stubEntry;
+                peerItemId = stubPeerItemId;
+                peerMediaSourceId = stubSourceId;
+            }
+
+            if (Stopped(peerKey))
+            {
+                lastFailure = Error(PlaybackErrorCode.NotAllowed);
+                continue;
+            }
+
+            // A picked server plays its primary version: no version lookup.
+            if (pick is null && _versions is not null)
+            {
+                var version = _versions.Resolve(request.ItemId, named?.ToString("N"));
+                if (version is null)
                 {
-                    HttpStatusCode.NotFound => new ShoalResult(StatusCodes.Status404NotFound),
-                    HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => Error(PlaybackErrorCode.NotAllowed),
-                    _ => new ShoalResult(StatusCodes.Status502BadGateway),
-                };
+                    return new ShoalResult(named is null ? StatusCodes.Status404NotFound : StatusCodes.Status400BadRequest);
+                }
+
+                versionItemId = version.VersionItemId;
+                setId = version.SetId;
+                peerItemId = version.PeerItemId;
+                peerMediaSourceId = version.PeerMediaSourceId;
+                runtimeTicks = entry.Sources.FirstOrDefault(s => s.StubKey == version.StubKey) is { RuntimeTicks: > 0 } own ? own.RuntimeTicks : entry.RuntimeTicks;
+            }
+            else if (pick is null && named is not null && named != request.ItemId)
+            {
+                return new ShoalResult(StatusCodes.Status400BadRequest);
             }
 
-            answer = PlaybackInfoBuilder.ParsePeerAnswer(await response.ReadBytesAsync(cancellationToken).ConfigureAwait(false));
-        }
-        catch (PeerCallException ex)
-        {
-            _logger.LogInformation("The PlaybackInfo call to peer {Peer} failed ({Kind})", Redact.Id(peerKey), ex.Kind);
-            return ex.Kind switch
+            // Slot pre-check (6.2 step 1): nothing is reserved; the first byte or segment stays the authoritative check (6.9). One slot per version set.
+            peerState = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey);
+            if (peerState is not null && !_slots.CanStart(caller.UserId, setId.Length == 0 ? request.ItemId : SlotKey.Of(setId), peerKey, peerState.MaxConcurrentStreams, new SlotOrigin(entry.Kind == EntryKind.Episode ? entry.PeerSeriesId : string.Empty, caller.DeviceId)))
             {
-                PeerFailureKind.Blocked => Error(PlaybackErrorCode.NotAllowed),
-                PeerFailureKind.BadResponse or PeerFailureKind.TooLarge or PeerFailureKind.Redirect => new ShoalResult(StatusCodes.Status502BadGateway),
-                _ => await OfflineAsync(request, caller.UserId, peerKey, peer.DisplayName, cancellationToken).ConfigureAwait(false),
-            };
+                lastFailure = Error(PlaybackErrorCode.RateLimitExceeded);
+                continue;
+            }
+
+            peer = _peers.Find(peerKey);
+            if (peer is null)
+            {
+                lastFailure = Error(PlaybackErrorCode.NotAllowed);
+                continue;
+            }
+
+            // 3. build the body (6.2.1) from validated values only
+            // K51: the connection's quality limit is read from the state here and nowhere from the request; the grant holds it from now on.
+            cap = QualityCap.From(peerState?.QualityLimit);
+            var maxBitrate = PlaybackInfoBuilder.ComputeMaxStreamingBitrate(client.MaxStreamingBitrate, caller, _limits.ForPeer(peerKey), cap?.MaxBitrate ?? 0);
+            var clientProfile = client.DeviceProfile ?? _devices.ProfileFor(caller.UserId, caller.DeviceId);
+            var profile = clientProfile is null ? null : DeviceProfileRebuilder.Rebuild(clientProfile, maxBitrate, _hlsSubtitles(), cap);
+            var body = PlaybackInfoBuilder.BuildPeerBody(client, caller.User, peerMediaSourceId, runtimeTicks, profile, maxBitrate);
+
+            var peerName = peer.DisplayName;
+
+            // 4. ask the Peer
+            try
+            {
+                if (!await _trust.EnsureAsync(peer, TrustRequirement.PinFresh, callToken).ConfigureAwait(false))
+                {
+                    lastFailure = isLast ? await OfflineAsync(request, caller.UserId, peerKey, peerName, cancellationToken).ConfigureAwait(false) : null;
+                    peer = null;
+                    continue;
+                }
+
+                using var response = await _client.SendAsync(peer, PeerRequest.Post($"/Items/{peerItemId:N}/PlaybackInfo", body), PeerCallProfile.PlaybackInfo, callToken).ConfigureAwait(false);
+                if (response.StatusCode != HttpStatusCode.OK)
+                {
+                    _logger.LogWarning("Peer {Peer} answered PlaybackInfo with HTTP {Status}", Redact.Id(peerKey), (int)response.StatusCode);
+                    lastFailure = response.StatusCode switch
+                    {
+                        HttpStatusCode.NotFound => new ShoalResult(StatusCodes.Status404NotFound),
+                        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => Error(PlaybackErrorCode.NotAllowed),
+                        _ => new ShoalResult(StatusCodes.Status502BadGateway),
+                    };
+                    peer = null;
+                    continue;
+                }
+
+                answer = PlaybackInfoBuilder.ParsePeerAnswer(await response.ReadBytesAsync(callToken).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException) when (budget.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("The PlaybackInfo call to peer {Peer} ran out of time", Redact.Id(peerKey));
+                lastFailure = await OfflineAsync(request, caller.UserId, peerKey, peerName, cancellationToken).ConfigureAwait(false);
+                peer = null;
+                break;
+            }
+            catch (PeerCallException ex)
+            {
+                _logger.LogInformation("The PlaybackInfo call to peer {Peer} failed ({Kind})", Redact.Id(peerKey), ex.Kind);
+                lastFailure = ex.Kind switch
+                {
+                    PeerFailureKind.Blocked => Error(PlaybackErrorCode.NotAllowed),
+                    PeerFailureKind.BadResponse or PeerFailureKind.TooLarge or PeerFailureKind.Redirect => new ShoalResult(StatusCodes.Status502BadGateway),
+                    _ => isLast ? await OfflineAsync(request, caller.UserId, peerKey, peerName, cancellationToken).ConfigureAwait(false) : null,
+                };
+                peer = null;
+                continue;
+            }
+
+            if (answer is null)
+            {
+                lastFailure = new ShoalResult(StatusCodes.Status502BadGateway);
+                peer = null;
+                continue;
+            }
+
+            if (attempt > 0)
+            {
+                _logger.LogInformation("A play of item {Item} went to another server after {Count} did not answer", Redact.Id(request.ItemId), attempt);
+            }
+
+            break;
         }
 
-        if (answer is null)
+        if (answer is null || peer is null)
         {
-            return new ShoalResult(StatusCodes.Status502BadGateway);
+            // Every server failed: the last failure stands (the offline card or refusal of the last server tried).
+            return lastFailure ?? Error(PlaybackErrorCode.NotAllowed);
         }
 
         if (answer.ErrorCode is { } code)
@@ -244,13 +348,29 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         // 5. rebuild from scratch (6.2.3) and remember what was agreed
         var grantId = GrantStore.NewGrantId();
         var now = _time.GetUtcNow();
+
+        // Warden 10 L2: the grant keeps the member's library rule, so the HLS re-check stops a user who loses access to that member's library.
+        Func<CallerUser, bool>? memberAccess = null;
+        if (pick is not null && _groups is { } groups)
+        {
+            var stubPeer = request.Stub.PeerKey;
+            var copyLib = request.Stub.IsCopy ? request.Stub.LibKey : null;
+            memberAccess = user => groups.Admits(stubPeer, stubEntry, pick, user, copyLib);
+        }
+
         var built = PlaybackInfoBuilder.Rebuild(
             answer,
-            new RebuildContext(grantId, GrantStore.NewPlaySessionId(), caller.UserId, caller.DeviceId, caller.Token, request.ItemId, peerKey, peerItemId, peerMediaSourceId, entry, now, _attachments, versionItemId, setId),
+            new RebuildContext(grantId, GrantStore.NewPlaySessionId(), caller.UserId, caller.DeviceId, caller.Token, request.ItemId, peerKey, peerItemId, peerMediaSourceId, entry, now, _attachments, versionItemId, setId, cap, memberAccess),
             out var failure);
         if (built is null)
         {
-            return failure == BuildFailure.NoStream ? Error(PlaybackErrorCode.NoCompatibleStream) : new ShoalResult(StatusCodes.Status502BadGateway);
+            if (failure == BuildFailure.OverLimit)
+            {
+                _notice.QualityRefused(caller.UserId, peerKey);
+                _logger.LogInformation("Refused a play of item {Item} from peer {Peer}: over the quality limit and no conversion offered", Redact.Id(request.ItemId), Redact.Id(peerKey));
+            }
+
+            return failure is BuildFailure.NoStream or BuildFailure.OverLimit ? Error(PlaybackErrorCode.NoCompatibleStream) : new ShoalResult(StatusCodes.Status502BadGateway);
         }
 
         // Conversion pre-check (6.2 step 6): a source that can only be converted needs a free conversion slot at the peer.
@@ -261,7 +381,14 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
 
         // 6. canary: nothing that belongs to the Peer may be in what goes back
         var json = PlaybackInfoBuilder.Serialize(built.Response);
-        if (PlaybackInfoBuilder.CanaryHit(Encoding.UTF8.GetString(json), peer.Token, CanaryIds(entry, peerItemId, peerMediaSourceId), answer.PlaySessionId, peer.BaseUri.Host))
+        var canaryIds = CanaryIds(entry, peerItemId, peerMediaSourceId);
+        if (_groups is not null)
+        {
+            canaryIds.AddRange(CanaryIds(stubEntry, peerItemId, peerMediaSourceId));
+            canaryIds.AddRange(_groups.PeerIds(stubEntry)); // every server's ids of a grouped title, not only the one played
+        }
+
+        if (PlaybackInfoBuilder.CanaryHit(Encoding.UTF8.GetString(json), peer.Token, canaryIds, answer.PlaySessionId, peer.BaseUri.Host))
         {
             _logger.LogWarning("Redacted canary hit in PlaybackInfo (peer {Peer})", Redact.Id(peerKey));
             if (ShouldAlert(peerKey))
@@ -290,6 +417,11 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     }
 
     private static ShoalRawJsonResult Error(PlaybackErrorCode code) => new(StatusCodes.Status200OK, PlaybackInfoBuilder.ErrorBody(code));
+
+    private bool Stopped(string peerKey) => _registry.StatusOf(peerKey) is PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled;
+
+    private bool IsGrouped(FederatedRequest request) =>
+        _groups is not null && _catalog.Find(request.Stub.PeerKey, request.Stub.FolderName) is { } entry && _groups.PeerIds(entry).Count > 0;
 
     private async Task<IActionResult> OfflineAsync(FederatedRequest request, Guid userId, string peerKey, string peerName, CancellationToken cancellationToken)
     {

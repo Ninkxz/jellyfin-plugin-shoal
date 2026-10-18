@@ -278,6 +278,15 @@ internal sealed record StatusDto
     /// <summary>Gets the sharing accounts that no share manages (Warden 08 M7): the admin may delete them; Shoal never does.</summary>
     public IReadOnlyList<OrphanAccountDto> OrphanAccounts { get; init; } = [];
 
+    /// <summary>Gets the main libraries holding friends' titles whose NFO saver is on (Pilot 14: turn it off for them, or "Replace all metadata" overwrites friends' titles).</summary>
+    public IReadOnlyList<string> MainLibrariesSavingNfo { get; init; } = [];
+
+    /// <summary>Gets the libraries that hold a Shoal library folder beside other folders (Warden 12 L2): Shoal does not lock their options, so the admin should.</summary>
+    public IReadOnlyList<string> ShoalLibrariesNotLocked { get; init; } = [];
+
+    /// <summary>Gets the libraries in a main library that no Jellyfin library holds any more (Warden 13 L5; Shoal's names): their titles show nowhere.</summary>
+    public IReadOnlyList<string> MainLibrariesMissing { get; init; } = [];
+
     /// <summary>Gets the state of the image safety check (DESIGN v2.6.7), or null when it is not wired.</summary>
     public ImageSandboxDto? ImageSandbox { get; init; }
 

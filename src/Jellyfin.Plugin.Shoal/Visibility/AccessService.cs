@@ -25,6 +25,9 @@ public enum AccessError
     /// <summary>The selection contains a Shoal share user (DESIGN 5.6, W2 N-2): answers 400.</summary>
     ShareUser,
 
+    /// <summary>The mapping's titles are in a shared library (K44): its access is changed on the library, never through one connection's mapping.</summary>
+    SharedLibrary,
+
     /// <summary>The selection contains an account that does not exist.</summary>
     UnknownUser,
 
@@ -67,6 +70,9 @@ public sealed record AccessChangeResult(AccessError Error, AccessImpact? Impact)
 /// </summary>
 public sealed class AccessService
 {
+    /// <summary>The longest account selection accepted (Warden 10 L4).</summary>
+    public const int MaxSelectedUsers = 1000;
+
     private readonly IStateStore _state;
     private readonly IAccountSource _accounts;
     private readonly VisibilityService _visibility;
@@ -134,6 +140,75 @@ public sealed class AccessService
         return result;
     }
 
+    /// <summary>
+    /// Checks a change of a layout library's access (K44/K45) and says who would gain and lose access, without changing anything.
+    /// </summary>
+    /// <param name="libKey">The library.</param>
+    /// <param name="change">The change.</param>
+    /// <returns>The verdict and the impact.</returns>
+    public AccessChangeResult PreviewLibrary(string libKey, AccessChange change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        return EvaluateLibrary(libKey, change).Result;
+    }
+
+    /// <summary>
+    /// Applies a change of a layout library's access: validates it, stores it and reconciles (library lists and tags). For a legacy library the change goes to the
+    /// mapping it came from (the source of truth) and to its copy.
+    /// </summary>
+    /// <param name="libKey">The library.</param>
+    /// <param name="change">The change.</param>
+    /// <param name="changedByUserId">The admin who changed it.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The verdict; nothing is written unless it is OK.</returns>
+    public async Task<AccessChangeResult> SetLibraryAsync(string libKey, AccessChange change, Guid changedByUserId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        var (result, next) = EvaluateLibrary(libKey, change);
+        if (!result.Ok || next is null)
+        {
+            return result;
+        }
+
+        var now = _time.GetUtcNow().UtcDateTime;
+        await _state.UpdateAsync(
+            s =>
+            {
+                var library = s.Home.Libraries.First(l => l.LibKey == libKey);
+                var targets = new List<LibraryAccess> { library.Access };
+                if (LibraryFolders.MappingOfLegacy(s, library) is { } legacy)
+                {
+                    targets.Add(legacy.Mapping.Access);
+                }
+
+                foreach (var access in targets)
+                {
+                    access.Mode = next.Mode;
+                    access.SelectedUserIds = [.. next.SelectedUserIds];
+                    access.IncludeRestricted = next.IncludeRestricted;
+                    access.ChangedUtc = now;
+                    access.ChangedByUserId = changedByUserId;
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+        await _visibility.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    private (AccessChangeResult Result, LibraryAccess? Next) EvaluateLibrary(string libKey, AccessChange change)
+    {
+        if (_state.Status != StateStatus.Ready)
+        {
+            return (new AccessChangeResult(AccessError.RecoveryMode, null), null);
+        }
+
+        var state = _state.Current;
+        var library = state.Home.Libraries.FirstOrDefault(l => l.LibKey == libKey);
+        return library is null
+            ? (new AccessChangeResult(AccessError.UnknownLibrary, null), null)
+            : EvaluateAccess(state, LibraryFolders.AccessOf(state, library), change);
+    }
+
     private (AccessChangeResult Result, LibraryAccess? Next) Evaluate(string peerKey, string mappingKey, AccessChange change)
     {
         if (_state.Status != StateStatus.Ready)
@@ -148,7 +223,21 @@ public sealed class AccessService
             return (new AccessChangeResult(AccessError.UnknownLibrary, null), null);
         }
 
-        var before = mapping.Access;
+        if (LibraryFolders.FedBy(state, peerKey, mapping.CollectionType) is not null)
+        {
+            return (new AccessChangeResult(AccessError.SharedLibrary, null), null); // one connection's mapping never changes who sees the other connections' titles
+        }
+
+        return EvaluateAccess(state, mapping.Access, change);
+    }
+
+    private (AccessChangeResult Result, LibraryAccess? Next) EvaluateAccess(ShoalState state, LibraryAccess before, AccessChange change)
+    {
+        if (change.SelectedUserIds is { Count: > MaxSelectedUsers })
+        {
+            return (new AccessChangeResult(AccessError.UnknownUser, null), null); // Warden 10 L4: no server has that many accounts
+        }
+
         var accounts = _accounts.List().ToDictionary(static a => a.Id);
         var shareUsers = VisibilityService.ShareUserIds(state);
         var next = new LibraryAccess

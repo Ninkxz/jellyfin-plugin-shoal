@@ -29,7 +29,12 @@ for (const [k, v] of q.entries()) {
 ctl.elements.theme.value = theme;
 scenarioSelect.value = scenario;
 
-const mock = createMock({ scenario, pairing: q.get('pairing') || 'ok', probeError: q.get('probe') || '' });
+// combine=one|many|noTv: the main libraries Combine into my libraries can pick
+// nfo=Movies[,Shows]: main libraries whose NFO saver is on
+// v2.9 layouts preset: lpreset=AllMixed|PerFriend|Custom (current layout), lmatch=1 (the list matches every preset)
+// v2.9 quality: po=1|odd|one (GET PlayOrder), backups=only|none, quality=1|rec|limited (GET Quality), prio=0 (an older server without the Priority route, control off)
+// v2.9 layouts: job=running|stopped, mains=1 (main libraries to add into), inbox=ok|posted|missing|noMoonfin|refused (absent = no route), ldef=0 (an older server without Layouts/Default)
+const mock = createMock({ scenario, pairing: q.get('pairing') || 'ok', probeError: q.get('probe') || '', layoutJob: q.get('job') || undefined, layoutJobCurrent: true, layoutJobStep: 20, mainLibraries: q.get('mains') === '1', inbox: q.get('inbox') || undefined, layoutDefaultRoute: q.get('ldef') !== '0', playOrder: q.get('po') || undefined, backups: q.get('backups') || undefined, quality: q.get('quality') || undefined, priorityRoute: q.get('prio') !== '0', layoutPreset: q.get('lpreset') || undefined, layoutMatches: q.get('lmatch') === '1', nfoMains: q.get('nfo') ? q.get('nfo').split(',') : undefined, combine: q.get('combine') || undefined });
 const client = createMockClient(mock);
 window.__mock = mock;
 window.ApiClient = client;
@@ -62,7 +67,7 @@ async function show(params) {
     mod.mount(page, params, {
         api: mod.createApi(client), client, dashboard: window.Dashboard, now: () => Date.now(), locale: document.documentElement.lang || undefined,
         storage: { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } } },
-        features: { appsWork: q.get('apps') === '1' }
+        features: { appsWork: q.get('apps') === '1', layoutDefault: q.get('ldef') !== '0', inboxExplainer: true, priorityTier: q.get('prio') !== '0' }
     });
     page.dispatchEvent(new CustomEvent('viewshow', { bubbles: true, detail: { isRestored: false, params } }));
     window.__page = page;

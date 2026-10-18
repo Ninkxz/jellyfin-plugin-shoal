@@ -157,7 +157,7 @@ public sealed class TrickplayInfoWriter : ILibraryPostScanTask
         {
             cancellationToken.ThrowIfCancellationRequested();
             seen++;
-            if (ShoalIndex.Classify(state, item.Path) is not { } stub)
+            if (ShoalIndex.Classify(state, item.Path, _catalog) is not { } stub)
             {
                 continue;
             }

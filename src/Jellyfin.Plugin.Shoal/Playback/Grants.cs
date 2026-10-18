@@ -191,6 +191,30 @@ public sealed class Grant
     /// <summary>Gets how the title is played.</summary>
     public PlayMethod Method { get; init; }
 
+    /// <summary>Gets the connection's quality limit when PlaybackInfo ran (PLAN v2.9 K51), or null for none. The grant holds it: every query sent to the Peer under it is held to it.</summary>
+    public QualityCap? Cap { get; init; }
+
+    /// <summary>Gets a value indicating whether the source is over <see cref="Cap"/>, so it plays converted because of the limit.</summary>
+    public bool HeldByLimit { get; init; }
+
+    /// <summary>Gets the width of the Peer's source picture, or 0 when not known.</summary>
+    public int SourceWidth { get; init; }
+
+    /// <summary>Gets the height of the Peer's source picture, or 0 when not known.</summary>
+    public int SourceHeight { get; init; }
+
+    /// <summary>Gets the bitrate of the Peer's source, or 0 when not known.</summary>
+    public int SourceBitrate { get; init; }
+
+    /// <summary>
+    /// Gets the library rule of the grouped title's member this grant plays from (Warden 10 L2), or null for a title with one server or the owner's own stub. The
+    /// HLS proxy runs it at each full re-check, so a user who lost access to that member's library stops at once.
+    /// </summary>
+    public Func<Jellyfin.Plugin.Shoal.Authorization.CallerUser, bool>? MemberAccess { get; init; }
+
+    /// <summary>Gets the sanitized catalog title, for the admin's Playing now block only.</summary>
+    public string Title { get; init; } = string.Empty;
+
     /// <summary>Gets or sets a value indicating whether the Peer started an ffmpeg job for this grant (set at the first forwarded HLS segment).</summary>
     public bool PeerJobStarted { get; set; }
 
@@ -412,6 +436,19 @@ public sealed class GrantStore
         {
             PruneLocked();
             return [.. _byId.Values.Where(g => g.LocalUserId == userId)];
+        }
+    }
+
+    /// <summary>
+    /// Lists every grant (the admin's Playing now block).
+    /// </summary>
+    /// <returns>A snapshot.</returns>
+    public IReadOnlyList<Grant> All()
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            return [.. _byId.Values];
         }
     }
 

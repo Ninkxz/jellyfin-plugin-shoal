@@ -76,7 +76,7 @@ public sealed class StateStoreTests
         using var json = JsonDocument.Parse(Bytes(PathsOf(dir).StateFile));
         var root = json.RootElement;
 
-        Assert.Equal(2, root.GetProperty("schema").GetInt32());
+        Assert.Equal(3, root.GetProperty("schema").GetInt32());
         Assert.Equal(1, root.GetProperty("generation").GetInt64());
         Assert.Equal("2026-10-14T21:00:00Z", root.GetProperty("writtenUtc").GetString());
         var peer = root.GetProperty("home").GetProperty("peers")[0];
@@ -408,7 +408,7 @@ public sealed class StateStoreTests
         }
 
         var paths = PathsOf(dir);
-        var newer = Encoding.UTF8.GetBytes("{\"schema\":3,\"generation\":99,\"somethingNew\":{}}");
+        var newer = Encoding.UTF8.GetBytes("{\"schema\":4,\"generation\":99,\"somethingNew\":{}}");
         File.WriteAllBytes(paths.StateFile, newer);
         var bak = Bytes(paths.StateBackup);
 

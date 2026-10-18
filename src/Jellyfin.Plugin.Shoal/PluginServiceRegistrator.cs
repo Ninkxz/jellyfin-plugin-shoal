@@ -65,8 +65,10 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IFederatedItems>(sp => sp.GetRequiredService<ShoalIndex>());
         serviceCollection.AddHostedService<ShoalIndexHost>();
         serviceCollection.AddSingleton<StubCatalog>();
+        serviceCollection.AddSingleton<ILibraryTreeOwners>(sp => new LibraryTreeOwners(sp.GetRequiredService<StubCatalog>(), sp.GetRequiredService<GroupBook>()));
         serviceCollection.AddSingleton<IStubItems, JellyfinStubItems>();
         serviceCollection.AddSingleton<StubEnricher>();
+        serviceCollection.AddHostedService<FriendLabelGuard>();
         serviceCollection.AddScoped<CallerContext>();
         serviceCollection.AddSingleton<PeerTrust>();
         serviceCollection.AddSingleton<PeerHealthStore>();
@@ -83,7 +85,38 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<StubWriter>();
         serviceCollection.AddSingleton<ILocalMovies, JellyfinLocalMovies>();
         serviceCollection.AddSingleton<ILibraryRefresh, JellyfinLibraryRefresh>();
-        serviceCollection.AddSingleton<CatalogSyncService>();
+        serviceCollection.AddSingleton<GroupBook>();
+        serviceCollection.AddSingleton<Jellyfin.Plugin.Shoal.Diagnostics.ConnectionRanker>();
+        serviceCollection.AddSingleton<Jellyfin.Plugin.Shoal.Diagnostics.IConnectionRanking>(sp => sp.GetRequiredService<Jellyfin.Plugin.Shoal.Diagnostics.ConnectionRanker>());
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Jellyfin.Plugin.Shoal.Diagnostics.ConnectionRanker>());
+        serviceCollection.AddSingleton<IGroupPlayback, GroupPlayback>();
+        serviceCollection.AddSingleton<Jellyfin.Plugin.Shoal.Api.Admin.IMoonbaseClient, Jellyfin.Plugin.Shoal.Api.Admin.LoopbackMoonbaseClient>();
+        serviceCollection.AddSingleton<Jellyfin.Plugin.Shoal.Api.Admin.InboxExplainerService>();
+        serviceCollection.AddSingleton(sp => new GroupMigration(sp.GetRequiredService<IStateStore>(), sp.GetRequiredService<CatalogStore>(), sp.GetRequiredService<GroupBook>(), sp.GetRequiredService<GroupCopyWriter>(), sp.GetRequiredService<LayoutLock>(), sp.GetRequiredService<CatalogSyncService>()));
+        serviceCollection.AddSingleton(sp =>
+        {
+            var history = sp.GetRequiredService<Jellyfin.Plugin.Shoal.Diagnostics.SpeedHistoryStore>();
+            return new Jellyfin.Plugin.Shoal.Api.Admin.QualityAdmin(
+                sp.GetRequiredService<IStateStore>(),
+                sp.GetRequiredService<CatalogStore>(),
+                key => history.Read(key),
+                sp.GetRequiredService<Jellyfin.Plugin.Shoal.Diagnostics.IConnectionRanking>(),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<GroupBook>(),
+                sp.GetRequiredService<GrantStore>(),
+                sp.GetRequiredService<ISlotLedger>());
+        });
+        serviceCollection.AddSingleton(sp => new GroupCopyWriter(sp.GetRequiredService<IStateStore>(), sp.GetRequiredService<GroupBook>(), sp.GetRequiredService<StubCatalog>(), sp.GetRequiredService<ILibraryRefresh>(), sp.GetRequiredService<ILogger<GroupCopyWriter>>())
+        {
+            TagsFirst = async ct => (await sp.GetRequiredService<TagService>().ReconcileAsync(ct).ConfigureAwait(false)).AllHeld,
+        });
+        serviceCollection.AddSingleton(sp =>
+        {
+            var sync = ActivatorUtilities.CreateInstance<CatalogSyncService>(sp);
+            sync.Copies = sp.GetRequiredService<GroupCopyWriter>();
+            sync.LayoutUnfinished = () => sp.GetService<LayoutJobService>()?.Unfinished == true; // resolved at call time: the job service needs this one
+            return sync;
+        });
         serviceCollection.AddShoalTv();
         serviceCollection.AddShoalTvSync();
         serviceCollection.AddSingleton<ISyncActivity>(sp => sp.GetRequiredService<CatalogSyncService>());
@@ -95,6 +128,12 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<ILibrarySource, JellyfinLibrarySource>();
         serviceCollection.AddSingleton<IAccountSource, JellyfinAccountSource>();
+        serviceCollection.AddSingleton(sp => new TagService(sp.GetRequiredService<IStateStore>(), sp.GetRequiredService<IAccountSource>(), sp.GetRequiredService<ILibrarySource>(), sp.GetRequiredService<ILogger<TagService>>())
+        {
+            AltTagsInUse = () => sp.GetRequiredService<GroupBook>().AltTagsInUse(),
+            SharePolicies = ct => sp.GetRequiredService<Jellyfin.Plugin.Shoal.Sharing.ShareService>().RepairPoliciesAsync(ct), // Warden 10 L5
+            ParkedGroupTags = parked => sp.GetRequiredService<GroupBook>().ParkedGroupTags(parked), // K47
+        });
         serviceCollection.AddSingleton<VisibilityService>();
         serviceCollection.AddSingleton<AccessService>();
         serviceCollection.AddSingleton<ILibraryView, AdminLibraryView>();
@@ -105,7 +144,29 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IShareService>(sp => sp.GetRequiredService<Jellyfin.Plugin.Shoal.Sharing.ShareService>());
         serviceCollection.AddSingleton<Jellyfin.Plugin.Shoal.Sharing.IShareLiveSource>(sp => sp.GetRequiredService<Jellyfin.Plugin.Shoal.Sharing.ShareService>());
         serviceCollection.AddHostedService<Jellyfin.Plugin.Shoal.Sharing.ShareSweeper>();
+        serviceCollection.AddSingleton<LayoutLock>();
+        serviceCollection.AddSingleton<LibraryOptionsGuard>(); // Pilot 14 LBL3
+        serviceCollection.AddSingleton(sp =>
+        {
+            var layout = ActivatorUtilities.CreateInstance<LibraryLayoutService>(sp);
+            layout.Copies = sp.GetRequiredService<GroupCopyWriter>();
+            layout.Options = sp.GetRequiredService<LibraryOptionsGuard>(); // Pilot 15 R6
+            layout.Scans = sp.GetRequiredService<ILibraryRefresh>(); // Pilot 16 RENAME
+            return layout;
+        });
         serviceCollection.AddSingleton<ShoalLibraryService>();
+        serviceCollection.AddSingleton(sp =>
+        {
+            var job = ActivatorUtilities.CreateInstance<LayoutJobService>(sp, sp.GetRequiredService<CatalogSyncService>());
+            job.RequestSync = key => sp.GetRequiredService<IPeerLiveStatus>().StartSync(key);
+            job.Copies = sp.GetRequiredService<GroupCopyWriter>();
+            job.Notifier = sp.GetRequiredService<IAdminNotifier>(); // Warden 11 L6
+            job.Options = sp.GetRequiredService<LibraryOptionsGuard>(); // Pilot 15 R6
+            return job;
+        });
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<LayoutJobService>());
+        serviceCollection.AddHostedService<LibraryOptionsWatch>(); // Pilot 15 R6: relock when an admin changes a library's options
+        serviceCollection.AddSingleton<LayoutPresetService>();
         serviceCollection.AddSingleton<UserCreationWatch>();
         serviceCollection.AddSingleton<IEventConsumer<UserCreatedEventArgs>, UserCreatedConsumer>();
         serviceCollection.AddHostedService<VisibilityHost>();
@@ -145,7 +206,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<ILogger<PlaybackInfoHandler>>(),
             sp.GetService<IAttachmentRebuilder>(),
             sp.GetService<IVersionResolver>(),
-            sp.GetService<OfflineCards>()));
+            sp.GetService<OfflineCards>(),
+            sp.GetService<IGroupPlayback>()));
         serviceCollection.AddSingleton<IStaticStreamHandler>(sp => new StaticStreamHandler(
             sp.GetRequiredService<StubCatalog>(),
             sp.GetRequiredService<IPeerEndpoints>(),
@@ -159,7 +221,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<ILogger<StaticStreamHandler>>(),
             sp.GetService<IVersionResolver>(),
             sp.GetService<OfflineCards>(),
-            new ReadAheadBudget(64L * 1024 * 1024))); // direct play: 4 MB read ahead per stream, 64 MB for all of them
+            new ReadAheadBudget(64L * 1024 * 1024), // direct play: 4 MB read ahead per stream, 64 MB for all of them
+            sp.GetService<IGroupPlayback>(),
+            sp.GetRequiredService<GrantStore>()));
         serviceCollection.AddSingleton(sp => new PeerExtractionGate(sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new SubtitleHandler(
             sp.GetRequiredService<GrantStore>(),

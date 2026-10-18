@@ -11,7 +11,7 @@ Share libraries between friends' Jellyfin servers on different networks (public 
 ## Phases
 | Phase | Goal | Owner | Exit criteria |
 |---|---|---|---|
-| 0 Research + lab | Answer the risky unknowns; two-server lab on the lab host | Scout, Pilot | `docs/research/scout-01.md`; lab up with test media |
+| 0 Research + lab | Answer the risky unknowns; two-server lab on container | Scout, Pilot | `docs/research/scout-01.md`; lab up with test media |
 | 1 Design | MVP architecture + security model | Atlas | `docs/DESIGN.md` reviewed by Warden |
 | 2 Spike | Prove a federated movie plays, seeks and transcodes in web + Moonfin | Kiro, Pilot | Video evidence of playback in the lab |
 | 3 MVP | Pairing, catalog sync (movies), authenticated stream handoff, dedup (local wins), config page | Kiro | Builds clean; Warden finds no High issues; Pilot passes test plan |
@@ -20,6 +20,6 @@ Share libraries between friends' Jellyfin servers on different networks (public 
 | 6 Release | Public GitHub repo, CI builds via jprm, plugin repository manifest, README with Tailscale guide | Manager | Installable from a repo URL on a clean Jellyfin |
 
 ## Deferred / needs owner approval
-- Putting production Jellyfin (the production server) on Tailscale (needs a container restart).
+- Putting production Jellyfin (container) on Tailscale (needs a container restart).
 - Creating the public GitHub repo and first release (publishing is outward-facing).
 - Pairing with a real friend's server.

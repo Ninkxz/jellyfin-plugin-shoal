@@ -53,6 +53,22 @@ public interface IItemPaths
 }
 
 /// <summary>
+/// Finds which connection (and mapping) wrote a title folder in a shared library folder <c>libs/&lt;libKey&gt;</c> (K44). The names carry nothing that identifies a
+/// server, so the answer comes from the connections' catalogs. Classification, never authorization.
+/// </summary>
+public interface ILibraryTreeOwners
+{
+    /// <summary>
+    /// Looks up the owner of a title folder.
+    /// </summary>
+    /// <param name="state">The state.</param>
+    /// <param name="library">The library (of v2.9 or later).</param>
+    /// <param name="topFolder">The title (or series) folder directly below the library folder.</param>
+    /// <returns>The connection and mapping, or null when none of the library's connections recorded the folder.</returns>
+    TreeOwner? OwnerOf(ShoalState state, ShoalLibrary library, string topFolder);
+}
+
+/// <summary>
 /// An item added to or removed from the library, reduced to what the index needs.
 /// </summary>
 public sealed class ItemPathEventArgs : EventArgs
@@ -83,7 +99,23 @@ public sealed class ItemPathEventArgs : EventArgs
 /// <param name="FolderName">The stub's folder name below the library folder; for an episode of a TV library its path below the library folder (<c>Show/Season 01/S01E01.strm</c>), which is what <c>StubCatalog.Find</c> keys episodes by.</param>
 /// <param name="FileName">The file name of the item's <c>.strm</c> (a title with several versions has one per version), or empty when the path names only the folder.</param>
 /// <param name="Kind">Whether the item is something to play (a movie or an episode) or only holds items (a series or a season of a TV library, DESIGN v2.7.5).</param>
-public sealed record IndexedStub(string PeerKey, string MappingKey, string FolderName, string FileName = "", IndexKind Kind = IndexKind.Playable);
+/// <param name="LibKey">The library of v2.9 or later whose folder (<c>libs/&lt;libKey&gt;</c>) holds the item, or empty for a legacy per-friend folder (K44).</param>
+/// <param name="IsCopy">Whether the item is an extra copy of a grouped title in another library (K44/K45): <paramref name="PeerKey"/>, <paramref name="MappingKey"/> and
+/// <paramref name="FolderName"/> then name the owner's own stub (where the catalog entry is), and <paramref name="LibKey"/> the library the copy is in.</param>
+public sealed record IndexedStub(string PeerKey, string MappingKey, string FolderName, string FileName = "", IndexKind Kind = IndexKind.Playable, string LibKey = "", bool IsCopy = false)
+{
+    /// <summary>Gets a value indicating whether the item is in a library folder whose owner is not known (yet): federated, but every request is refused.</summary>
+    public bool OwnerUnknown => PeerKey.Length == 0;
+}
+
+/// <summary>
+/// The owner of a title folder in a shared library folder.
+/// </summary>
+/// <param name="PeerKey">The connection whose catalog entry the folder belongs to.</param>
+/// <param name="MappingKey">The entry's mapping.</param>
+/// <param name="CatalogFolder">The folder the entry is found under in the catalog, when it is not the folder itself (an extra copy: the owner's own stub folder).</param>
+/// <param name="IsCopy">Whether the folder is an extra copy of a grouped title (K44/K45).</param>
+public sealed record TreeOwner(string PeerKey, string MappingKey, string? CatalogFolder = null, bool IsCopy = false);
 
 /// <summary>
 /// The set of federated local items (DESIGN 3.5): <c>Contains</c> is an O(1) hit. The authoritative rule is the item's path: canonicalized, it starts
@@ -96,6 +128,7 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     private readonly IItemPaths _items;
     private readonly IStateStore _state;
     private readonly ILogger _logger;
+    private readonly ILibraryTreeOwners? _owners;
     private readonly SemaphoreSlim _rebuild = new(1, 1);
     private ConcurrentDictionary<Guid, IndexedStub> _index = new();
     private bool _started;
@@ -106,8 +139,9 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     /// <param name="items">The library items.</param>
     /// <param name="state">The state store (stub root and mappings).</param>
     /// <param name="logger">The logger.</param>
-    public ShoalIndex(IItemPaths items, IStateStore state, ILogger<ShoalIndex> logger)
-        : this(items, state, (ILogger)logger)
+    /// <param name="owners">Finds the owners of title folders in shared library folders (K44), or null.</param>
+    public ShoalIndex(IItemPaths items, IStateStore state, ILogger<ShoalIndex> logger, ILibraryTreeOwners? owners = null)
+        : this(items, state, (ILogger)logger, owners)
     {
     }
 
@@ -117,12 +151,17 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     /// <param name="items">The library items.</param>
     /// <param name="state">The state store.</param>
     /// <param name="logger">The logger.</param>
-    internal ShoalIndex(IItemPaths items, IStateStore state, ILogger logger)
+    /// <param name="owners">Finds the owners of title folders in shared library folders, or null.</param>
+    internal ShoalIndex(IItemPaths items, IStateStore state, ILogger logger, ILibraryTreeOwners? owners = null)
     {
         _items = items;
         _state = state;
         _logger = logger;
+        _owners = owners;
     }
+
+    /// <summary>Gets the owner lookup of shared library folders, or null.</summary>
+    public ILibraryTreeOwners? Owners => _owners;
 
     /// <summary>Gets a value indicating whether the first rebuild has finished. Before then, misses fall back to the path rule.</summary>
     public bool IsReady { get; private set; }
@@ -139,7 +178,7 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     public static FederatedItem? FromPath(ShoalState state, string itemPath)
     {
         var stub = Classify(state, itemPath);
-        return stub is null ? null : new FederatedItem(stub.PeerKey, stub.MappingKey);
+        return stub is null ? null : new FederatedItem(stub.PeerKey, stub.MappingKey, stub.LibKey, stub.IsCopy);
     }
 
     /// <summary>
@@ -147,8 +186,9 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     /// </summary>
     /// <param name="state">The state (stub root and mappings).</param>
     /// <param name="itemPath">The item's path.</param>
+    /// <param name="owners">Finds the owner of a title folder in a library folder <c>libs/&lt;libKey&gt;</c>; without it such an item is classified with an unknown owner (refused).</param>
     /// <returns>The stub, or null when the path is not below a mapped library's stub folder.</returns>
-    public static IndexedStub? Classify(ShoalState state, string itemPath)
+    public static IndexedStub? Classify(ShoalState state, string itemPath, ILibraryTreeOwners? owners = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         if (string.IsNullOrWhiteSpace(state.StubRoot) || string.IsNullOrWhiteSpace(itemPath))
@@ -178,6 +218,11 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
         }
 
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (string.Equals(parts[0], ShoalLibrary.LibsFolder, comparison))
+        {
+            return ClassifyLibs(state, itemPath, parts, comparison, owners);
+        }
+
         var peer = state.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, parts[0], StringComparison.Ordinal));
         var mapping = peer?.Libraries.FirstOrDefault(l => string.Equals(l.Subfolder, parts[1], comparison));
         if (peer is null || mapping is null)
@@ -227,18 +272,20 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     /// <returns>The stub, or null when the item is not federated.</returns>
     public IndexedStub? Get(Guid localItemId)
     {
-        if (_index.TryGetValue(localItemId, out var known))
+        if (_index.TryGetValue(localItemId, out var known) && !known.OwnerUnknown)
         {
             return known;
         }
 
+        // A miss, or a title folder whose owner was not known yet (its catalog may have been saved since): one lookup by the path rule.
         var path = _items.PathOf(localItemId);
-        var stub = path is null ? null : Classify(_state.Current, path);
-        if (stub is not null)
+        var stub = path is null ? null : Classify(_state.Current, path, _owners);
+        if (stub is null)
         {
-            _index[localItemId] = stub; // found by the path rule: remember it
+            return known; // still unknown or gone: the cached (refusing) answer stands until the next rebuild
         }
 
+        _index[localItemId] = stub; // found by the path rule: remember it
         return stub;
     }
 
@@ -257,7 +304,7 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
     public bool IsContainer(Guid localItemId) => KindOf(localItemId) == IndexKind.Container;
 
     /// <inheritdoc />
-    public FederatedItem? Find(Guid localItemId) => Get(localItemId) is { } stub ? new FederatedItem(stub.PeerKey, stub.MappingKey) : null;
+    public FederatedItem? Find(Guid localItemId) => Get(localItemId) is { } stub ? new FederatedItem(stub.PeerKey, stub.MappingKey, stub.LibKey, stub.IsCopy) : null;
 
     /// <summary>
     /// Starts following core's item events and the stub root.
@@ -292,7 +339,7 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
                 var state = _state.Current;
                 foreach (var item in await Task.Run(() => _items.ItemsBelow(state.StubRoot), cancellationToken).ConfigureAwait(false))
                 {
-                    if (item.Path is not null && Classify(state, item.Path) is { } stub)
+                    if (item.Path is not null && Classify(state, item.Path, _owners) is { } stub)
                     {
                         fresh[item.Id] = stub;
                     }
@@ -325,7 +372,7 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
 
     private void OnAdded(object? sender, ItemPathEventArgs change)
     {
-        if (change.Path is not null && _state.Status == StateStatus.Ready && Classify(_state.Current, change.Path) is { } stub)
+        if (change.Path is not null && _state.Status == StateStatus.Ready && Classify(_state.Current, change.Path, _owners) is { } stub)
         {
             _index[change.Id] = stub;
         }
@@ -345,6 +392,36 @@ public sealed class ShoalIndex : IFederatedItems, IDisposable
         {
             _logger.LogWarning("The Shoal index could not be rebuilt ({Error})", ex.GetType().Name);
         }
+    }
+
+    // <StubRoot>/libs/<libKey>/<title>/...: a library of v2.9 or later, shared by its connections. The owner of the title folder comes from the catalogs. An unknown
+    // owner still classifies (the item is federated, so core never reads the stub) but with empty keys, which every check refuses (fail closed).
+    private static IndexedStub? ClassifyLibs(ShoalState state, string itemPath, string[] parts, StringComparison comparison, ILibraryTreeOwners? owners)
+    {
+        var library = state.Home.Libraries.FirstOrDefault(l => !l.IsLegacy && string.Equals(l.LibKey, parts[1], comparison));
+        if (library is null)
+        {
+            return null;
+        }
+
+        var owner = owners?.OwnerOf(state, library, parts[2]);
+        var peerKey = owner?.PeerKey ?? string.Empty;
+        var mappingKey = owner?.MappingKey ?? string.Empty;
+        if (owner is { IsCopy: true } copy && !string.Equals(library.Type, "tvshows", StringComparison.Ordinal))
+        {
+            // An extra copy of a grouped movie: found in the catalog under the owner's own folder; its one .strm is the title (no version file names).
+            return new IndexedStub(peerKey, mappingKey, copy.CatalogFolder ?? parts[2], string.Empty, IndexKind.Playable, library.LibKey, IsCopy: true);
+        }
+
+        var tv = string.Equals(library.Type, "tvshows", StringComparison.Ordinal);
+        var playable = itemPath.EndsWith(".strm", StringComparison.OrdinalIgnoreCase);
+        if (tv && playable && parts.Length >= 5)
+        {
+            return new IndexedStub(peerKey, mappingKey, string.Join('/', parts[2..]), parts[^1], IndexKind.Playable, library.LibKey);
+        }
+
+        var kind = tv && !playable ? IndexKind.Container : IndexKind.Playable;
+        return new IndexedStub(peerKey, mappingKey, parts[2], parts.Length > 3 ? parts[3] : string.Empty, kind, library.LibKey);
     }
 }
 

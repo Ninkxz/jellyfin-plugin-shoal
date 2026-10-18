@@ -434,6 +434,35 @@ public sealed class ClientOfflineNotice : IOfflineNotice
         _ = SendAsync(userId, text);
     }
 
+    /// <inheritdoc />
+    public void QualityRefused(Guid userId, string peerKey)
+    {
+        // Not behind the offline setting: without it the user would read only "no compatible stream". The same 30-second rule per user and peer.
+        var now = _time.GetUtcNow();
+        var due = false;
+        _last.AddOrUpdate(
+            (userId, "quality|" + peerKey),
+            _ =>
+            {
+                due = true;
+                return now;
+            },
+            (_, last) =>
+            {
+                if (now - last < Every)
+                {
+                    return last;
+                }
+
+                due = true;
+                return now;
+            });
+        if (due)
+        {
+            _ = SendAsync(userId, Jellyfin.Plugin.Shoal.Playback.QualityCap.RefusalText);
+        }
+    }
+
     private async Task SendAsync(Guid userId, string text)
     {
         try

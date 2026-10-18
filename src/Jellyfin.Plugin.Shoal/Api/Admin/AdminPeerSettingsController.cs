@@ -39,6 +39,7 @@ public class AdminPeerSettingsController : ControllerBase
     private readonly ShoalPaths _paths;
     private readonly IPairingGate? _gate;
     private readonly ISyncActivity? _sync;
+    private readonly CatalogStore? _catalogs;
     private readonly ILogger<AdminPeerSettingsController> _logger;
 
     /// <summary>
@@ -55,9 +56,11 @@ public class AdminPeerSettingsController : ControllerBase
     /// <param name="logger">The logger.</param>
     /// <param name="gate">Tells whether a pairing is live for a server, or null.</param>
     /// <param name="sync">Tells whether a catalog sync of a server is running, or null.</param>
-    public AdminPeerSettingsController(IStateStore state, IPeerEndpoints peers, PeerClient client, PeerRegistry registry, PeerAddressService addresses, ISecretStore secrets, ShoalLibraryService libraries, ShoalPaths paths, ILogger<AdminPeerSettingsController> logger, IPairingGate? gate = null, ISyncActivity? sync = null)
+    /// <param name="catalogs">The catalogs (to find a removed server's title folders in shared libraries), or null.</param>
+    public AdminPeerSettingsController(IStateStore state, IPeerEndpoints peers, PeerClient client, PeerRegistry registry, PeerAddressService addresses, ISecretStore secrets, ShoalLibraryService libraries, ShoalPaths paths, ILogger<AdminPeerSettingsController> logger, IPairingGate? gate = null, ISyncActivity? sync = null, CatalogStore? catalogs = null)
     {
         _sync = sync;
+        _catalogs = catalogs;
         _libraries = libraries;
         _paths = paths;
         _addresses = addresses;
@@ -439,8 +442,16 @@ public class AdminPeerSettingsController : ControllerBase
 
         var stubRoot = _state.Current.StubRoot;
         var libraries = 0;
+        var catalog = deleteLibrary && _catalogs is not null ? _catalogs.Load(handle) : null;
         foreach (var mapping in deleteLibrary ? peer.Libraries.ToList() : [])
         {
+            // A shared library (K44) keeps its folder and the other connections' titles: only this server's recorded title folders go.
+            if (LibraryFolders.FedBy(_state.Current, handle, mapping.CollectionType) is { } shared && LibraryFolders.PathOf(stubRoot, shared) is { } sharedFolder
+                && catalog is { Unreadable: false })
+            {
+                LibraryTree.DeleteRecorded(stubRoot, sharedFolder, catalog.Document.Entries.Where(e => e.MappingKey == mapping.MappingKey), _logger);
+            }
+
             if (await _libraries.RemoveAsync(handle, mapping.MappingKey, cancellationToken).ConfigureAwait(false))
             {
                 libraries++;

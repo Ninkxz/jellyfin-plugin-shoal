@@ -26,7 +26,7 @@ public static class LibraryOptionsFactory
     /// <param name="path">The library's only path: <c>&lt;StubRoot&gt;/&lt;peerKey&gt;/&lt;Subfolder&gt;</c>.</param>
     /// <param name="subtitleFetcherNames">The names of every subtitle provider core knows, to be listed as disabled.</param>
     /// <param name="mediaSegmentProviders">The names and ids of every media segment provider core knows, to be listed as disabled (a segment provider would analyze the stub), or null.</param>
-    /// <param name="tvShows">True for the options of a TV library (Series, Season and Episode locked as well, no automatic series grouping).</param>
+    /// <param name="tvShows">True for the options of a TV library (Series, Season and Episode locked as well, automatic series grouping on: PLAN v2.9 K43).</param>
     /// <returns>The options.</returns>
     public static LibraryOptions Create(string path, IEnumerable<string> subtitleFetcherNames, IEnumerable<string>? mediaSegmentProviders = null, bool tvShows = false)
     {
@@ -62,7 +62,7 @@ public static class LibraryOptionsFactory
             EnableTrickplayImageExtraction = false,
             ExtractTrickplayImagesDuringLibraryScan = false,
             SaveTrickplayWithMedia = false,
-            EnableAutomaticSeriesGrouping = false,
+            EnableAutomaticSeriesGrouping = tvShows, // K43: a friend's series and another friend's extra episodes of it, in one shared library, show as one series
             EnableLUFSScan = false,
             EnableEmbeddedTitles = false,
 
@@ -72,5 +72,58 @@ public static class LibraryOptionsFactory
             AutomaticallyAddToCollection = false,
             AutomaticRefreshIntervalDays = 0,
         };
+    }
+
+    /// <summary>
+    /// Puts the locked parts of a Shoal library's options back (Pilot 14 LBL3): no metadata savers, no local metadata saving, no internet metadata or image
+    /// fetchers for any type, no realtime monitor. Everything else stays as the admin set it.
+    /// </summary>
+    /// <param name="options">The options, changed in place.</param>
+    /// <returns>True when something was put back.</returns>
+    public static bool Lock(LibraryOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var changed = false;
+
+        // Warden 12 L1: null counts as locked (an empty array may not round-trip, and a save would loop).
+        if (options.MetadataSavers is { Length: > 0 })
+        {
+            options.MetadataSavers = [];
+            changed = true;
+        }
+
+        if (options.SaveLocalMetadata)
+        {
+            options.SaveLocalMetadata = false;
+            changed = true;
+        }
+
+        if (options.EnableRealtimeMonitor)
+        {
+            options.EnableRealtimeMonitor = false;
+            changed = true;
+        }
+
+#pragma warning disable CS0618 // Obsolete in 12.1; still read by older servers.
+        if (options.EnableInternetProviders)
+        {
+            options.EnableInternetProviders = false;
+            changed = true;
+        }
+#pragma warning restore CS0618
+
+        foreach (var type in options.TypeOptions ?? [])
+        {
+            if (type.MetadataFetchers is { Length: > 0 } || type.ImageFetchers is { Length: > 0 })
+            {
+                type.MetadataFetchers = [];
+                type.MetadataFetcherOrder = [];
+                type.ImageFetchers = [];
+                type.ImageFetcherOrder = [];
+                changed = true;
+            }
+        }
+
+        return changed;
     }
 }

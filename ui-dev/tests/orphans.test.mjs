@@ -1,4 +1,5 @@
-// Leftover sharing accounts (Warden 08 M7): the Overview lists them, the admin deletes one by typing its name, Shoal never does it by itself.
+// Leftover sharing accounts (Warden 08 M7): the Being watched lane says how many are left with a Review button; the list opens under it,
+// the admin deletes one by typing its name, Shoal never does it by itself.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mountPage } from './helpers.mjs';
@@ -14,7 +15,13 @@ function setValue(el, value) {
 }
 
 async function overview(extra) {
-    return mountPage(Object.assign({ scenario: 'default', params: { view: 'overview' }, settleMs: 300 }, extra || {}));
+    const p = await mountPage(Object.assign({ scenario: 'default', params: { view: 'overview' }, settleMs: 300 }, extra || {}));
+    const review = p.page.querySelector('[data-slot="orphans"] button[aria-expanded]');
+    if (review && (extra || {}).open !== false) {
+        review.click();
+    }
+
+    return p;
 }
 
 test('with no leftover accounts nothing is shown', async () => {
@@ -22,6 +29,7 @@ test('with no leftover accounts nothing is shown', async () => {
     try {
         assert.doesNotMatch(p.text(), /Leftover sharing accounts/);
         assert.equal(p.page.querySelectorAll('.shoal-orphans__row').length, 0);
+        assert.equal(p.page.querySelector('[data-slot="orphans"]').hidden, true);
     } finally {
         p.close();
     }
@@ -41,6 +49,25 @@ test('leftover accounts are listed with their state and a Delete button each; no
         assert.match(rows[1].textContent, /Disabled/);
         assert.equal(calls(p, 'DELETE', /OrphanAccounts/).length, 0);
         assert.equal(rows[0].querySelector('button').getAttribute('aria-label'), 'Delete shoal-riley-3f2a');
+    } finally {
+        p.close();
+    }
+});
+
+test('U-A1: the lane line counts the accounts that can sign in, and Review opens the list under it', async () => {
+    const p = await overview({ orphans: true, open: false });
+    try {
+        const host = p.page.querySelector('.shoal-lane--out [data-slot="orphans"]');
+        assert.ok(host, 'inside Being watched');
+        assert.match(host.textContent, /1 old sharing account can still sign in to your server./);
+        const review = host.querySelector('button[aria-expanded]');
+        const panel = p.page.querySelector('#' + review.getAttribute('aria-controls'));
+        assert.equal(review.getAttribute('aria-expanded'), 'false');
+        assert.equal(panel.hidden, true);
+        review.click();
+        assert.equal(review.getAttribute('aria-expanded'), 'true');
+        assert.equal(panel.hidden, false);
+        assert.equal(document.activeElement, panel.querySelector('button'), 'focus moves to the first Delete');
     } finally {
         p.close();
     }

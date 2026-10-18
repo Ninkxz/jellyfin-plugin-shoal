@@ -52,14 +52,15 @@ async function open(query, width, height) {
 
 test('F2: every top screen works under script-src self, style-src self unsafe-inline', { skip }, async () => {
     const screens = [
-        ['overview', 'view=overview', '.shoal-card'],
+        ['overview', 'view=overview', '.shoal-lanerow'],
         ['libraries', 'view=libraries', '.shoal-libblock'],
         ['settings', 'view=settings', '.shoal-panel'],
         ['pair watch', 'view=pair&dir=watch', '.shoal-panel'],
         ['pair share', 'view=pair&dir=share', '.shoal-panel'],
         ['server', 'view=server&id=h-hops', '.shoal-detail__header'],
         ['friend', 'view=friend&id=f-sam', '.shoal-detail__header'],
-        ['overlap', 'view=overlap&id=h-hops', '.shoal-panel']
+        ['overlap', 'view=overlap&id=h-hops', '.shoal-panel'],
+        ['layouts', 'view=layouts&job=running', '.shoal-lib']
     ];
     for (const [name, query, selector] of screens) {
         const { page, ctx, problems } = await open(`scenario=default&${query}&csp=1`, 1440);
@@ -91,78 +92,123 @@ test('A1/A2: the content column caps at 1240 and the page grows with its content
     await ctx.close();
 });
 
-for (const [width, cols] of [[1240, 3], [1080, 3], [900, 2], [640, 2], [375, 1], [320, 1]]) {
-    test(`A3: server cards use ${cols} column(s) at ${width}px`, { skip }, async () => {
+// U-A1: the two tiles stay side by side at every width; the lanes sit side by side at L (container >= 1080) and stack below.
+for (const [width, lanes] of [[1240, 2], [1080, 2], [900, 1], [640, 1], [375, 1], [320, 1]]) {
+    test(`A3 (v2): two tiles side by side and ${lanes} lane column(s) at ${width}px`, { skip }, async () => {
         // The dashboard drawer takes 240px on desktop, so the container is narrower than the viewport.
         const { page, ctx } = await open('scenario=default&view=overview', width + 32 + (width + 32 > 1000 ? 240 : 0));
         const m = await page.evaluate(() => {
-            const cards = [...document.querySelectorAll('.shoal-card')];
-            const tops = new Set(cards.map((c) => Math.round(c.getBoundingClientRect().top)));
-            return { perRow: cards.filter((c) => Math.round(c.getBoundingClientRect().top) === [...tops][0]).length, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+            const perRow = (sel) => {
+                const nodes = [...document.querySelectorAll(sel)];
+                const top = Math.round(nodes[0].getBoundingClientRect().top);
+                return nodes.filter((c) => Math.round(c.getBoundingClientRect().top) === top).length;
+            };
+            return { tiles: perRow('.shoal-act'), lanes: perRow('.shoal-lane'), hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
         });
-        assert.equal(m.perRow, cols);
+        assert.equal(m.tiles, 2, 'tiles');
+        assert.equal(m.lanes, lanes, 'lanes');
         assert.equal(m.hscroll, false, 'no horizontal page scroll');
         await ctx.close();
     });
 }
 
-test('A4/E4: phone layout has a 16px gutter, 2-up header actions and 44px targets', { skip }, async () => {
+// U-M1: the layouts screen never scrolls sideways; presets go 3, then 1 per row; the library rows reflow at S; phone targets are 44px.
+// Four presets (owner order): 4 per row at L, 2 at M, 1 from container 760 down.
+for (const [width, perRow] of [[1240, 4], [900, 2], [640, 1], [375, 1], [320, 1]]) {
+    test('layouts: ' + perRow + ' preset(s) per row and no sideways scroll at ' + width + 'px', { skip }, async () => {
+        const { page, ctx } = await open('scenario=default&view=layouts', width + 32 + (width + 32 > 1000 ? 240 : 0));
+        const m = await page.evaluate(() => {
+            const cards = [...document.querySelectorAll('.shoal-preset')];
+            const top = Math.round(cards[0].getBoundingClientRect().top);
+            const head = document.querySelector('.shoal-libs__head');
+            return { perRow: cards.filter((c) => Math.round(c.getBoundingClientRect().top) === top).length, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth, head: getComputedStyle(head).display };
+        });
+        assert.equal(m.perRow, perRow, 'presets per row');
+        assert.equal(m.hscroll, false, 'no horizontal page scroll');
+        assert.equal(m.head === 'none', perRow === 1, 'column heads only in the table layout');
+        await ctx.close();
+    });
+}
+
+test('layouts: phone targets are 44px', { skip }, async () => {
+    const { page, ctx } = await open('scenario=default&view=layouts', 375, 800);
+    const small = await page.evaluate(() => [...document.querySelectorAll('[data-shoal-view="layouts"] button:not([hidden]), [data-shoal-view="layouts"] select, [data-shoal-view="layouts"] .shoal-switch')]
+        .filter((e) => e.offsetParent !== null)
+        .map((e) => ({ cls: e.className, h: e.getBoundingClientRect().height }))
+        .filter((x) => x.h < 43.5));
+    assert.deepEqual(small, []);
+    await ctx.close();
+});
+
+test('A4/E4: phone layout has a 16px gutter, the two tiles side by side and 44px targets', { skip }, async () => {
     const { page, ctx } = await open('scenario=default&view=overview', 375, 800);
     const m = await page.evaluate(() => {
         const root = document.querySelector('.shoal-root').getBoundingClientRect();
-        const content = document.querySelector('.shoal-pagehead').getBoundingClientRect();
-        const actions = [...document.querySelectorAll('.shoal-pagehead__actions .shoal-btn')].map((b) => Math.round(b.getBoundingClientRect().top));
-        const small = [...document.querySelectorAll('.shoalPage button:not([hidden]), .shoalPage a.shoal-link, .shoalPage .shoal-localnav__link, .shoalPage .shoal-seg button')]
+        const content = document.querySelector('.shoal-actions').getBoundingClientRect();
+        const tiles = [...document.querySelectorAll('.shoal-act')].map((b) => Math.round(b.getBoundingClientRect().top));
+        const small = [...document.querySelectorAll('.shoalPage button:not([hidden]), .shoalPage a.shoal-link, .shoalPage .shoal-localnav__link, .shoalPage .shoal-seg button, .shoalPage a.shoal-row')]
             .filter((e) => e.offsetParent !== null)
             .map((e) => ({ cls: e.className, h: e.getBoundingClientRect().height, w: e.getBoundingClientRect().width }))
             .filter((x) => x.h < 43.5);
-        return { left: content.left, right: 375 - content.right, root: root.width, actionsSameRow: new Set(actions).size === 1, small };
+        return { left: content.left, right: 375 - content.right, root: root.width, tilesSameRow: new Set(tiles).size === 1, small };
     });
     assert.equal(Math.round(m.left), 16, 'left gutter');
     assert.equal(Math.round(m.right), 16, 'right gutter');
-    assert.ok(m.actionsSameRow, 'header actions side by side');
+    assert.ok(m.tilesSameRow, 'tiles side by side');
     assert.deepEqual(m.small, [], 'targets under 44px');
     await ctx.close();
 });
 
 const THEMES = ['dark', 'light', 'appletv', 'blueradiance', 'purplehaze', 'wmc'];
 for (const theme of THEMES) {
-    test(`C1/C2: ${theme} follows the theme and the primary button is contrast-fixed`, { skip }, async () => {
+    test(`C1/C2: ${theme} follows the theme, the direction colors stay fixed and the primary button is contrast-fixed`, { skip }, async () => {
         const { page, ctx } = await open(`scenario=default&view=overview&theme=${theme}`, 1440);
         const m = await page.evaluate(() => {
-            const btn = document.querySelector('.shoal-btn--primary');
-            const card = document.querySelector('.shoal-card');
-            const cs = getComputedStyle(btn);
-            return { bg: cs.backgroundColor, color: cs.color, card: getComputedStyle(card).backgroundColor, paper: getComputedStyle(document.documentElement).getPropertyValue('--jf-palette-background-paper').trim() };
+            const lane = document.querySelector('.shoal-lane');
+            const tileIn = getComputedStyle(document.querySelector('.shoal-act--in'));
+            return { lane: getComputedStyle(lane).backgroundColor, tileIn: tileIn.backgroundColor, tileText: tileIn.color, paper: getComputedStyle(document.documentElement).getPropertyValue('--jf-palette-background-paper').trim() };
         });
-        if (theme === 'purplehaze') {
-            assert.equal(m.bg, 'rgb(72, 195, 200)', 'theme primary on a non-blue theme');
-        } else {
-            assert.equal(m.bg, 'rgb(10, 124, 171)');
-            assert.equal(m.color, 'rgb(255, 255, 255)');
-        }
-
         const hex = m.paper.replace('#', '');
         const want = `rgb(${parseInt(hex.slice(0, 2), 16)}, ${parseInt(hex.slice(2, 4), 16)}, ${parseInt(hex.slice(4, 6), 16)})`;
-        assert.equal(m.card, want, 'cards use the theme surface');
+        assert.equal(m.lane, want, 'lanes use the theme surface');
+        // ui-v2: the Watching fill is Shoal's own (it carries meaning), white text at 4.68:1 on every theme.
+        assert.equal(m.tileIn, 'rgb(10, 124, 171)');
+        assert.equal(m.tileText, 'rgb(255, 255, 255)');
         await ctx.close();
+
+        const settings = await open(`scenario=default&view=settings&theme=${theme}`, 1440);
+        const b = await settings.page.evaluate(() => {
+            const cs = getComputedStyle(document.querySelector('.shoal-btn--primary'));
+            return { bg: cs.backgroundColor, color: cs.color };
+        });
+        if (theme === 'purplehaze') {
+            assert.equal(b.bg, 'rgb(72, 195, 200)', 'theme primary on a non-blue theme');
+        } else {
+            assert.equal(b.bg, 'rgb(10, 124, 171)');
+            assert.equal(b.color, 'rgb(255, 255, 255)');
+        }
+
+        await settings.ctx.close();
     });
 }
 
 test('C3/C4: a custom --shoal-fill wins, and Jellyfin focus colors do not leak in', { skip }, async () => {
-    const { page, ctx } = await open('scenario=default&view=overview', 1440);
+    const { page, ctx } = await open('scenario=default&view=settings', 1440);
     await page.addStyleTag({ content: '.shoalPage { --shoal-fill: #123456 !important; }' });
     await page.waitForTimeout(400);
     const bg = await page.evaluate(() => getComputedStyle(document.querySelector('.shoal-btn--primary')).backgroundColor);
     assert.equal(bg, 'rgb(18, 52, 86)');
-    const quiet = page.locator('.shoal-pagehead .shoal-btn:not(.shoal-btn--primary)').first();
+    await ctx.close();
+
+    const ov = await open('scenario=default&view=overview', 1440);
+    const quiet = ov.page.locator('[data-action="sync-all"]').first();
     const before = await quiet.evaluate((e) => getComputedStyle(e).backgroundColor);
     await quiet.focus();
-    await page.waitForTimeout(400);
+    await ov.page.waitForTimeout(400);
     const after = await quiet.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, color: getComputedStyle(e).color }));
     assert.equal(after.bg, before, '.raised:focus must not recolor the button');
     assert.equal(after.color, 'rgb(255, 255, 255)');
-    await ctx.close();
+    await ov.ctx.close();
 });
 
 test('B2: no web font and no network request beyond the page, script, stylesheet, art and API', { skip }, async () => {
@@ -215,4 +261,109 @@ test('Lumen M1: the Server detail hero is 160 px (120 on a phone), inside its pa
         assert.ok(await page.locator('.shoal-chart, .shoal-kpis, [data-slot="kpis"]').count() > 0, width + ': the link speed panel has its content');
         await ctx.close();
     }
+});
+
+// U-P1/U-Q1/U-Q2 (mockup server.html): two columns at L (priority + quality | card + Link speed), one column below, no sideways scroll, 44px targets, no CSP problem.
+const V29 = 'scenario=default&view=server&id=h-fern&po=1&quality=rec&prio=1';
+test('server v2.9: CSP clean with the priority, quality and suggestion blocks on', { skip }, async () => {
+    const { page, ctx, problems } = await open(V29 + '&csp=1', 1440);
+    assert.deepEqual(await page.evaluate(() => window.__csp), []);
+    assert.deepEqual(problems, []);
+    assert.equal(await page.locator('.shoal-rec:not([hidden])').count(), 1);
+    await ctx.close();
+});
+
+for (const [width, cols] of [[1240, 2], [1080, 2], [900, 1], [640, 1], [375, 1], [320, 1]]) {
+    test('server v2.9: ' + cols + ' column(s), no sideways scroll at ' + width + 'px', { skip }, async () => {
+        const { page, ctx } = await open(V29, width + 32 + (width + 32 > 1000 ? 240 : 0));
+        const m = await page.evaluate(() => {
+            const colsEls = [...document.querySelectorAll('.shoal-detail-grid > .shoal-detail-grid__col')];
+            const tops = new Set(colsEls.map((c) => Math.round(c.getBoundingClientRect().top)));
+            const seg = document.querySelector('.shoal-quality .shoal-seg');
+            const panel = document.querySelector('.shoal-quality');
+            return {
+                cols: tops.size === 1 ? colsEls.length : 1,
+                hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+                segInside: seg.getBoundingClientRect().right <= panel.getBoundingClientRect().right + 0.5,
+                order: [...document.querySelectorAll('.shoal-prio-panel, .shoal-quality, .shoal-rec, .shoal-detail-grid .shoal-speed')].map((n) => n.className.split(' ').pop())
+            };
+        });
+        assert.equal(m.cols, cols, 'columns');
+        assert.equal(m.hscroll, false, 'no horizontal page scroll');
+        assert.equal(m.segInside, true, 'the limit control fits its panel');
+        assert.deepEqual(m.order, ['shoal-prio-panel', 'shoal-quality', 'shoal-rec', 'shoal-speed'], 'reading order');
+        await ctx.close();
+    });
+}
+
+test('server v2.9: phone targets are 44px and the choice controls fill the width', { skip }, async () => {
+    const { page, ctx } = await open(V29, 375, 800);
+    const m = await page.evaluate(() => {
+        const sel = '.shoal-prio-panel button, .shoal-quality button, .shoal-quality input, .shoal-rec button';
+        const small = [...document.querySelectorAll(sel)].filter((e) => e.offsetParent !== null).map((e) => ({ t: e.textContent.trim(), h: e.getBoundingClientRect().height })).filter((x) => x.h < 43.5);
+        const seg = document.querySelector('.shoal-quality .shoal-seg').getBoundingClientRect();
+        const body = document.querySelector('.shoal-quality').getBoundingClientRect();
+        return { small, fill: seg.width / (body.width - 2 * 16) };
+    });
+    assert.deepEqual(m.small, []);
+    assert.ok(m.fill > 0.97, 'the limit control spans the panel');
+    await ctx.close();
+});
+
+// Pilot 15: the Custom review flow in a real browser: CSP clean, the preview opens, nothing scrolls sideways at 375, targets are 44px.
+for (const width of [1440, 375]) {
+    test('layouts Custom: Review changes opens the Custom review at ' + width + 'px', { skip }, async () => {
+        const { page, ctx, problems } = await open('scenario=default&view=layouts&lpreset=AllMixed&csp=1', width, 900);
+        await page.click('button[aria-label="Review changes for Custom"]');
+        await page.waitForSelector('.shoal-preview');
+        const m = await page.evaluate(() => ({
+            title: document.querySelector('.shoal-preview h3').textContent,
+            hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            small: [...document.querySelectorAll('.shoal-preset button, .shoal-preview button')].filter((b) => b.offsetParent !== null).map((b) => b.getBoundingClientRect().height).filter((h) => h < 43.5).length,
+            csp: window.__csp
+        }));
+        assert.equal(m.title, 'Review changes: Custom');
+        assert.equal(m.hscroll, false);
+        assert.deepEqual(m.csp, []);
+        assert.deepEqual(problems, []);
+        if (width === 375) {
+            assert.equal(m.small, 0, '44px targets on a phone');
+        }
+
+        await ctx.close();
+    });
+}
+
+// Pilot 15 R6: the NFO saver warning fits its row on a phone and in Settings, with no CSP problem.
+test('NFO saver warning: no sideways scroll at 375 on Library layouts and Settings, CSP clean', { skip }, async () => {
+    for (const view of ['layouts', 'settings']) {
+        const { page, ctx, problems } = await open('scenario=default&view=' + view + '&nfo=Movies&csp=1', 375, 800);
+        const m = await page.evaluate(() => ({
+            n: document.querySelectorAll('.shoal-warnbox--nfo').length,
+            hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            csp: window.__csp
+        }));
+        assert.equal(m.n, 1, view);
+        assert.equal(m.hscroll, false, view);
+        assert.deepEqual(m.csp, [], view);
+        assert.deepEqual(problems, [], view);
+        await ctx.close();
+    }
+});
+
+// Owner decision: the Combine into my libraries preview with a target select works on a phone: no sideways scroll, 44px targets, CSP clean.
+test('layouts Combine: preview with a target select at 375px', { skip }, async () => {
+    const { page, ctx, problems } = await open('scenario=default&view=layouts&combine=many&csp=1', 375, 900);
+    await page.click('button[aria-label="Preview Combine into my libraries"]');
+    await page.waitForSelector('.shoal-preview select');
+    const m = await page.evaluate(() => ({
+        hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        small: [...document.querySelectorAll('.shoal-preview button, .shoal-preview select')].filter((b) => b.offsetParent !== null).map((b) => b.getBoundingClientRect().height).filter((h) => h < 43.5).length,
+        csp: window.__csp
+    }));
+    assert.equal(m.hscroll, false);
+    assert.equal(m.small, 0);
+    assert.deepEqual(m.csp, []);
+    assert.deepEqual(problems, []);
+    await ctx.close();
 });

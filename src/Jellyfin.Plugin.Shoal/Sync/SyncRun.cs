@@ -40,6 +40,8 @@ internal sealed class SyncRun
     private readonly HashSet<string> _changedFolders = new(StringComparer.Ordinal);
     private readonly HashSet<string> _alerts = [];
     private readonly NameBudget _names;
+    private readonly Dictionary<string, CatalogDocument> _others = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<string>> _selected = new(StringComparer.Ordinal);
     private bool _firstStubs;
     private bool _promoted;
     private HashSet<string> _libraryWithoutStubs = new(StringComparer.Ordinal);
@@ -239,7 +241,7 @@ internal sealed class SyncRun
                 return SyncReport.Failed("invalidPath");
             }
 
-            var library = new LibraryRun(mapping, folder);
+            var library = new LibraryRun(mapping, folder, LibraryFolders.NfoTags(_state, _peer.PeerKey, mapping));
             var known = _doc.Libraries.FirstOrDefault(l => l.MappingKey == mapping.MappingKey);
             var id = ResolveLibraryId(known, mapping, views);
             if (id is null)
@@ -289,7 +291,7 @@ internal sealed class SyncRun
     }
 
     private string? VisibilityPath(LibraryMapping mapping) =>
-        Visibility.VisibilityService.MappingPath(_state.StubRoot, _peer.PeerKey, mapping.Subfolder);
+        LibraryFolders.FolderOf(_state, _peer.PeerKey, mapping);
 
     private static Guid? ResolveLibraryId(CatalogLibrary? known, LibraryMapping mapping, IReadOnlyList<PeerView> views)
     {
@@ -315,6 +317,7 @@ internal sealed class SyncRun
         var dupUpdates = new List<(CatalogEntry Entry, DedupVerdict Verdict)>();
         var emptyHeld = new List<CatalogEntry>();
         var reevaluate = _settings.AlternateVersions && !_doc.AlternateVersionsApplied; // the switch was turned on: every title is looked at once
+        var stubCheck = new StubCheck(_doc.Entries.Count, _now.Ticks / TimeSpan.TicksPerMinute); // Warden 12 L6: a sampled, time-boxed share of the stubs
 
         foreach (var library in libraries.Where(static l => l.Listing is not null))
         {
@@ -343,7 +346,8 @@ internal sealed class SyncRun
                 var verdict = dedup.Judge(IdsOf(entry), entry.Title, entry.Year);
                 if (IsActiveWithStub(entry))
                 {
-                    if (verdict.State == EntryState.Active)
+                    // K42: the copy of a title group stays with its owner whatever another server's rank; only Home's own copy takes it.
+                    if (verdict.State == EntryState.Active || (verdict.State == EntryState.DuplicatePeer && OwnsGroupCopy(entry)))
                     {
                         dedup.Claim(IdsOf(entry), entry.Title, entry.Year, entry.StubKey);
                         if (entry.State == EntryState.HeldRemoval)
@@ -351,7 +355,8 @@ internal sealed class SyncRun
                             entry.State = EntryState.Active; // the peer lists it again
                         }
 
-                        if (reevaluate || !string.Equals(line.Etag, entry.PeerEtag, StringComparison.Ordinal) || TrickplayDue(entry))
+                        var extrasBack = entry.ExtrasHidden && _settings.AlternateVersions && !HidesExtras(entry);
+                        if (reevaluate || extrasBack || !string.Equals(line.Etag, entry.PeerEtag, StringComparison.Ordinal) || TrickplayDue(entry) || entry.LabelVersion < FriendLabel.Version || stubCheck.Sample(_peer.PeerKey, library.Folder, entry, library.Tags) != StubDamage.None)
                         {
                             changed.Add((entry, line));
                         }
@@ -500,6 +505,12 @@ internal sealed class SyncRun
                 foreach (var movie in movies)
                 {
                     details[movie.PeerItemId] = FilterNames(movie);
+                    if (_d.Groups is not null)
+                    {
+                        // K42: every version the title has, hidden or not, for the group member (the play picks among them later).
+                        var examined = movie.Examined.Count > 0 ? movie.Examined : movie.Sources;
+                        _selected[movie.PeerItemId.ToString("N")] = [.. SourceSelector.Select(examined, examined.Count > 0 ? examined[0].Id : null).Select(static s => s.Id.ToString("N"))];
+                    }
                 }
             }
             catch (PeerCallException ex)
@@ -531,21 +542,100 @@ internal sealed class SyncRun
     {
         var local = _d.Local.List(_state.StubRoot);
         var index = new DedupIndex(local);
-        foreach (var other in _state.Home.Peers.Where(p => p.Enabled && p.PeerKey != _peer.PeerKey && _d.IsUp(p.PeerKey) && CatalogSyncService.Outranks(p, _peer)))
+        var groups = _d.Groups;
+        foreach (var other in _state.Home.Peers.Where(p => p.PeerKey != _peer.PeerKey))
         {
+            var ranked = other.Enabled && _d.IsUp(other.PeerKey) && CatalogSyncService.Outranks(other, _peer);
+            if (!ranked && groups is null)
+            {
+                continue;
+            }
+
             var load = _d.Store.Load(other.PeerKey);
             if (load.Unreadable)
             {
                 continue;
             }
 
+            if (groups is not null)
+            {
+                _others[other.PeerKey] = load.Document; // the owners of group copies, for the group update at the end
+            }
+
             foreach (var entry in load.Document.Entries.Where(static e => e.Kind == EntryKind.Movie && IsActiveWithStub(e)))
             {
-                index.Claim(IdsOf(entry), entry.Title, entry.Year, entry.StubKey);
+                // The v1 rank rule; or (K42) the copy of a title group, which its owner keeps whatever its rank or status until it leaves: a play falls over to
+                // another member when the owner is down, so nothing on disk has to change.
+                if (ranked || (groups?.ByCopy(entry.StubKey) is { } group && string.Equals(group.MetaOwner, other.PeerKey, StringComparison.Ordinal)))
+                {
+                    index.Claim(IdsOf(entry), entry.Title, entry.Year, entry.StubKey);
+                }
             }
         }
 
         return index;
+    }
+
+    private bool OwnsGroupCopy(CatalogEntry entry) => _d.Groups?.ByCopy(entry.StubKey) is { } group && string.Equals(group.MetaOwner, _peer.PeerKey, StringComparison.Ordinal);
+
+    // K42: with two or more servers in the group, the owner's own extra versions are hidden sources (the title loses its version picker).
+    private bool HidesExtras(CatalogEntry entry) => _d.Groups?.ByCopy(entry.StubKey) is { } group && string.Equals(group.MetaOwner, _peer.PeerKey, StringComparison.Ordinal) && GroupPlanner.HidesExtras(group);
+
+    // The library a mapping of a server feeds: the legacy library of that mapping (K41), or the key it would get.
+    private string LibKeyOf(PeerState peer, string mappingKey)
+    {
+        var mapping = peer.Libraries.FirstOrDefault(m => string.Equals(m.MappingKey, mappingKey, StringComparison.Ordinal));
+        if (mapping is null)
+        {
+            return string.Empty;
+        }
+
+        return LibraryFolders.LibraryOf(_state, peer.PeerKey, mapping)?.LibKey ?? StateUpgrade.LegacyLibKey(peer.PeerKey, mappingKey);
+    }
+
+    private void UpdateGroups()
+    {
+        if (_d.Groups is not { } groups)
+        {
+            return;
+        }
+
+        Dictionary<string, OwnedCopy>? owners = null;
+        OwnedCopy? OwnerOf(string stubKey)
+        {
+            if (owners is null)
+            {
+                owners = new Dictionary<string, OwnedCopy>(StringComparer.Ordinal);
+                foreach (var (peerKey, document) in _others)
+                {
+                    if (_state.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey) is not { } peer)
+                    {
+                        continue;
+                    }
+
+                    foreach (var entry in document.Entries.Where(static e => e.Kind == EntryKind.Movie && IsActiveWithStub(e) && e.StubRelPath is not null))
+                    {
+                        owners.TryAdd(entry.StubKey, new OwnedCopy(peerKey, entry, LibKeyOf(peer, entry.MappingKey)));
+                    }
+                }
+            }
+
+            return owners.GetValueOrDefault(stubKey);
+        }
+
+        var known = _state.Home.Peers.Select(static p => p.PeerKey).ToHashSet(StringComparer.Ordinal);
+        var input = new GroupPeerInput(_peer.PeerKey, [.. _doc.Entries.Where(static e => e.Kind == EntryKind.Movie)], m => LibKeyOf(_peer, m), _selected);
+        try
+        {
+            if (groups.Update(document => GroupPlanner.ApplyPeer(document, input, OwnerOf, known, NewStubKey)))
+            {
+                _d.Logger.LogDebug("The Shoal title groups changed after the sync of peer {Peer}", Redact.Id(_peer.PeerKey));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            _d.Logger.LogWarning("The Shoal title groups could not be updated after a sync ({Error})", ex.GetType().Name);
+        }
     }
 
     private bool TrackAndMaybeRelease(List<CatalogEntry> removalSet)
@@ -599,7 +689,7 @@ internal sealed class SyncRun
         CancellationToken ct)
     {
         var libraryOf = libraries.ToDictionary(static l => l.Mapping.MappingKey, StringComparer.Ordinal);
-        StubTarget TargetOf(LibraryRun library) => new(_state.StubRoot, library.Folder, _endpoint);
+        StubTarget TargetOf(LibraryRun library) => new(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping) };
 
         // A library with no stub on disk yet (new, re-added, or all its titles held back by a better-ranked server) shows nothing until core is told: its first stubs ask for a scan.
         _libraryWithoutStubs = libraries.Select(static l => l.Mapping.MappingKey).Where(key => !_doc.Entries.Any(e => e.MappingKey == key && e.StubRelPath is not null)).ToHashSet(StringComparer.Ordinal);
@@ -617,6 +707,17 @@ internal sealed class SyncRun
                 if (libraryOf.TryGetValue(entry.MappingKey, out var extrasLibrary) && !gone.Contains(entry))
                 {
                     RemoveExtras(extrasLibrary, entry);
+                }
+            }
+        }
+        else
+        {
+            // K42: a group copy with two or more servers keeps only its primary stub; the extras are hidden sources, and come back when the group is one server again.
+            foreach (var entry in _doc.Entries.Where(e => e.Kind == EntryKind.Movie && IsActiveWithStub(e) && e.StubRelPath is not null && HidesExtras(e)).ToList())
+            {
+                if (libraryOf.TryGetValue(entry.MappingKey, out var hiddenLibrary) && !gone.Contains(entry))
+                {
+                    HideExtras(hiddenLibrary, entry);
                 }
             }
         }
@@ -699,12 +800,20 @@ internal sealed class SyncRun
             var stubOk = true;
             if (entry.StubRelPath is not null && IsActiveWithStub(entry))
             {
-                var fetchPoster = movie.PrimaryImageTag is not null && !string.Equals(entry.ImageTags.GetValueOrDefault("Primary"), movie.PrimaryImageTag, StringComparison.Ordinal);
-                var fetchBackdrop = movie.BackdropImageTag is not null && !string.Equals(entry.ImageTags.GetValueOrDefault("Backdrop"), movie.BackdropImageTag, StringComparison.Ordinal);
+                // Pilot 14 LBL3: art someone deleted (an NFO saver with "Replace all metadata") is fetched again.
+                var damage = StubCheck.Full(_peer.PeerKey, library.Folder, entry, library.Tags);
+                var fetchPoster = movie.PrimaryImageTag is not null && (damage.HasFlag(StubDamage.PosterMissing) || !string.Equals(entry.ImageTags.GetValueOrDefault("Primary"), movie.PrimaryImageTag, StringComparison.Ordinal));
+                var fetchBackdrop = movie.BackdropImageTag is not null && (damage.HasFlag(StubDamage.BackdropMissing) || !string.Equals(entry.ImageTags.GetValueOrDefault("Backdrop"), movie.BackdropImageTag, StringComparison.Ordinal));
                 var result = await _d.Writer.UpdateAsync(TargetOf(library), entry.StubRelPath, movie, fetchPoster, fetchBackdrop, _settings.ArtQuality, _quota, ct).ConfigureAwait(false);
                 stubOk = result.Outcome == StubWriteOutcome.Written;
                 if (stubOk)
                 {
+                    if (StubCheck.NoteHealed(_peer.PeerKey, entry, damage))
+                    {
+                        // Warden 13 L6: said once, not silent. Usually a metadata saver or internet provider of the library rewriting the title.
+                        _d.Logger.LogWarning("Shoal healed a friend title twice ({Damage}); if it is damaged again it is left alone. Check that library's metadata savers and internet metadata", damage);
+                    }
+
                     if (result.PosterStored && movie.PrimaryImageTag is not null)
                     {
                         entry.ImageTags["Primary"] = movie.PrimaryImageTag;
@@ -720,6 +829,11 @@ internal sealed class SyncRun
                     {
                         _report.Updated++;
                         MarkFolderChanged(library, entry.StubRelPath);
+                    }
+
+                    if (!result.QuotaReached)
+                    {
+                        entry.LabelVersion = FriendLabel.Version; // the NFO on disk carries the current label (a refused NFO is tried again next sync)
                     }
 
                     if (result.QuotaReached || _quota.Exhausted)
@@ -740,7 +854,7 @@ internal sealed class SyncRun
                 entry.LastSeenUtc = _now;
                 if (_settings.AlternateVersions)
                 {
-                    ReconcileVersions(library, entry, movie);
+                    ReconcileOrHide(library, entry, movie);
                 }
             }
         }
@@ -811,6 +925,7 @@ internal sealed class SyncRun
 
             FillFromDetails(entry, movie, _settings.AlternateVersions);
             entry.PeerEtag = add.Listed.Etag;
+            entry.LabelVersion = FriendLabel.Version;
             if (add.Promoted is null)
             {
                 _doc.Entries.Add(entry);
@@ -818,7 +933,7 @@ internal sealed class SyncRun
 
             if (_settings.AlternateVersions)
             {
-                ReconcileVersions(add.Library, entry, movie);
+                ReconcileOrHide(add.Library, entry, movie);
             }
 
             _report.Added++;
@@ -886,7 +1001,7 @@ internal sealed class SyncRun
             return;
         }
 
-        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint);
+        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping) };
         Guid? primary = MetadataSanitizer.TryParseId(entry.PeerMediaSourceId, out var id) ? id : null;
         var wanted = SourceSelector.Select(movie.Examined, primary).Skip(1).ToList();
         var wantedIds = wanted.Select(static s => s.Id.ToString("N")).ToHashSet(StringComparer.Ordinal);
@@ -944,9 +1059,31 @@ internal sealed class SyncRun
         }
     }
 
+    private void ReconcileOrHide(LibraryRun library, CatalogEntry entry, SanitizedMovie movie)
+    {
+        if (HidesExtras(entry))
+        {
+            HideExtras(library, entry);
+            return;
+        }
+
+        ReconcileVersions(library, entry, movie);
+        entry.ExtrasHidden = false;
+    }
+
+    private void HideExtras(LibraryRun library, CatalogEntry entry)
+    {
+        if (entry.Sources.Count > 1)
+        {
+            RemoveExtras(library, entry);
+        }
+
+        entry.ExtrasHidden = true;
+    }
+
     private void RemoveExtras(LibraryRun library, CatalogEntry entry)
     {
-        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint);
+        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping) };
         foreach (var extra in entry.Sources.Skip(1).ToList())
         {
             if (extra.StubRelPath is null || _d.Writer.RemoveFile(target, extra.StubRelPath, _quota))
@@ -1044,6 +1181,7 @@ internal sealed class SyncRun
         }
 
         Save();
+        UpdateGroups();
         Refresh();
         return report;
     }
@@ -1090,15 +1228,19 @@ internal sealed class SyncRun
     /// <summary>One mapped library during a run.</summary>
     private sealed class LibraryRun
     {
-        public LibraryRun(LibraryMapping mapping, string folder)
+        public LibraryRun(LibraryMapping mapping, string folder, IReadOnlyList<string> tags)
         {
             Mapping = mapping;
             Folder = folder;
+            Tags = tags;
         }
 
         public LibraryMapping Mapping { get; }
 
         public string Folder { get; }
+
+        /// <summary>Gets the extra NFO tags (the library tag of a shared library folder, K44); empty for a legacy folder.</summary>
+        public IReadOnlyList<string> Tags { get; }
 
         public Guid PeerLibraryId { get; set; }
 

@@ -36,7 +36,7 @@ public sealed class TvScaleTests
         {
             var seriesId = Id(1, s);
             series.Add(new SanitizedSeries { PeerItemId = seriesId, Title = "Show " + s.ToString(CultureInfo.InvariantCulture), Year = 2000 + s, Etag = "e0", ContentHash = "h" });
-            entries.Add(new CatalogEntry { Kind = EntryKind.Series, StubKey = "series" + s.ToString("0000000000", CultureInfo.InvariantCulture), PeerItemId = seriesId.ToString("N"), State = EntryState.Active, PeerEtag = "e0", ContentHash = "h", FolderRel = "Show " + s.ToString(CultureInfo.InvariantCulture) });
+            entries.Add(new CatalogEntry { Kind = EntryKind.Series, StubKey = "series" + s.ToString("0000000000", CultureInfo.InvariantCulture), PeerItemId = seriesId.ToString("N"), State = EntryState.Active, PeerEtag = "e0", ContentHash = "h", LabelVersion = FriendLabel.Version, FolderRel = "Show " + s.ToString(CultureInfo.InvariantCulture) });
             for (var season = 1; season <= seasons; season++)
             {
                 for (var number = 1; number <= perSeason; number++)
