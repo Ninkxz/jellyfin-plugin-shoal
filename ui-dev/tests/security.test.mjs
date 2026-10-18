@@ -49,12 +49,17 @@ const SCREENS = [
     { name: 'settings', params: { view: 'settings' } },
     { name: 'server', params: { view: 'server', id: 'h-hops' } },
     { name: 'friend', params: { view: 'friend', id: 'f-sam' } },
-    { name: 'overlap', params: { view: 'overlap', id: 'h-hops' } }
+    { name: 'overlap', params: { view: 'overlap', id: 'h-hops' } },
+    { name: 'layouts', params: { view: 'layouts' } },
+    // v2.9: play order, backup line, priority, quality limit and the speed-test card with every route on
+    { name: 'overview v2.9', params: { view: 'overview' }, extra: { playOrder: true } },
+    { name: 'settings v2.9 inbox', params: { view: 'settings' }, extra: { inbox: 'missing' } },
+    { name: 'server v2.9', params: { view: 'server', id: 'h-fern' }, extra: { playOrder: true, quality: 'rec', priorityRoute: true, features: { priorityTier: true } } }
 ];
 
 for (const s of SCREENS) {
     test('T-SEC-11 ' + s.name + ': hostile names render as text only', async () => {
-        const p = await mountPage({ scenario: 'hostile', params: s.params, settleMs: 250 });
+        const p = await mountPage(Object.assign({ scenario: 'hostile', params: s.params, settleMs: 250 }, s.extra || {}));
         try {
             assertSafe(p, s.name);
             assert.ok(p.text().includes(XSS), s.name + ': the payload should be visible as text');
@@ -92,7 +97,7 @@ test('image sources are always this server (ui-spec 10, F4)', async () => {
 test('the admin API responses carry no token, invite or GUID (F5)', async () => {
     const { createMock } = await import('../mock/mock-server.js');
     const mock = createMock({ scenario: 'problems' });
-    const paths = ['Status', 'Libraries', 'Settings', 'Hardening', 'State', 'Shares', 'Peers/h-hops', 'Peers/h-hops/Overlap', 'Peers/h-hops/Speed?range=24h', 'Shares/f-sam', 'Shares/f-sam/Approval'];
+    const paths = ['Status', 'Libraries', 'Settings', 'Hardening', 'State', 'Shares', 'Peers/h-hops', 'Peers/h-hops/Overlap', 'Peers/h-hops/Speed?range=24h', 'Shares/f-sam', 'Shares/f-sam/Approval', 'Layouts/Libraries', 'Layouts/Job'];
     for (const path of paths) {
         const res = await mock.handle('GET', path);
         const text = JSON.stringify(res.body);

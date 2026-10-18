@@ -37,6 +37,9 @@ internal static class AdminJson
 /// </summary>
 internal static class AdminReply
 {
+    /// <summary>The largest admin request body read (Warden 10 L4).</summary>
+    public const int MaxBodyBytes = 64 * 1024;
+
     /// <summary>A JSON answer.</summary>
     /// <param name="status">The status code.</param>
     /// <param name="body">The body.</param>
@@ -66,9 +69,29 @@ internal static class AdminReply
     public static async Task<T?> ReadAsync<T>(HttpRequest request, CancellationToken cancellationToken)
         where T : class
     {
+        ArgumentNullException.ThrowIfNull(request);
         try
         {
-            return await request.ReadFromJsonAsync<T>(AdminJson.Options, cancellationToken).ConfigureAwait(false);
+            // Warden 10 L4: an admin body is at most 64 KB; a bigger one (declared or streamed) is refused like a body that is not JSON.
+            if (request.ContentLength > MaxBodyBytes || !request.HasJsonContentType())
+            {
+                return null;
+            }
+
+            using var buffer = new System.IO.MemoryStream();
+            var chunk = new byte[8192];
+            int read;
+            while ((read = await request.Body.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (buffer.Length + read > MaxBodyBytes)
+                {
+                    return null;
+                }
+
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+
+            return buffer.Length == 0 ? null : JsonSerializer.Deserialize<T>(buffer.GetBuffer().AsSpan(0, (int)buffer.Length), AdminJson.Options);
         }
         catch (JsonException)
         {

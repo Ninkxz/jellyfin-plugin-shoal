@@ -28,6 +28,9 @@ public enum BuildFailure
 
     /// <summary>The Peer reports a source that neither plays directly nor transcodes: relayed as <c>NoCompatibleStream</c>.</summary>
     NoStream,
+
+    /// <summary>The source is over the connection's quality limit and the Peer offers no conversion (PLAN v2.9 K51): refused with <see cref="QualityCap.RefusalText"/>.</summary>
+    OverLimit,
 }
 
 /// <summary>
@@ -61,8 +64,9 @@ public static class PlaybackInfoBuilder
     /// <param name="client">The client's <c>MaxStreamingBitrate</c>, or null.</param>
     /// <param name="user">The caller (its remote limit applies when it is not on the local network).</param>
     /// <param name="limits">The server-wide limits.</param>
+    /// <param name="qualityLimitBitrate">The connection's quality limit bitrate in bits per second (PLAN v2.9 K51), or 0 for none; it applies to every caller.</param>
     /// <returns>The limit, or null when nothing limits.</returns>
-    public static int? ComputeMaxStreamingBitrate(long? client, Caller user, BitrateLimits limits)
+    public static int? ComputeMaxStreamingBitrate(long? client, Caller user, BitrateLimits limits, int qualityLimitBitrate = 0)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(limits);
@@ -88,6 +92,11 @@ public static class PlaybackInfoBuilder
         if (limits.LinkBudget is > 0)
         {
             candidates.Add(limits.LinkBudget.Value);
+        }
+
+        if (qualityLimitBitrate > 0)
+        {
+            candidates.Add(qualityLimitBitrate);
         }
 
         return candidates.Count == 0 ? null : (int)Math.Min(candidates.Min(), int.MaxValue);
@@ -218,10 +227,28 @@ public static class PlaybackInfoBuilder
             transcoding = true;
         }
 
+        // K51: a source over the quality limit never plays as it is, whatever the Peer allowed; the conversion is held to the limit.
+        var size = QualityCap.SizeOf(peerSource);
         var directPlay = peerSource.SupportsDirectPlay;
+        var heldByLimit = false;
+        if (context.Cap is { } cap)
+        {
+            if (directPlay && !cap.Allows(size.Width, size.Height, size.Bitrate))
+            {
+                directPlay = false;
+                heldByLimit = true;
+            }
+
+            if (transcoding)
+            {
+                masterQuery = cap.Hold(masterQuery);
+                heldByLimit |= !cap.Allows(size.Width, size.Height, size.Bitrate);
+            }
+        }
+
         if (!directPlay && !transcoding)
         {
-            failure = BuildFailure.NoStream;
+            failure = heldByLimit ? BuildFailure.OverLimit : BuildFailure.NoStream;
             return null;
         }
 
@@ -249,6 +276,13 @@ public static class PlaybackInfoBuilder
             SubtitleStreamIndex = Range(peerSource.DefaultSubtitleStreamIndex, -1, 127),
             RuntimeTicks = context.Entry.RuntimeTicks,
             Method = directPlay ? PlayMethod.DirectPlay : PlayMethod.Transcode,
+            Cap = context.Cap,
+            MemberAccess = context.MemberAccess,
+            HeldByLimit = heldByLimit,
+            SourceWidth = size.Width,
+            SourceHeight = size.Height,
+            SourceBitrate = size.Bitrate,
+            Title = context.Entry.Title,
             CreatedUtc = context.Now,
             LastAccessUtc = context.Now,
             LastAuthorizedUtc = context.Now,
@@ -481,6 +515,8 @@ public static class PlaybackInfoBuilder
 /// <param name="Attachments">Rebuilds the attachments (DESIGN v2.6.6); none means no attachments, as in v1.</param>
 /// <param name="VersionItemId">The local item id of the version that is played (DESIGN v2.6.4), or null for a title with one version.</param>
 /// <param name="SetId">The version set id, or empty.</param>
+/// <param name="Cap">The connection's quality limit (PLAN v2.9 K51), or null for none.</param>
+/// <param name="MemberAccess">The library rule of the grouped title's member played (Warden 10 L2), or null.</param>
 public sealed record RebuildContext(
     string GrantId,
     string LocalPlaySessionId,
@@ -495,4 +531,6 @@ public sealed record RebuildContext(
     DateTimeOffset Now,
     IAttachmentRebuilder? Attachments = null,
     Guid? VersionItemId = null,
-    string SetId = "");
+    string SetId = "",
+    QualityCap? Cap = null,
+    Func<CallerUser, bool>? MemberAccess = null);

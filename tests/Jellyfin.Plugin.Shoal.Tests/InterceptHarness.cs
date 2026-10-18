@@ -198,13 +198,54 @@ public sealed class WorldItemPaths : IItemPaths
             return System.IO.Path.Combine(_state.Current.StubRoot, item.PeerKey, tvSubfolder, tvPath.Replace('/', System.IO.Path.DirectorySeparatorChar));
         }
 
+        var folder = FolderOf(itemId);
+        if (item.LibKey.Length > 0)
+        {
+            // K44: a title folder in a shared library folder <StubRoot>/libs/<libKey>; its owner comes from WorldOwners.
+            return System.IO.Path.Combine(_state.Current.StubRoot, ShoalLibrary.LibsFolder, item.LibKey, folder, folder + ".strm");
+        }
+
         var subfolder = _state.Current.Home.Peers.SelectMany(static p => p.Libraries).FirstOrDefault(l => l.MappingKey == item.MappingKey)?.Subfolder ?? "unmapped";
-        var folder = "Title " + itemId.ToString("N")[^4..];
         return System.IO.Path.Combine(_state.Current.StubRoot, item.PeerKey, subfolder, folder, folder + ".strm");
     }
 
+    /// <summary>The title folder the world gives an item.</summary>
+    /// <param name="itemId">The item.</param>
+    /// <returns>The folder name.</returns>
+    public static string FolderOf(Guid itemId) => "Title " + itemId.ToString("N")[^4..];
+
     public IReadOnlyList<ItemPathEventArgs> ItemsBelow(string stubRoot) =>
         [.. _world.Federated.Keys.Select(id => new ItemPathEventArgs(id, PathOf(id)))];
+}
+
+/// <summary>
+/// The owners of the world's title folders in shared library folders, with the same rule as the catalog lookup: the item's connection must feed the library for
+/// the mapping's type; an item with no connection has no owner.
+/// </summary>
+public sealed class WorldOwners : ILibraryTreeOwners
+{
+    private readonly MatrixWorld _world;
+
+    public WorldOwners(MatrixWorld world) => _world = world;
+
+    public TreeOwner? OwnerOf(ShoalState state, ShoalLibrary library, string topFolder)
+    {
+        foreach (var (id, item) in _world.Federated)
+        {
+            if (item.PeerKey.Length == 0 || item.LibKey != library.LibKey || WorldItemPaths.FolderOf(id) != topFolder)
+            {
+                continue;
+            }
+
+            var mapping = state.Home.Peers.FirstOrDefault(p => p.PeerKey == item.PeerKey)?.Libraries.FirstOrDefault(m => m.MappingKey == item.MappingKey);
+            if (mapping is not null && LibraryFolders.FedBy(state, item.PeerKey, mapping.CollectionType)?.LibKey == library.LibKey)
+            {
+                return new TreeOwner(item.PeerKey, item.MappingKey, null, item.IsCopy);
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>
@@ -254,7 +295,7 @@ internal sealed class FilterParts
         builder.Logging.AddProvider(new CapturingLoggerProvider(log));
         builder.Logging.SetMinimumLevel(LogLevel.Trace);
         var counters = new InterceptCounters();
-        var index = new ShoalIndex(new WorldItemPaths(world, state), state, log);
+        var index = new ShoalIndex(new WorldItemPaths(world, state), state, log, new WorldOwners(world));
         var endpoint = new PeerEndpoint(world.PeerKey, "Hops", new Uri(peer.BaseUrl), "shoal-a1b2c3d4e5f6-4b0c1d2e", FakeJellyfinPeer.DefaultToken)
             .Configured(PeerNetwork.Tailnet, null, false, peer.ServerId);
         var handlers = new RecordingHandlers(client, endpoint);

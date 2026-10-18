@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -79,7 +80,12 @@ public static class StubSentinel
 /// <param name="StubRoot">The validated StubRoot.</param>
 /// <param name="LibraryFolder">The library's folder below it.</param>
 /// <param name="Peer">The peer (for the images and the NFO tag).</param>
-public sealed record StubTarget(string StubRoot, string LibraryFolder, PeerEndpoint Peer);
+/// <param name="ExtraTags">More NFO tags: the library tag of a shared library folder (K44), or null.</param>
+public sealed record StubTarget(string StubRoot, string LibraryFolder, PeerEndpoint Peer, IReadOnlyList<string>? ExtraTags = null)
+{
+    /// <summary>Gets a value indicating whether the NFOs leave out genres and studios (Warden 11 L3: a library not visible to everyone).</summary>
+    public bool OmitFacets { get; init; }
+}
 
 /// <summary>
 /// Writes, updates and removes the files of a stub (DESIGN 5.2 phase D). A stub is a folder of <c>.nfo</c>, images and a <c>.strm</c>; the
@@ -161,7 +167,7 @@ public sealed class StubWriter
                 return StubWriteResult.Exists; // the name was free in the catalog, but something is on disk: the caller picks another
             }
 
-            var nfo = NfoWriter.Write(movie, target.Peer.DisplayName);
+            var nfo = NfoWriter.Write(target.OmitFacets ? movie with { Genres = [], Studios = [] } : movie, target.Peer.DisplayName, target.ExtraTags);
             var strm = Encoding.UTF8.GetBytes(StubSentinel.Content(stubKey));
             if (!quota.TryReserve(nfo.Length + strm.Length))
             {
@@ -243,9 +249,18 @@ public sealed class StubWriter
 
             var name = stubRelPath.Split('/')[0];
             var nfoPath = Path.Combine(folder, name + ".nfo");
-            var nfo = NfoWriter.Write(movie, target.Peer.DisplayName);
+            var nfo = NfoWriter.Write(target.OmitFacets ? movie with { Genres = [], Studios = [] } : movie, target.Peer.DisplayName, target.ExtraTags);
             var existing = File.Exists(nfoPath) ? await File.ReadAllBytesAsync(nfoPath, cancellationToken).ConfigureAwait(false) : null;
             var changed = false;
+
+            // Pilot 14 LBL3: a movie.nfo an NFO saver wrote shadows Shoal's NFO in this folder; it goes (only that name, only a plain file, never through a link).
+            var stray = new FileInfo(Path.Combine(folder, "movie.nfo"));
+            if (!string.Equals(name, "movie", StringComparison.OrdinalIgnoreCase) && stray.Exists && stray.LinkTarget is null)
+            {
+                stray.Delete();
+                changed = true;
+            }
+
             var nfoRefused = false;
             if (existing is null || !existing.AsSpan().SequenceEqual(nfo))
             {

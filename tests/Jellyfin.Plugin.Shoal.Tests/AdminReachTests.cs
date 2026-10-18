@@ -48,11 +48,11 @@ public sealed class AdminReachTests
     [Fact]
     public async Task Tailscale_Https_AndLan_AreSuggested_WhenTheyAreKnown()
     {
-        var tailscale = new FakeTailscale { Self = new TailscaleSelf("berry.tail1234.ts.net", "100.64.0.7") };
+        var tailscale = new FakeTailscale { Self = new TailscaleSelf("host.tail1234.ts.net", "100.64.0.7") };
 
         var json = await ReachAsync(tailscale, new FakeNetwork(8096, "192.168.1.5", "10.0.0.8"), "https", "jelly.example.org");
 
-        Assert.Equal("berry.tail1234.ts.net", json.GetProperty("tailscale").GetProperty("dnsName").GetString());
+        Assert.Equal("host.tail1234.ts.net", json.GetProperty("tailscale").GetProperty("dnsName").GetString());
         Assert.Equal("100.64.0.7", json.GetProperty("tailscale").GetProperty("ip").GetString());
         Assert.Equal("https://jelly.example.org", json.GetProperty("https").GetProperty("url").GetString());
         Assert.Equal(["http://192.168.1.5:8096", "http://10.0.0.8:8096"], json.GetProperty("lan").EnumerateArray().Select(static e => e.GetProperty("url").GetString()));
@@ -98,11 +98,11 @@ public sealed class AdminReachTests
     [Fact]
     public void TheTailscaleStatusDocument_GivesTheSelfNodeName_AndAnIpv4Address()
     {
-        var doc = Encoding.UTF8.GetBytes("{\"Self\":{\"DNSName\":\"berry.tail1234.ts.net.\",\"TailscaleIPs\":[\"fd7a:115c::1\",\"100.64.0.7\"]},\"Peer\":{}}");
+        var doc = Encoding.UTF8.GetBytes("{\"Self\":{\"DNSName\":\"host.tail1234.ts.net.\",\"TailscaleIPs\":[\"fd7a:115c::1\",\"100.64.0.7\"]},\"Peer\":{}}");
 
         var self = TailscaleLocalApi.ParseSelf(doc);
 
-        Assert.Equal(new TailscaleSelf("berry.tail1234.ts.net", "100.64.0.7"), self);
+        Assert.Equal(new TailscaleSelf("host.tail1234.ts.net", "100.64.0.7"), self);
     }
 
     [Theory]

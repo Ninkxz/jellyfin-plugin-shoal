@@ -229,6 +229,21 @@ public class AdminPeerLibrariesController : ControllerBase
                     added);
             }
 
+            if (created.SharedLibKey is { } sharedKey)
+            {
+                // K44: the titles went into a shared library; who sees it is that library's setting (Layouts screen), never changed from one friend's wizard.
+                // Warden 10 M1: who sees this friend's titles now (informational; local account ids only).
+                added.Add(new
+                {
+                    mappingKey = key,
+                    localLibraryName = _state.Current.Home.Libraries.FirstOrDefault(l => l.LibKey == sharedKey)?.Name ?? name,
+                    libKey = sharedKey,
+                    gainedAccess = created.Gained?.Users ?? [],
+                    gainedRestricted = created.Gained?.RestrictedUsers ?? [],
+                });
+                continue;
+            }
+
             var picked = (request.SelectedUserIds ?? []).Where(static id => id != Guid.Empty).Distinct().ToList();
             if (picked.Count > 0 && !(picked.Count == 1 && picked[0] == admin))
             {
@@ -271,7 +286,29 @@ public class AdminPeerLibrariesController : ControllerBase
             return AdminReply.Error(StatusCodes.Status404NotFound, "notFound");
         }
 
-        var folder = VisibilityService.MappingPath(_state.Current.StubRoot, handle, mapping.Subfolder);
+        var state = _state.Current;
+        var shared = LibraryFolders.FedBy(state, handle, mapping.CollectionType);
+        if (shared is not null)
+        {
+            // A shared library (K44): only this mapping's own title folders go; the library, its folder and the other connections' titles stay.
+            if (LibraryFolders.PathOf(state.StubRoot, shared) is { } sharedFolder)
+            {
+                var entries = _catalogs.Load(handle).Document.Entries.Where(e => e.MappingKey == mappingKey).ToList();
+                LibraryTree.DeleteRecorded(state.StubRoot, sharedFolder, entries, _logger);
+            }
+
+            var lastOfType = !peer.Libraries.Any(l => l.MappingKey != mappingKey && l.CollectionType == mapping.CollectionType);
+            await ForgetMappingAsync(handle, mappingKey, cancellationToken).ConfigureAwait(false);
+            if (lastOfType)
+            {
+                await _state.UpdateAsync(s => s.Home.Libraries.FirstOrDefault(l => l.LibKey == shared.LibKey)?.Feeds.RemoveAll(f => f == handle), cancellationToken).ConfigureAwait(false);
+            }
+
+            ForgetCatalog(handle, mappingKey);
+            return AdminReply.Json(StatusCodes.Status200OK, new { removed = true });
+        }
+
+        var folder = VisibilityService.MappingPath(state.StubRoot, handle, mapping.Subfolder);
         await _libraries.RemoveAsync(handle, mappingKey, cancellationToken).ConfigureAwait(false);
         await ForgetMappingAsync(handle, mappingKey, cancellationToken).ConfigureAwait(false);
         ForgetCatalog(handle, mappingKey);

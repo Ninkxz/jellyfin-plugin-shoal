@@ -93,6 +93,12 @@ internal sealed class PlaybackParts
 
     public IVersionResolver? VersionOverride { get; set; }
 
+    /// <summary>Gets or sets the group pick (PLAN v2.9 K42) the PlaybackInfo and static handlers ask; null: no title is grouped.</summary>
+    public IGroupPlayback? GroupOverride { get; set; }
+
+    /// <summary>Gets or sets the PlaybackInfo handler (tests change its attempt budget).</summary>
+    public PlaybackInfoHandler Handler { get; set; } = null!;
+
     public RateLimiter AttachmentLimiter { get; set; } = null!;
 
     public long TrickplayCapBytes { get; set; } = 1L << 30;
@@ -170,10 +176,12 @@ internal sealed class PlaybackParts
             time,
             new TypedCapture<PlaybackInfoHandler>(log),
             new AttachmentRebuilder(() => parts.AttachmentsEnabled),
-            cards: parts.Cards);
+            cards: parts.Cards,
+            groups: new LiveGroups(() => parts.GroupOverride));
+        parts.Handler = handler;
         builder.Services.AddSingleton<IPlaybackInfoHandler>(handler);
         builder.Services.AddSingleton(parts.Cards);
-        var staticHandler = new StaticStreamHandler(new StubCatalog(store), new FakeEndpoints(endpoint), client, trust, registry, streamSlots, new RateLimiter(time, 1200, 100), state, notice, new TypedCapture<StaticStreamHandler>(log), cards: parts.Cards, readAhead: parts.StaticReadAhead);
+        var staticHandler = new StaticStreamHandler(new StubCatalog(store), new FakeEndpoints(endpoint), client, trust, registry, streamSlots, new RateLimiter(time, 1200, 100), state, notice, new TypedCapture<StaticStreamHandler>(log), cards: parts.Cards, readAhead: parts.StaticReadAhead, groups: new LiveGroups(() => parts.GroupOverride), grants: grants);
         builder.Services.AddSingleton<IStaticStreamHandler>(staticHandler);
         var jobs = new HlsJobControl(new FakeEndpoints(endpoint), client, new TypedCapture<HlsJobControl>(log));
         builder.Services.AddSingleton(jobs);
@@ -289,7 +297,11 @@ internal sealed class FakeNotice : IOfflineNotice
 {
     public List<(Guid User, string Peer)> Notices { get; } = [];
 
+    public List<(Guid User, string Peer)> QualityRefusals { get; } = [];
+
     public void PeerOffline(Guid userId, string peerKey, string peerName) => Notices.Add((userId, peerKey));
+
+    public void QualityRefused(Guid userId, string peerKey) => QualityRefusals.Add((userId, peerKey));
 }
 
 internal sealed class FakeAdmins : IAdminNotifier
@@ -396,4 +408,24 @@ internal sealed class LiveResolver : IVersionResolver
     }
 
     public ResolvedVersion? Resolve(Guid routeItemId, string? requestedMediaSourceId) => (_override() ?? _real).Resolve(routeItemId, requestedMediaSourceId);
+}
+
+/// <summary>
+/// The group pick of the parts, read on every call; none means no title is grouped.
+/// </summary>
+internal sealed class LiveGroups : IGroupPlayback
+{
+    private readonly Func<IGroupPlayback?> _override;
+
+    public LiveGroups(Func<IGroupPlayback?> over) => _override = over;
+
+    public IReadOnlyList<MemberChoice>? Candidates(string stubPeerKey, CatalogEntry stubEntry, CallerUser user) => _override()?.Candidates(stubPeerKey, stubEntry, user);
+
+    public IReadOnlyList<MemberChoice> CandidatesForCopy(string stubPeerKey, CatalogEntry stubEntry, CallerUser user, string copyLibKey) => _override()?.CandidatesForCopy(stubPeerKey, stubEntry, user, copyLibKey) ?? [];
+
+    public MemberChoice? Member(string stubPeerKey, CatalogEntry stubEntry, string grantPeerKey, Guid grantPeerItemId) => _override()?.Member(stubPeerKey, stubEntry, grantPeerKey, grantPeerItemId);
+
+    public IReadOnlyList<Guid> PeerIds(CatalogEntry stubEntry) => _override()?.PeerIds(stubEntry) ?? [];
+
+    public bool Admits(string stubPeerKey, CatalogEntry stubEntry, MemberChoice member, CallerUser user, string? copyLibKey) => _override()?.Admits(stubPeerKey, stubEntry, member, user, copyLibKey) ?? true;
 }

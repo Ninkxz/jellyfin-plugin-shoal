@@ -271,6 +271,11 @@ public sealed class CallerContext
             return false; // not a federated item: this class is for federated requests only
         }
 
+        if (item.PeerKey.Length == 0)
+        {
+            return false; // a title folder in a shared library whose owner is not known (yet): fail closed
+        }
+
         var state = _state.Current;
         var peer = state.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, item.PeerKey, StringComparison.Ordinal));
         var mapping = peer?.Libraries.FirstOrDefault(l => string.Equals(l.MappingKey, item.MappingKey, StringComparison.Ordinal));
@@ -285,7 +290,20 @@ public sealed class CallerContext
             return false;
         }
 
+        // "Hide friends' titles" (K45): the BlockedTags entry hides the titles from lists; playback refuses them as well, whatever core's tags say right now.
+        if (state.Home.Visibility.HiddenFriendTitles.Contains(user.Id))
+        {
+            return false;
+        }
+
+        // Admitted(user, L), where L is the library the item's file is in (K45): a shared library's own access, a legacy folder's mapping access.
+        var access = LibraryFolders.AccessOfItem(state, item.PeerKey, item.MappingKey, item.LibKey, item.IsCopy);
+        if (access is null)
+        {
+            return false;
+        }
+
         var shareUsers = state.PeerRole.Shares.Select(s => s.ShareUserId).ToHashSet();
-        return AccessPolicy.Admitted(user, mapping.Access, shareUsers);
+        return AccessPolicy.Admitted(user, access, shareUsers);
     }
 }

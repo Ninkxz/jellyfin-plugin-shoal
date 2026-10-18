@@ -70,7 +70,8 @@ internal sealed class FakeShareUsers : IShareUserSource
         }
 
         var actual = Policies[userId];
-        return actual.Disabled == expected.Disabled && actual.Libraries.SequenceEqual(expected.Libraries) && actual.AllowedDevices.SequenceEqual(expected.AllowedDevices);
+        return actual.Disabled == expected.Disabled && actual.Libraries.SequenceEqual(expected.Libraries) && actual.AllowedDevices.SequenceEqual(expected.AllowedDevices)
+            && (expected.BlockedTags is null || expected.BlockedTags.All(t => (actual.BlockedTags ?? []).Contains(t))); // as the real check
     }
 
     public IReadOnlyList<ShareDevice> Devices(Guid userId) => [.. DevicesOf[userId]];
@@ -482,6 +483,75 @@ public sealed class ShareServiceTests
 
             Assert.True(service.Live(share.ShareId).AccessRemoved);
             Assert.Contains("AccessRemoved", System.Text.Json.JsonSerializer.Serialize(service.List()), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task K45_ASharingAccount_BlocksTheShoalTag_AndEveryLibraryTag()
+    {
+        var (service, users, _, state, dir, movies) = await CreateAsync();
+        using (dir)
+        using (state)
+        {
+            await state.UpdateAsync(s => s.Home.Libraries.Add(new Jellyfin.Plugin.Shoal.State.ShoalLibrary { LibKey = "0123456789abcdef", Name = "Friends", PathRel = "libs/0123456789abcdef", Placement = LibraryPlacement.Main }));
+
+            await service.CreateAsync(Request("Bob", movies.Id), default);
+
+            var policy = users.Policies[state.Current.PeerRole.Shares[0].ShareUserId];
+            Assert.Equal(["Shoal", "shoal-lib-01234567"], policy.BlockedTags);
+        }
+    }
+
+    [Fact]
+    public async Task W10L5_ANewLibrarysTag_ReachesTheSharingAccountAtOnce_NotAtTheNextSweep()
+    {
+        var (service, users, _, state, dir, movies) = await CreateAsync();
+        using (dir)
+        using (state)
+        {
+            await service.CreateAsync(Request("Bob", movies.Id), default);
+            var shareUser = state.Current.PeerRole.Shares[0].ShareUserId;
+            Assert.Equal(["Shoal"], users.Policies[shareUser].BlockedTags);
+
+            await state.UpdateAsync(s => s.Home.Libraries.Add(new Jellyfin.Plugin.Shoal.State.ShoalLibrary { LibKey = "0123456789abcdef", Name = "Friends", PathRel = "libs/0123456789abcdef", Placement = LibraryPlacement.Main }));
+            var tags = new Jellyfin.Plugin.Shoal.Visibility.TagService(state, new FakeAccounts(), new FakeLibraries(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance) { SharePolicies = service.RepairPoliciesAsync };
+            await tags.ReconcileAsync();
+            tags.Dispose();
+
+            Assert.Equal(["Shoal", "shoal-lib-01234567"], users.Policies[shareUser].BlockedTags);
+        }
+    }
+
+    [Fact]
+    public void K45_TheSharePolicy_SetsShoalTags_AndKeepsAnOwnersTag()
+    {
+        var dto = new MediaBrowser.Model.Users.UserPolicy { BlockedTags = ["Horror", "shoal-lib-deadbeef"] };
+
+        JellyfinShareUsers.Fill(dto, new SharePolicy(false, [], null, ["d1"], ["Shoal", "shoal-lib-01234567"]));
+
+        Assert.Equal(["Horror", "Shoal", "shoal-lib-01234567"], dto.BlockedTags);
+    }
+
+    [Fact]
+    public async Task K45_AMainLibraryHoldingAShoalFolderOfPlacementMain_StaysShareable_ButAShoalOnlyLibraryIsNot()
+    {
+        var (service, _, libraries, state, dir, movies) = await CreateAsync();
+        using (dir)
+        using (state)
+        {
+            const string Key = "0123456789abcdef";
+            await state.UpdateAsync(s => s.Home.Libraries.Add(new Jellyfin.Plugin.Shoal.State.ShoalLibrary { LibKey = Key, Name = "Friends", PathRel = "libs/" + Key, Placement = LibraryPlacement.Main }));
+            var folder = Path.Combine(state.Current.StubRoot, "libs", Key);
+            await libraries.AddPathAsync("Movies", folder, default);
+            await libraries.CreateAsync("Only friends", folder, default);
+            var onlyFriends = libraries.List().Single(l => l.Name == "Only friends").Id;
+
+            Assert.Equal(ShareOutcome.Ok, (await service.CreateAsync(Request("Bob", movies.Id), default)).Outcome);
+            Assert.Equal(ShareOutcome.Invalid, (await service.CreateAsync(Request("Ann", onlyFriends), default)).Outcome);
+
+            // Any other folder below the stub root next to it still refuses the library.
+            await libraries.AddPathAsync("Movies", Path.Combine(state.Current.StubRoot, "elsewhere"), default);
+            Assert.Equal(ShareOutcome.Invalid, (await service.CreateAsync(Request("Cid", movies.Id), default)).Outcome);
         }
     }
 }

@@ -106,7 +106,8 @@ public sealed class TvAccessTests : IAsyncLifetime
             Assert.Empty(t.MetadataFetchers);
             Assert.Empty(t.ImageFetchers);
         });
-        Assert.False(tv.EnableAutomaticSeriesGrouping);
+        Assert.True(tv.EnableAutomaticSeriesGrouping); // K43: the union of two friends' episodes shows as one series
+        Assert.False(movies.EnableAutomaticSeriesGrouping);
         Assert.False(tv.SaveTrickplayWithMedia);
         Assert.False(tv.EnableRealtimeMonitor);
         Assert.False(tv.SaveLocalMetadata);

@@ -29,7 +29,7 @@ public enum ReleaseKind
 /// Syncs a peer's movie catalog into stubs (DESIGN 5.1 to 5.3, 5.8 to 5.10): enumerate, diff, dedup, guard, fetch details, write the stubs,
 /// save the catalog and tell core which folders changed. One sync runs at a time, whichever peer it is for.
 /// </summary>
-public sealed class CatalogSyncService : IDisposable, ISyncActivity
+public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
 {
     /// <summary>The shortest time between two manual syncs of one peer.</summary>
     public static readonly TimeSpan ManualInterval = TimeSpan.FromMinutes(5);
@@ -61,6 +61,7 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     /// <param name="logger">The logger.</param>
     /// <param name="tv">The TV part of a sync, or null (a build without TV shows).</param>
     /// <param name="registry">The peer statuses, so an unreachable peer does not hold titles against a reachable one, or null.</param>
+    /// <param name="groups">The global title groups (PLAN v2.9 K42), or null.</param>
     public CatalogSyncService(
         IStateStore state,
         PeerDirectory peers,
@@ -72,9 +73,11 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         ILibraryRefresh refresh,
         ILogger<CatalogSyncService> logger,
         TvSyncEngine? tv = null,
-        PeerRegistry? registry = null)
+        PeerRegistry? registry = null,
+        GroupBook? groups = null)
         : this(state, peers.Find, trust, reader, store, writer, local, refresh, () => SyncSettings.From(Plugin.Instance?.Configuration), TimeProvider.System, logger, tv, () => Plugin.Instance?.Configuration.TvShowsEnabled ?? false, registry is null ? null : new DedupReachability(registry, TimeProvider.System).IsUp)
     {
+        _d.Groups = groups;
     }
 
     /// <summary>
@@ -122,6 +125,25 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     /// Gets or sets the overall budget of one sync (tests shorten it).
     /// </summary>
     internal TimeSpan SyncBudget { get; set; } = Budget;
+
+    /// <summary>
+    /// Gets or sets the copy writer (K44/K45: one stub per library per group), run after each movie sync that did not fail; null for none.
+    /// </summary>
+    internal GroupCopyWriter? Copies { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether an unfinished library move waits (Warden 10 M2); while it returns true every sync is skipped with <c>layoutJob</c>. Null: never.
+    /// </summary>
+    internal Func<bool>? LayoutUnfinished { get; set; }
+
+    /// <summary>
+    /// Gets or sets the global title groups (PLAN v2.9 K42); null keeps the v1 rank rule alone (tests).
+    /// </summary>
+    internal GroupBook? Groups
+    {
+        get => _d.Groups;
+        set => _d.Groups = value;
+    }
 
     /// <summary>
     /// Whether a peer with this status can hold a title against a lower-ranked peer (D19). A peer that is offline, paused or stopped does not: its titles must not
@@ -247,6 +269,17 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
     }
 
     /// <inheritdoc />
+    public IDisposable? TryHold()
+    {
+        if (!_gate.Wait(0, CancellationToken.None))
+        {
+            return null;
+        }
+
+        return new Held(_gate);
+    }
+
+    /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
     private async Task<SyncReport> RunAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, IReadOnlySet<Guid>? releaseSeries, CancellationToken cancellationToken)
@@ -254,6 +287,13 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         if (!_gate.Wait(0, CancellationToken.None))
         {
             return SyncReport.Skipped("busy");
+        }
+
+        // Warden 10 M2: while a library move waits unfinished, no sync runs (it would write the titles into the target the move is still filling).
+        if (LayoutUnfinished?.Invoke() == true)
+        {
+            _gate.Release();
+            return SyncReport.Skipped("layoutJob");
         }
 
         _syncing = peerKey;
@@ -344,6 +384,19 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
         var settings = _settings();
         var run = new SyncRun(_d, state, peer, endpoint, document, settings, now, bypassRemovals, bypassAdditions);
         var report = await run.RunAsync(cancellationToken, budget.Token).ConfigureAwait(false);
+        if (Copies is { } copies && report.Result is not (SyncResultKind.Failed or SyncResultKind.Skipped))
+        {
+            // K44/K45: the groups may have changed; each library a member feeds gets its copy (users' alt tags first), still under the sync lock.
+            try
+            {
+                await copies.RunAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
+            {
+                _d.Logger.LogWarning("The title copies could not be brought up to date ({Type})", ex.GetType().Name);
+            }
+        }
+
         if (_tv is null || !_tvEnabled() || report.Result is SyncResultKind.Failed or SyncResultKind.Skipped)
         {
             return report;
@@ -433,6 +486,9 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
 
         public ILogger Logger { get; }
 
+        /// <summary>Gets or sets the global title groups (PLAN v2.9 K42), or null: then no group is read or written and dedup is the v1 rank rule alone.</summary>
+        public GroupBook? Groups { get; set; }
+
         /// <summary>
         /// Says whether a library scan may be queued for this server now (once in five minutes at most), and notes it when it may.
         /// </summary>
@@ -466,6 +522,20 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity
                 }
 
                 return true;
+            }
+        }
+    }
+
+    /// <summary>The global sync lock, held by a layout move (K44) until it is released once.</summary>
+    private sealed class Held(SemaphoreSlim gate) : IDisposable
+    {
+        private int _released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                gate.Release();
             }
         }
     }

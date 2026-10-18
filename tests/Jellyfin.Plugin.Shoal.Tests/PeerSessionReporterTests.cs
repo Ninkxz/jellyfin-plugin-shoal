@@ -383,7 +383,7 @@ public sealed class PeerSessionReporterTests : IClassFixture<PlaybackFixture>, I
     [Fact]
     public async Task Shutdown_DisposingTheReporterTwice_IsHarmless()
     {
-        // jf-home logged a FATAL ObjectDisposedException at shutdown: the host and the container both dispose the reporter.
+        // lab-server logged a FATAL ObjectDisposedException at shutdown: the host and the container both dispose the reporter.
         var endpoints = new FakeEndpoints(P.Endpoint);
         var reporter = new PeerSessionReporter(P.Grants, endpoints, H.Client, new HlsJobControl(endpoints, H.Client, NullLogger<HlsJobControl>.Instance), P.StreamSlots, P.Time, NullLogger<PeerSessionReporter>.Instance);
         reporter.Start();

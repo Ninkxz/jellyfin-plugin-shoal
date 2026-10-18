@@ -19,8 +19,9 @@ function setValue(input, value) {
 test('every section of 8.5 is there, in order', async () => {
     const p = await settings('default');
     try {
-        const titles = [...p.page.querySelectorAll('[data-shoal-view="settings"] h2')].map((h) => h.textContent);
-        assert.deepEqual(titles, ['Library files', 'Syncing', 'Playback', 'Extra features', 'Speed tests', 'Offline servers', 'Tailscale', 'Protect your shared videos', 'Key storage', 'Parental limits', 'Backups and checks', 'Delete all Shoal data']);
+        const titles = [...p.page.querySelectorAll('[data-shoal-view="settings"] h2')].filter((h) => !h.closest('[hidden]')).map((h) => h.textContent);
+        // v2.9: the Library layouts link panel comes first (docs/design/ui-v2/settings.html).
+        assert.deepEqual(titles, ['Library layouts', 'Library files', 'Syncing', 'Playback', 'Extra features', 'Speed tests', 'Offline servers', 'Tailscale', 'Protect your shared videos', 'Key storage', 'Parental limits', 'Backups and checks', 'Delete all Shoal data']);
         const t = p.text();
         assert.match(t, /Hold new titles when more than/);
         assert.match(t, /Storage limit per server \(GB\)/);
@@ -449,6 +450,49 @@ test('Start over and Delete all send the typed phrase as confirmName', async () 
         await p.wait(150);
         const call = p.mock.calls.find((c) => c.method === 'DELETE' && c.path === 'All');
         assert.deepEqual(call.body, { confirmName: 'delete everything' });
+    } finally {
+        p.close();
+    }
+});
+
+// Pilot 15 R6: Settings names each main library with the NFO saver on, in the Library layouts panel; names are text only.
+test('R6: Settings warns about each main library whose NFO saver is on', async () => {
+    const p = await mountPage({ scenario: 'default', params: { view: 'settings' }, settleMs: 400, nfoMains: ['Movies', 'Shows'] });
+    try {
+        const panel = p.page.querySelector('.shoal-linkpanel');
+        const notes = [...panel.querySelectorAll('.shoal-warnbox--nfo')].map((n) => n.textContent);
+        assert.deepEqual(notes, [
+            "The NFO saver is on for your main library Movies. Jellyfin can overwrite friends' titles' descriptions and art. Turn it off for this library in Jellyfin (Dashboard, Libraries).",
+            "The NFO saver is on for your main library Shows. Jellyfin can overwrite friends' titles' descriptions and art. Turn it off for this library in Jellyfin (Dashboard, Libraries)."
+        ]);
+    } finally {
+        p.close();
+    }
+
+    const h = await mountPage({ scenario: 'default', params: { view: 'settings' }, settleMs: 400, nfoMains: ['<img src=x onerror=alert(1)>'] });
+    try {
+        assert.equal(h.page.querySelectorAll('.shoal-linkpanel img').length, 0);
+        assert.match(h.page.querySelector('.shoal-warnbox--nfo').textContent, /<img src=x onerror=alert\(1\)>/);
+    } finally {
+        h.close();
+    }
+
+    const n = await mountPage({ scenario: 'default', params: { view: 'settings' }, settleMs: 400 });
+    try {
+        assert.equal(n.page.querySelectorAll('.shoal-warnbox--nfo').length, 0);
+    } finally {
+        n.close();
+    }
+});
+
+test('L2: Settings names each library Shoal leaves unlocked, as text', async () => {
+    const p = await mountPage({ scenario: 'default', params: { view: 'settings' }, settleMs: 400, notLocked: ['Movies', '<b>x</b>'] });
+    try {
+        const notes = [...p.page.querySelectorAll('.shoal-linkpanel .shoal-warnbox--notlocked')].map((n) => n.textContent);
+        assert.equal(notes.length, 2);
+        assert.match(notes[0], /^Your library Movies holds a friends' folder next to your own folders, so Shoal leaves its settings alone\./);
+        assert.match(notes[1], /<b>x<\/b>/);
+        assert.equal(p.page.querySelectorAll('.shoal-linkpanel b').length, 0);
     } finally {
         p.close();
     }

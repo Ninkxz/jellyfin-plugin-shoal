@@ -149,6 +149,7 @@ public class AdminController : ControllerBase
     private readonly Jellyfin.Plugin.Shoal.Peers.TokenRotation? _rotation;
     private readonly Jellyfin.Plugin.Shoal.Sync.PeerCatalogReader? _reader;
     private readonly Jellyfin.Plugin.Shoal.Sync.IImageSandboxStatus? _sandbox;
+    private readonly Jellyfin.Plugin.Shoal.Visibility.LibraryOptionsGuard? _libraryOptions;
     private readonly ILogger<AdminController> _logger;
 
     /// <summary>
@@ -167,8 +168,10 @@ public class AdminController : ControllerBase
     /// <param name="rotation">Token rotation (the schedule and the last time shown on the server), or null.</param>
     /// <param name="reader">The catalog reader, whose count of optional data left out is shown with the counters, or null.</param>
     /// <param name="sandbox">The image safety check (its state shown on the Overview and in Settings), or null.</param>
-    public AdminController(IStateStore state, ISecretStore secrets, IPeerLiveStatus live, IHomeNameSource homeName, AdminCooldowns cooldowns, IGuardCounters guard, ILibraryView libraries, ILogger<AdminController> logger, IAccountSource? accounts = null, Jellyfin.Plugin.Shoal.Playback.InterceptCounters? intercept = null, Jellyfin.Plugin.Shoal.Peers.TokenRotation? rotation = null, Jellyfin.Plugin.Shoal.Sync.IImageSandboxStatus? sandbox = null, Jellyfin.Plugin.Shoal.Sync.PeerCatalogReader? reader = null)
+    /// <param name="libraryOptions">Names the main libraries whose NFO saver is on (Pilot 14), or null.</param>
+    public AdminController(IStateStore state, ISecretStore secrets, IPeerLiveStatus live, IHomeNameSource homeName, AdminCooldowns cooldowns, IGuardCounters guard, ILibraryView libraries, ILogger<AdminController> logger, IAccountSource? accounts = null, Jellyfin.Plugin.Shoal.Playback.InterceptCounters? intercept = null, Jellyfin.Plugin.Shoal.Peers.TokenRotation? rotation = null, Jellyfin.Plugin.Shoal.Sync.IImageSandboxStatus? sandbox = null, Jellyfin.Plugin.Shoal.Sync.PeerCatalogReader? reader = null, Jellyfin.Plugin.Shoal.Visibility.LibraryOptionsGuard? libraryOptions = null)
     {
+        _libraryOptions = libraryOptions;
         _sandbox = sandbox;
         _state = state;
         _secrets = secrets;
@@ -193,6 +196,11 @@ public class AdminController : ControllerBase
     public IActionResult GetStatus()
     {
         var status = AdminStatusBuilder.Build(_state, _secrets, _live, _homeName.Name, _cooldowns.SyncAllUntilUtc, _guard);
+        if (_libraryOptions is not null)
+        {
+            status = status with { MainLibrariesSavingNfo = _libraryOptions.MainLibrariesSavingNfo(), ShoalLibrariesNotLocked = _libraryOptions.ShoalLibrariesNotLocked(), MainLibrariesMissing = _libraryOptions.MainLibrariesMissing() };
+        }
+
         if (_accounts is not null)
         {
             status = status with { OrphanAccounts = [.. OrphanAccounts.Find(_state, _accounts.List()).Select(static a => new OrphanAccountDto(a.Id, a.Name, a.IsDisabled))] };

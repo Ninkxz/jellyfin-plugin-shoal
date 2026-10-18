@@ -2,6 +2,10 @@
 
 Watch your friends' Jellyfin libraries from your own server, without copying anything. Their titles show up in your Jellyfin like any other, play in Moonfin and jellyfin-web, and your friend's server does the heavy lifting.
 
+## Best with Moonfin
+
+Shoal works extremely well with [Moonfin](https://github.com/Moonfin-Client), and it is the client we recommend. It is a much better experience than the stock Jellyfin apps, and you can connect Seerr inside the app to request titles, so a friend's title you like can be requested for your own server in a few taps. jellyfin-web and the other Jellyfin clients are still supported: friends' titles show up and play there like any other title.
+
 ## Install
 
 1. In Jellyfin, open **Dashboard**, **Plugins**, **Repositories**, click **+**, and add this address:
@@ -34,7 +38,7 @@ You can also hide a server's libraries while it is offline; see "Hiding a server
 ## Notes for operators
 
 - **Transcode limit (Warden L7).** The per-share transcode limit covers sharing accounts only, and only a request that names a `PlaySessionId`. Anonymous transcodes (the routes core serves without a sign-in) are not counted when the hardening mode is `LogOnly` or `Off`; `Enforce` refuses them without a sign-in. Treat the limit as a courtesy to the host, not a hard cap.
-- **Pairing behind a reverse proxy (Warden L8).** The Peer cannot check that the invite request reached it over HTTPS: the token is handed to Home in the answer to `POST /Shoal/Pair`. If the Peer sits behind a reverse proxy, serve it over TLS only and do not expose a plain-HTTP port. Home refuses to redeem an invite over cleartext unless the address is on a Tailnet.
+- **How friends reach your server: HTTPS first, Tailscale also supported (Warden L8).** The recommended way is an https address with a real certificate, for example `https://movies.example.com`. Tailscale is also supported: on a Tailnet plain http is fine, because Tailscale encrypts the link. Home refuses to redeem an invite over cleartext unless the address is on a Tailnet, so a plain-HTTP address outside Tailscale cannot be paired. The Peer cannot check that the invite request reached it over HTTPS: the token is handed to Home in the answer to `POST /Shoal/Pair`. If the Peer sits behind a reverse proxy, serve it over TLS only and do not expose a plain-HTTP port.
 - **Rate limits behind a reverse proxy (Warden 12 L2).** Shoal's anonymous endpoints (`GET /Shoal/Ping` at 20 per minute per address and 300 per minute overall, and the invite limiter of `POST /Shoal/Pair`) count the address Jellyfin resolves for the client. If Jellyfin sits behind a reverse proxy that is not listed under **Dashboard > Networking > Known proxies**, every client looks like the proxy, so all visitors share one budget: a handful of requests can then make the ping answer `429`, which a friend's Shoal shows as "ping throttled" (not as "no Shoal"). Add the proxy under Known proxies. IPv6 clients are counted per /64 network. With "Let friends' servers detect Shoal" off, the ping always answers the plain `404` and is never limited.
 
 ## Hiding a server that stays offline

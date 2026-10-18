@@ -243,8 +243,9 @@ public sealed class TrickplayHandler : ITrickplayHandler
         }
 
         // 2. the version, the stub and the stored level: an unknown width or index is a 404 with no Peer call
+        // An extra copy of a grouped title (K45) has no thumbnails: they would come from the owner's server, whose library this caller may not open.
         if (_resolver.Resolve(route.ItemId, requested.Count == 1 ? requested[0] : null) is not { } version
-            || _index.Get(version.VersionItemId) is not { } stub
+            || _index.Get(version.VersionItemId) is not { IsCopy: false } stub
             || _catalog.Find(stub.PeerKey, stub.FolderName) is not { } entry
             || entry.State is not (EntryState.Active or EntryState.HeldRemoval)
             || !TrickplayLevels.TryFind(entry, version.PeerMediaSourceId, width, out var level)

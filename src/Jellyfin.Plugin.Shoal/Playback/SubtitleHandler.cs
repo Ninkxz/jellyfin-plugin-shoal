@@ -250,10 +250,11 @@ public sealed class SubtitleHandler : ISubtitleHandler
         }
 
         // 7. the Peer request
+        // The server is the grant's: the stub's own, or for a grouped title the member its PlaybackInfo picked (PLAN v2.9 K42).
         var entry = _catalog.Find(request.Stub.PeerKey, request.Stub.FolderName);
-        var peer = _peers.Find(request.Stub.PeerKey);
+        var peer = _peers.Find(grant.PeerKey);
         if (entry is null || peer is null || _state.Status != StateStatus.Ready
-            || _registry.StatusOf(request.Stub.PeerKey) is PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled)
+            || _registry.StatusOf(grant.PeerKey) is PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled)
         {
             return new ShoalResult(StatusCodes.Status503ServiceUnavailable);
         }

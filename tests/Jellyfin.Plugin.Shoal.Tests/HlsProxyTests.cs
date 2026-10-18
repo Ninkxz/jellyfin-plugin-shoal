@@ -1445,4 +1445,89 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
         Assert.NotNull(live);
         Assert.InRange(live!.Value, 20, 80); // 32 Mbit in about 0.6 s is about 53 Mbps: the read time is the Peer's, and it is too slow for half a second of playing time
     }
+
+    // --- K45 and Pilot 13 gate (d): core hides a BlockedTags item from lists, GET by id and PlaybackInfo, but its own /Videos/{id}/stream and master.m3u8 still
+    // serve it. For a Shoal title neither core route is reached (the filter answers), and every Shoal route re-checks visibility and Admitted(user, library).
+
+    [Fact]
+    public async Task K45_AnItemHiddenByAShoalBlockedTag_Is404_OnCorePlaylistAndStreamRoutes_AndOnShoalsPlaybackInfo()
+    {
+        await MainPlacementAsync(MatrixWorld.Admin, MatrixWorld.Selected);
+        H.World.Visible[(MatrixWorld.Selected, MatrixWorld.Item)] = false; // what core answers once shoal-lib-<k8> (or Shoal) is in the account's BlockedTags
+        var before = H.Peer.Requests.Count;
+
+        using var master = await H.SendAsync(Sign(MatrixWorld.Selected), HttpMethod.Get, $"/Videos/{Item}/master.m3u8?MediaSourceId={Item}");
+        using var stream = await H.SendAsync(Sign(MatrixWorld.Selected), HttpMethod.Get, $"/Videos/{Item}/stream?static=true&MediaSourceId={Item}");
+        using var info = await H.SendAsync(Sign(MatrixWorld.Selected), HttpMethod.Post, $"/Items/{Item}/PlaybackInfo", r => r.Content = new StringContent("{}", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NotFound, master.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, stream.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, info.StatusCode);
+        Assert.Equal(before, H.Peer.Requests.Count); // the friend's server never heard of it
+    }
+
+    [Fact]
+    public async Task K45_AUserTheMainLibraryNoLongerAdmits_Is404_EvenBeforeTheTagReachesCore_AndTheRunningHlsGrantDiesAtTheRecheck()
+    {
+        await MainPlacementAsync(MatrixWorld.Admin, MatrixWorld.Selected);
+        var grant = await NewGrantAsync(MatrixWorld.Selected);
+        await LoadPlaylistsAsync(grant);
+
+        // The admin narrows the library; core still shows the item (the tag write lags), CallerContext step 6 does not.
+        await H.State.UpdateAsync(s => s.Home.Libraries.First(l => !l.IsLegacy).Access.SelectedUserIds = [MatrixWorld.Admin]);
+        using var info = await H.SendAsync(Sign(MatrixWorld.Selected), HttpMethod.Post, $"/Items/{Item}/PlaybackInfo", r => r.Content = new StringContent("{}", Encoding.UTF8, "application/json"));
+        P.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Selected));
+
+        Assert.Equal(HttpStatusCode.NotFound, info.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, master.StatusCode);
+        Assert.Null(P.Grants.Get(grant.GrantId));
+    }
+
+    [Fact]
+    public async Task K45_AUserWhoHidesFriendsTitles_Is404_OnPlaybackInfo_AndOnShoalsHlsAfterTheRecheck()
+    {
+        var grant = await NewGrantAsync(MatrixWorld.Selected);
+        await LoadPlaylistsAsync(grant);
+
+        await H.State.UpdateAsync(s => s.Home.Visibility.HiddenFriendTitles.Add(MatrixWorld.Selected));
+        using var info = await H.SendAsync(Sign(MatrixWorld.Selected), HttpMethod.Post, $"/Items/{Item}/PlaybackInfo", r => r.Content = new StringContent("{}", Encoding.UTF8, "application/json"));
+        P.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+        using var segment = await GetAsync(SegmentPath(grant, 3), Sign(MatrixWorld.Selected));
+
+        Assert.Equal(HttpStatusCode.NotFound, info.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, segment.StatusCode);
+    }
+
+    [Fact]
+    public async Task K45_ASharingAccount_NeverPlaysATitleOfAMainLibrary_ThoughCoreWouldShowIt()
+    {
+        await MainPlacementAsync(MatrixWorld.Admin, MatrixWorld.ShareUser);
+        await H.State.UpdateAsync(s => s.Home.Libraries.First(l => !l.IsLegacy).Access = new LibraryAccess { Mode = AccessMode.Everyone, IncludeRestricted = true });
+
+        using var info = await H.SendAsync(Sign(MatrixWorld.ShareUser), HttpMethod.Post, $"/Items/{Item}/PlaybackInfo", r => r.Content = new StringContent("{}", Encoding.UTF8, "application/json"));
+        using var stream = await H.SendAsync(Sign(MatrixWorld.ShareUser), HttpMethod.Get, $"/Videos/{Item}/stream?static=true&MediaSourceId={Item}");
+
+        Assert.Equal(HttpStatusCode.NotFound, info.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, stream.StatusCode);
+    }
+
+    // The matrix item moves into a library of v2.9 added into a main library (placement Main), admitting the given accounts.
+    private async Task MainPlacementAsync(params Guid[] admitted)
+    {
+        const string Key = "5ab1e0c0ffee1234";
+        await H.State.UpdateAsync(s => s.Home.Libraries.Add(new Jellyfin.Plugin.Shoal.State.ShoalLibrary
+        {
+            LibKey = Key,
+            Name = "Friends in Movies",
+            Type = "movies",
+            Placement = LibraryPlacement.Main,
+            PathRel = Jellyfin.Plugin.Shoal.State.ShoalLibrary.LibsFolder + "/" + Key,
+            Feeds = [H.World.PeerKey],
+            Access = new LibraryAccess { Mode = AccessMode.Selected, SelectedUserIds = [.. admitted] },
+        }));
+        H.World.Federated[MatrixWorld.Item] = new FederatedItem(H.World.PeerKey, H.World.MappingKey, Key);
+        await H.Filter!.Index.RebuildAsync();
+        Assert.Equal(Key, H.Filter.Index.Get(MatrixWorld.Item)!.LibKey);
+    }
 }

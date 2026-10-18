@@ -347,6 +347,16 @@ public sealed class HlsProxyHandler
 
         if (full)
         {
+            // Warden 10 L2: the full re-check covers the library of the member the grant plays from, not only the stub's.
+            // Warden 11 L1: a limit made stricter since PlaybackInfo stops the stream (the next PlaybackInfo is held to the new one).
+            var currentCap = QualityCap.From(_state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == grant.PeerKey)?.QualityLimit);
+            if ((grant.MemberAccess is { } memberAccess && !memberAccess(caller.User)) || (currentCap is not null && currentCap.IsStricterThan(grant.Cap)))
+            {
+                _slots.ReleaseHls(grant.GrantId);
+                _grants.Remove(grant.GrantId);
+                return new ShoalResult(StatusCodes.Status404NotFound);
+            }
+
             grant.LastAuthorizedUtc = now;
         }
 
@@ -419,7 +429,8 @@ public sealed class HlsProxyHandler
         var result = await PlaylistAsync(peer, $"/Videos/{grant.PeerItemId:N}/master.m3u8?{query}", PeerCallProfile.HlsMaster, PlaylistKind.Master, context, cancellationToken).ConfigureAwait(false);
         if (result.Outcome == PlaylistOutcome.Ok)
         {
-            grant.PeerVariantQuery = result.VariantQuery;
+            // K51: the variant query the Peer wrote is held to the grant's quality limit too; the client's query is never read for it.
+            grant.PeerVariantQuery = grant.Cap is { } cap ? cap.Hold(result.VariantQuery) : result.VariantQuery;
             StartMainPrefetch(grant, peer);
         }
 

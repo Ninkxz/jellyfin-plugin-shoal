@@ -331,9 +331,58 @@ public sealed class TvSyncEngine
 
             Report.ChangedFolders = _changed.Values.Sum(static s => s.Count);
             _d.Store.Save(_doc);
+            UpdateSeriesGroups();
             foreach (var (library, folders) in _changed)
             {
                 _e.Refresh(_d, _peer.PeerKey, library, folders, _firstStubs);
+            }
+        }
+
+        // K43: the series groups follow this server's series entries.
+        private void UpdateSeriesGroups()
+        {
+            if (_d.Groups is not { } groups)
+            {
+                return;
+            }
+
+            string LibKeyOf(PeerState peer, string mappingKey) =>
+                peer.Libraries.FirstOrDefault(m => m.MappingKey == mappingKey) is { } mapping
+                    ? LibraryFolders.LibraryOf(_state, peer.PeerKey, mapping)?.LibKey ?? StateUpgrade.LegacyLibKey(peer.PeerKey, mappingKey)
+                    : string.Empty;
+
+            Dictionary<string, OwnedCopy>? owners = null;
+            OwnedCopy? OwnerOf(string stubKey)
+            {
+                if (owners is null)
+                {
+                    owners = new Dictionary<string, OwnedCopy>(StringComparer.Ordinal);
+                    foreach (var other in _state.Home.Peers.Where(p => p.PeerKey != _peer.PeerKey))
+                    {
+                        var load = _d.Store.Load(other.PeerKey);
+                        if (load.Unreadable)
+                        {
+                            continue;
+                        }
+
+                        foreach (var entry in load.Document.Entries.Where(static e => e.Kind == EntryKind.Series && e.State == EntryState.Active && e.FolderRel is not null))
+                        {
+                            owners.TryAdd(entry.StubKey, new OwnedCopy(other.PeerKey, entry, LibKeyOf(other, entry.MappingKey)));
+                        }
+                    }
+                }
+
+                return owners.GetValueOrDefault(stubKey);
+            }
+
+            var known = _state.Home.Peers.Select(static p => p.PeerKey).ToHashSet(StringComparer.Ordinal);
+            try
+            {
+                groups.Update(document => GroupPlanner.ApplyTvPeer(document, _peer.PeerKey, [.. _doc.Entries.Where(static e => e.Kind == EntryKind.Series)], m => LibKeyOf(_peer, m), OwnerOf, known, NewKey));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                _d.Logger.LogWarning("The Shoal series groups could not be updated after a sync ({Error})", ex.GetType().Name);
             }
         }
 
@@ -356,7 +405,17 @@ public sealed class TvSyncEngine
                 keys.UnionWith(TvPlanner.SeriesKeys(local.ProviderIds, local.Title, local.Year));
             }
 
-            foreach (var other in _state.Home.Peers.Where(p => p.Enabled && p.PeerKey != _peer.PeerKey && _d.IsUp(p.PeerKey) && CatalogSyncService.Outranks(p, _peer)))
+            return keys;
+        }
+
+        // K43: the series a higher-ranked server that can be reached shows now, by dedup key, with its episodes; such a series is grouped instead of hidden whole.
+        private Dictionary<string, TvOwnedSeries> PeerOwned(string? folder)
+        {
+            var owned = new Dictionary<string, TvOwnedSeries>(StringComparer.Ordinal);
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var others = _state.Home.Peers.Where(p => p.Enabled && p.PeerKey != _peer.PeerKey && _d.IsUp(p.PeerKey) && CatalogSyncService.Outranks(p, _peer)).ToList();
+            others.Sort(static (a, b) => CatalogSyncService.Outranks(a, b) ? -1 : CatalogSyncService.Outranks(b, a) ? 1 : 0);
+            foreach (var other in others)
             {
                 var load = _d.Store.Load(other.PeerKey);
                 if (load.Unreadable)
@@ -364,18 +423,26 @@ public sealed class TvSyncEngine
                     continue;
                 }
 
+                var episodes = load.Document.Entries.Where(static e => e.Kind == EntryKind.Episode && IsLive(e) && e.ParentKey is not null).ToLookup(static e => e.ParentKey!, StringComparer.Ordinal);
                 foreach (var entry in load.Document.Entries.Where(static e => e.Kind == EntryKind.Series && e.State == EntryState.Active))
                 {
-                    keys.UnionWith(TvPlanner.SeriesKeys(MetadataSanitizer.CanonicalProviderIds(entry.ProviderIds), entry.Title, entry.Year));
+                    var mapping = other.Libraries.FirstOrDefault(m => m.MappingKey == entry.MappingKey);
+                    var otherFolder = mapping is null ? null : LibraryFolders.FolderOf(_state, other.PeerKey, mapping);
+                    var same = folder is not null && otherFolder is not null && string.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(otherFolder).TrimEnd(Path.DirectorySeparatorChar), comparison);
+                    var series = new TvOwnedSeries(other.PeerKey, entry.StubKey, same, [.. episodes[entry.StubKey].Where(static e => e.Season is not null && e.Episode is not null).Select(static e => new TvOwnedEpisode(e.Season!.Value, e.Episode!.Value, e.EpisodeEnd ?? e.Episode!.Value, e.StubKey))]);
+                    foreach (var key in TvPlanner.SeriesKeys(MetadataSanitizer.CanonicalProviderIds(entry.ProviderIds), entry.Title, entry.Year))
+                    {
+                        owned.TryAdd(key, series); // the higher-ranked server first (the peers are in rank order below)
+                    }
                 }
             }
 
-            return keys;
+            return owned;
         }
 
         private async Task MappingAsync(LibraryMapping mapping, IReadOnlyList<PeerView> views, CancellationToken ct)
         {
-            var folder = Visibility.VisibilityService.MappingPath(_state.StubRoot, _peer.PeerKey, mapping.Subfolder);
+            var folder = LibraryFolders.FolderOf(_state, _peer.PeerKey, mapping);
             if (folder is null)
             {
                 _alerts.Add(SyncAlert.WriteFailures);
@@ -405,7 +472,7 @@ public sealed class TvSyncEngine
 
             known.PeerLibraryId = id.Value.ToString("N");
             Directory.CreateDirectory(folder);
-            var target = new StubTarget(_state.StubRoot, folder, _endpoint);
+            var target = new StubTarget(_state.StubRoot, folder, _endpoint, LibraryFolders.NfoTags(_state, _peer.PeerKey, mapping)) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, mapping) };
 
             TvListings listings;
             try
@@ -479,7 +546,7 @@ public sealed class TvSyncEngine
             // ---- plan
             var existing = _doc.Entries.Where(e => e.MappingKey == mapping.MappingKey).ToList();
             var guards = new TvGuardSettings(_settings.MassDeletionMinCount, _settings.MassDeletionPercent, _settings.NewItemsMinCount, _settings.NewItemsPercent);
-            var plan = _e._planner.Plan(new TvPlanInput(mapping.MappingKey, existing, series, seasons, episodes, listings.Complete, !known.CompletedOnce, LocalKeys(), guards, _bypassRemovals, _bypassAdditions, _doc.TvHeldAdditions.ToHashSet(StringComparer.Ordinal), _doc.Entries.Count(e => e.MappingKey != mapping.MappingKey && IsPlayable(e)), ReleaseSeries));
+            var plan = _e._planner.Plan(new TvPlanInput(mapping.MappingKey, existing, series, seasons, episodes, listings.Complete, !known.CompletedOnce, LocalKeys(), guards, _bypassRemovals, _bypassAdditions, _doc.TvHeldAdditions.ToHashSet(StringComparer.Ordinal), _doc.Entries.Count(e => e.MappingKey != mapping.MappingKey && IsPlayable(e)), ReleaseSeries, PeerOwned(folder)));
             foreach (var name in plan.Alerts)
             {
                 if (Enum.TryParse<SyncAlert>(name, out var alert))
@@ -735,6 +802,7 @@ public sealed class TvSyncEngine
 
             // ---- additions
             await AddAsync(mapping, target, libraryFolder, plan, details, ct).ConfigureAwait(false);
+            ApplyHidden(mapping, plan, listedSeries);
 
             // ---- what is still without details waits for the next run
             var stillPending = new List<string>();
@@ -781,6 +849,12 @@ public sealed class TvSyncEngine
             lib.LastCount = _doc.Entries.Count(e => e.MappingKey == mapping.MappingKey && e.Kind == EntryKind.Episode && IsLive(e));
             _ = existing;
         }
+
+        // The peer tags plus the library tag of a shared library folder (K44); a legacy folder gets exactly the tags it always had.
+        // Warden 11 L3: a library not visible to everyone gets no genres or studios.
+        private static SanitizedSeries Facets(SanitizedSeries series, StubTarget target) => target.OmitFacets ? series with { Genres = [], Studios = [] } : series;
+
+        private IReadOnlyList<string> TagsOf(StubTarget target) => target.ExtraTags is { Count: > 0 } extra ? [.. _tags, .. extra] : _tags;
 
         private static Dictionary<string, string> Tags(params (string Key, string? Tag)[] tags) =>
             tags.Where(static t => t.Tag is not null).ToDictionary(static t => t.Key, static t => t.Tag!, StringComparer.Ordinal);
@@ -974,17 +1048,93 @@ public sealed class TvSyncEngine
             }
         }
 
+        // K43: the hidden sources of a series another server shows. The series entry links to that server's series stub (DuplicateOf); an episode overlapping
+        // one of that server's is kept as a record with no stub (DuplicateOf names that server's episode), so a play can fail over to it. Records are re-planned
+        // every run: a record the plan no longer wants goes (no file is touched), and a hidden-only series with no record left goes too.
+        private void ApplyHidden(LibraryMapping mapping, TvPlan plan, List<SanitizedSeries> listedSeries)
+        {
+            var owners = plan.PeerOwnedSeries ?? new Dictionary<string, string>(StringComparer.Ordinal);
+            var mine = _doc.Entries.Where(e => e.MappingKey == mapping.MappingKey).ToList();
+            var seriesById = mine.Where(static e => e.Kind == EntryKind.Series).GroupBy(static e => e.PeerItemId, StringComparer.Ordinal).ToDictionary(static g => g.Key, static g => g.First(), StringComparer.Ordinal);
+            foreach (var series in seriesById.Values)
+            {
+                var owner = owners.GetValueOrDefault(series.PeerItemId);
+                if (series.State == EntryState.DuplicateLocal && owner is not null && string.Equals(series.DuplicateOf, "local", StringComparison.Ordinal) && !plan.DuplicateLocalSeriesKeys.Contains(series.PeerItemId))
+                {
+                    series.State = EntryState.DuplicatePeer; // hidden whole by an older build because another server had it: now a group member
+                }
+
+                if (series.State is EntryState.Active or EntryState.HeldRemoval or EntryState.DuplicatePeer)
+                {
+                    series.DuplicateOf = owner;
+                }
+            }
+
+            var live = mine.Where(static e => e.Kind == EntryKind.Episode && IsLive(e)).Select(static e => e.PeerItemId).ToHashSet(StringComparer.Ordinal);
+            var existingHidden = mine.Where(static e => e.Kind == EntryKind.Episode && e.State == EntryState.DuplicatePeer).GroupBy(static e => e.PeerItemId, StringComparer.Ordinal).ToDictionary(static g => g.Key, static g => g.First(), StringComparer.Ordinal);
+            var wanted = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var hidden in plan.HiddenEpisodes ?? [])
+            {
+                var episode = hidden.Episode;
+                var seriesId = episode.PeerSeriesId.ToString("N");
+                var id = episode.PeerItemId.ToString("N");
+                if (!owners.TryGetValue(seriesId, out var ownerKey) || live.Contains(id))
+                {
+                    continue; // a stub of it is still there (its removal is held): one entry per peer item
+                }
+
+                if (!seriesById.TryGetValue(seriesId, out var series))
+                {
+                    if (listedSeries.FirstOrDefault(s => s.PeerItemId == episode.PeerSeriesId) is not { } listed)
+                    {
+                        continue;
+                    }
+
+                    series = SeriesRecord(mapping, listed, EntryState.DuplicatePeer, folder: null);
+                    series.DuplicateOf = ownerKey;
+                    _doc.Entries.Add(series);
+                    seriesById[seriesId] = series;
+                    Report.Duplicates++;
+                }
+
+                if (!existingHidden.TryGetValue(id, out var entry))
+                {
+                    entry = new CatalogEntry { Kind = EntryKind.Episode, StubKey = NewKey(), PeerItemId = id, MappingKey = mapping.MappingKey, State = EntryState.DuplicatePeer, FirstSeenUtc = _now };
+                    _doc.Entries.Add(entry);
+                    existingHidden[id] = entry;
+                }
+
+                wanted.Add(id);
+                entry.ParentKey = series.StubKey;
+                entry.PeerSeriesId = seriesId;
+                entry.Season = episode.Season;
+                entry.Episode = episode.Number;
+                entry.EpisodeEnd = episode.NumberEnd;
+                entry.DuplicateOf = hidden.DuplicateOf;
+                entry.PeerEtag = episode.Etag;
+                entry.StubRelPath = null;
+                entry.LastSeenUtc = _now;
+                FillEpisode(entry, episode);
+            }
+
+            _doc.Entries.RemoveAll(e => e.MappingKey == mapping.MappingKey && e.Kind == EntryKind.Episode && e.State == EntryState.DuplicatePeer && !wanted.Contains(e.PeerItemId));
+            var parents = _doc.Entries.Where(e => e.MappingKey == mapping.MappingKey && e.Kind is EntryKind.Episode or EntryKind.Season).Select(static e => e.ParentKey).ToHashSet(StringComparer.Ordinal);
+            _doc.Entries.RemoveAll(e => e.MappingKey == mapping.MappingKey && e.Kind == EntryKind.Series && e.State == EntryState.DuplicatePeer && !parents.Contains(e.StubKey));
+        }
+
         private void UpdateSeries(CatalogEntry entry, SanitizedSeries s, StubTarget target, string libraryFolder)
         {
             SetTags(entry, SeriesTags(s));
-            if (entry.FolderRel is not null && !string.Equals(entry.ContentHash, s.ContentHash, StringComparison.Ordinal))
+            if (entry.FolderRel is not null && (!string.Equals(entry.ContentHash, s.ContentHash, StringComparison.Ordinal) || entry.LabelVersion < FriendLabel.Version))
             {
-                var result = _e._writer.RewriteNfo(target, entry.FolderRel + "/tvshow.nfo", _e._nfo.Series(s, _tags), _quota);
+                var result = _e._writer.RewriteNfo(target, entry.FolderRel + "/tvshow.nfo", _e._nfo.Series(Facets(s, target), TagsOf(target)), _quota);
                 if (result.Outcome != StubWriteOutcome.Written)
                 {
                     _alerts.Add(SyncAlert.WriteFailures);
                     return;
                 }
+
+                entry.LabelVersion = FriendLabel.Version;
 
                 if (result.Changed)
                 {
@@ -1005,15 +1155,17 @@ public sealed class TvSyncEngine
         private void UpdateEpisode(CatalogEntry entry, SanitizedEpisode ep, StubTarget target, string libraryFolder)
         {
             SetTags(entry, EpisodeTags(ep));
-            if (entry.StubRelPath is not null && !string.Equals(entry.ContentHash, ep.ContentHash, StringComparison.Ordinal))
+            if (entry.StubRelPath is not null && (!string.Equals(entry.ContentHash, ep.ContentHash, StringComparison.Ordinal) || entry.LabelVersion < FriendLabel.Version))
             {
                 var nfoPath = entry.StubRelPath[..^".strm".Length] + ".nfo";
-                var result = _e._writer.RewriteNfo(target, nfoPath, _e._nfo.Episode(ep, _tags), _quota);
+                var result = _e._writer.RewriteNfo(target, nfoPath, _e._nfo.Episode(ep, TagsOf(target)), _quota);
                 if (result.Outcome != StubWriteOutcome.Written)
                 {
                     _alerts.Add(SyncAlert.WriteFailures);
                     return;
                 }
+
+                entry.LabelVersion = FriendLabel.Version;
 
                 if (result.Changed)
                 {
@@ -1116,7 +1268,7 @@ public sealed class TvSyncEngine
                     var seasonFolder = seasonEntry.FolderRel![(seriesEntry.FolderRel!.Length + 1)..];
                     var stubKey = NewKey();
                     var stem = _e._layout.EpisodeStem(detailed.Season, detailed.Number, detailed.NumberEnd);
-                    var result = _e._writer.WriteEpisode(target, seriesEntry.FolderRel, seasonFolder, stem, _e._nfo.Episode(detailed, _tags), stubKey, _quota);
+                    var result = _e._writer.WriteEpisode(target, seriesEntry.FolderRel, seasonFolder, stem, _e._nfo.Episode(detailed, TagsOf(target)), stubKey, _quota);
                     if (result.Outcome == StubWriteOutcome.QuotaFull)
                     {
                         _alerts.Add(SyncAlert.QuotaReached);
@@ -1143,6 +1295,7 @@ public sealed class TvSyncEngine
                         EpisodeEnd = detailed.NumberEnd,
                         StubRelPath = result.RelPath,
                         PeerEtag = episode.Etag,
+                        LabelVersion = FriendLabel.Version,
                         FirstSeenUtc = _now,
                         LastSeenUtc = _now,
                     };
@@ -1170,7 +1323,7 @@ public sealed class TvSyncEngine
                 var stubKey = promoted?.StubKey ?? NewKey();
                 var scratch = new HashSet<string>(taken, StringComparer.Ordinal);
                 var folderName = _e._layout.SeriesFolder(detailed, stubKey, scratch);
-                var result = _e._writer.WriteSeries(target, folderName, _e._nfo.Series(detailed, _tags), _quota);
+                var result = _e._writer.WriteSeries(target, folderName, _e._nfo.Series(Facets(detailed, target), TagsOf(target)), _quota);
                 if (result.Outcome == StubWriteOutcome.Exists)
                 {
                     taken.Add(PathSanitizer.CollisionKey(folderName)); // something unknown is on disk under that name: another name
@@ -1201,6 +1354,7 @@ public sealed class TvSyncEngine
                 entry.ProviderIds = ProviderMap(detailed.ProviderIds);
                 entry.PeerEtag = detailed.Etag;
                 entry.ContentHash = detailed.ContentHash.Length == 0 ? null : detailed.ContentHash;
+                entry.LabelVersion = FriendLabel.Version;
                 SetTags(entry, SeriesTags(detailed));
                 if (promoted is null)
                 {
@@ -1224,7 +1378,7 @@ public sealed class TvSyncEngine
 
             var line = lines.GetValueOrDefault((episode.PeerSeriesId, episode.Season)) ?? new SanitizedSeason { PeerSeriesId = episode.PeerSeriesId, Number = episode.Season, PeerItemId = TvPlanner.DerivedSeasonId(episode.PeerSeriesId, episode.Season) };
             var folderName = _e._layout.SeasonFolder(episode.Season);
-            var result = _e._writer.WriteSeason(target, series.FolderRel!, folderName, _e._nfo.Season(line, _tags), _quota);
+            var result = _e._writer.WriteSeason(target, series.FolderRel!, folderName, _e._nfo.Season(line, TagsOf(target)), _quota);
             if (result.Outcome == StubWriteOutcome.QuotaFull)
             {
                 _alerts.Add(SyncAlert.QuotaReached);

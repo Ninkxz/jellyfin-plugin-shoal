@@ -62,7 +62,8 @@ public sealed class UserCreationWatch : IDisposable
     {
         Prune();
         _created[userId] = new Entry(_time.GetUtcNow());
-        _ = ReconcileLaterAsync(_firstDelay);
+        _ = Task.Run(() => ReconcileLaterAsync(TimeSpan.Zero)); // Warden 10 M4: at once, so a new account does not list Main-placement titles for the first delay
+        _ = ReconcileLaterAsync(_firstDelay); // and again once the dashboard has written the new account's policy
     }
 
     /// <summary>

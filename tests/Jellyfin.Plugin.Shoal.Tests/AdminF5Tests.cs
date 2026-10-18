@@ -56,6 +56,22 @@ public sealed class AdminF5Tests
         ];
     }
 
+    private sealed class AbsentMoonbase : IMoonbaseClient
+    {
+        public System.Threading.Tasks.Task<(MoonbaseOutcome Outcome, System.Collections.Generic.IReadOnlyList<MoonbaseMessage> Items)> ListAsync(string callerToken, System.Threading.CancellationToken cancellationToken) =>
+            System.Threading.Tasks.Task.FromResult<(MoonbaseOutcome, System.Collections.Generic.IReadOnlyList<MoonbaseMessage>)>((MoonbaseOutcome.NotInstalled, []));
+
+        public System.Threading.Tasks.Task<(MoonbaseOutcome Outcome, Guid? Id)> PostAsync(string callerToken, MoonbasePost message, System.Threading.CancellationToken cancellationToken) =>
+            System.Threading.Tasks.Task.FromResult<(MoonbaseOutcome, Guid?)>((MoonbaseOutcome.NotInstalled, null));
+    }
+
+    private sealed class NoRanking : Jellyfin.Plugin.Shoal.Diagnostics.IConnectionRanking
+    {
+        public System.Collections.Generic.IReadOnlyList<string> Order() => [];
+
+        public double? Throughput(string peerKey) => null;
+    }
+
     private sealed class HomeName : IHomeNameSource
     {
         public string? Name => "Rich's Jellyfin";
@@ -253,6 +269,65 @@ public sealed class AdminF5Tests
         Record("DELETE", "Shoal/Admin/Peers/{handle}", await peerSettings.Remove(StateSamples.PeerKeyA, true, default));
         Send(peerSettings, """{"confirmName":"Hops"}""");
         Record("DELETE", "Shoal/Admin/Peers/{handle}", await peerSettings.Remove(pairedKey, false, default));
+
+        // Library layouts (K44/K45): words, library keys and local account ids in the library list only.
+        var layoutLock = new Jellyfin.Plugin.Shoal.Visibility.LayoutLock();
+        var layoutService = new Jellyfin.Plugin.Shoal.Visibility.LibraryLayoutService(rig.State, fakeLibraries, fakeAccounts, visibility, layoutLock, rig.Time, NullLogger<Jellyfin.Plugin.Shoal.Visibility.LibraryLayoutService>.Instance);
+        var layoutJobs = new Jellyfin.Plugin.Shoal.Visibility.LayoutJobService(rig.State, catalogs, layoutService, fakeAccounts, new FakeRefresh(), rig.Paths, rig.Time, NullLogger.Instance);
+        var layouts = new AdminLayoutsController(rig.State, layoutService, accessService, layoutJobs, new Jellyfin.Plugin.Shoal.Visibility.LayoutPresetService(rig.State, fakeAccounts, layoutJobs)) { ControllerContext = context };
+        Send(layouts, """{"name":"Friends' movies","type":"movies","placement":"Shoal"}""");
+        Record("POST", "Shoal/Admin/Layouts/Libraries", await layouts.CreateLibrary(default));
+        var layoutKey = rig.State.Current.Home.Libraries.FirstOrDefault(l => !l.IsLegacy)?.LibKey ?? "0000000000000000";
+        Record("GET", "Shoal/Admin/Layouts/Libraries", layouts.GetLibraries());
+        Send(layouts, "{\"order\":[]}");
+        Record("PUT", "Shoal/Admin/Layouts/Libraries", await layouts.SetOrder(default));
+        Send(layouts, """{"name":"Pals"}""");
+        Record("PUT", "Shoal/Admin/Layouts/Libraries/{libKey}", await layouts.UpdateLibrary(layoutKey, default));
+        Send(layouts, """{"preset":"AllMixed"}""");
+        Record("POST", "Shoal/Admin/Layouts/Preview", await layouts.Preview(default));
+        Send(layouts, """{"preset":"Custom"}""");
+        Record("POST", "Shoal/Admin/Layouts/Apply", await layouts.Apply(default));
+        Send(layouts, "{\"type\":\"movies\",\"libKey\":\"" + layoutKey + "\"}");
+        Record("PUT", "Shoal/Admin/Connections/{peerKey}/Library", await layouts.MoveConnection(StateSamples.PeerKeyA, default));
+        await layoutJobs.Running;
+        Record("GET", "Shoal/Admin/Layouts/Job", layouts.GetJob());
+        Record("POST", "Shoal/Admin/Layouts/Job/Resume", layouts.ResumeJob());
+        Record("POST", "Shoal/Admin/Layouts/Job/Abandon", layouts.AbandonJob());
+        Send(layouts, """{"hidden":true}""");
+        Record("PUT", "Shoal/Admin/Users/{id}/FriendTitles", await layouts.SetFriendTitles(alex.Id, default));
+        Record("DELETE", "Shoal/Admin/Layouts/Libraries/{libKey}", await layouts.DeleteLibrary(layoutKey, default));
+
+        // Quality limits and the play order (K51-K53): classes, numbers, words and local ids only.
+        var qualityGrants = new Jellyfin.Plugin.Shoal.Playback.GrantStore(rig.Time, new Jellyfin.Plugin.Shoal.Playback.NoSlots());
+        var qualityService = new QualityAdmin(rig.State, catalogs, k => speedHistory.Read(k), new NoRanking(), rig.Time, null, qualityGrants, new Jellyfin.Plugin.Shoal.Playback.NoSlots());
+        var quality = new AdminQualityController(rig.State, qualityService, NullLogger<AdminQualityController>.Instance) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Peers/{peerKey}/Quality", quality.Panel(StateSamples.PeerKeyA));
+        Record("GET", "Shoal/Admin/Peers/{peerKey}/Quality", quality.Panel("nope"));
+        Send(quality, """{"maxClass":"1080","maxMbps":20,"expectedCurrent":{"maxClass":"Off"}}""");
+        Record("PUT", "Shoal/Admin/Peers/{peerKey}/QualityLimit", await quality.SetLimit(StateSamples.PeerKeyA, default));
+        Send(quality, """{"maxClass":"720","expectedCurrent":{"maxClass":"Off"}}""");
+        Record("PUT", "Shoal/Admin/Peers/{peerKey}/QualityLimit", await quality.SetLimit(StateSamples.PeerKeyA, default));
+        Send(quality, """{"suggestedClass":"720"}""");
+        Record("POST", "Shoal/Admin/Peers/{peerKey}/Recommendations/Dismiss", await quality.Dismiss(StateSamples.PeerKeyA, default));
+        Send(quality, """{"tier":"Backup","expectedCurrent":"Normal"}""");
+        Record("PUT", "Shoal/Admin/Peers/{peerKey}/Priority", await quality.SetPriority(StateSamples.PeerKeyA, default));
+        Send(quality, """{"tier":"Normal","expectedCurrent":"Normal"}""");
+        Record("PUT", "Shoal/Admin/Peers/{peerKey}/PriorityTier", await quality.SetPriority(StateSamples.PeerKeyA, default));
+        Record("GET", "Shoal/Admin/PlayOrder", quality.PlayOrder());
+        Record("GET", "Shoal/Admin/PlayingNow", quality.PlayingNow());
+
+        // Default layout picker and the inbox explainer (K49): words, library keys, counts.
+        Send(layouts, """{"preset":"AllMixed"}""");
+        Record("PUT", "Shoal/Admin/Layouts/Default", await layouts.SetDefault(default));
+        var inbox = new AdminInboxController(rig.State, new InboxExplainerService(rig.State, fakeAccounts, new AbsentMoonbase(), rig.Time), NullLogger<AdminInboxController>.Instance) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Inbox/Explainer", await inbox.Get(default));
+        Record("POST", "Shoal/Admin/Inbox/Explainer", await inbox.Post(default));
+
+        // The duplicate-to-group migration (K55): counts only.
+        var migrationGroups = new Jellyfin.Plugin.Shoal.Sync.GroupBook(new MemoryGroupStore(), NullLogger.Instance);
+        var groupsAdmin = new AdminGroupsController(rig.State, new Jellyfin.Plugin.Shoal.Sync.GroupMigration(rig.State, catalogs, migrationGroups)) { ControllerContext = context };
+        Record("GET", "Shoal/Admin/Groups/Migration", groupsAdmin.Preview());
+        Record("POST", "Shoal/Admin/Groups/Migration", await groupsAdmin.Run(default));
 
         // Every admin route of the assembly has a step above (a new route fails here until it has one).
         var all = AdminRouteTests.AllRoutes()

@@ -312,7 +312,7 @@ public sealed class PathAndNfoTests
         Assert.Equal("Matrix", (string?)movie.Element("sorttitle"));
         Assert.Equal("1999", (string?)movie.Element("year"));
         Assert.Equal("1999-03-30", (string?)movie.Element("premiered"));
-        Assert.Equal("A hacker learns the truth.\n\nSecond paragraph.", (string?)movie.Element("plot"));
+        Assert.Equal(FriendLabel.Text + "\n\nA hacker learns the truth.\n\nSecond paragraph.", (string?)movie.Element("plot"));
         Assert.Equal("Welcome to the Real World.", (string?)movie.Element("tagline"));
         Assert.Equal("R", (string?)movie.Element("mpaa"));
         Assert.Equal("8.2", (string?)movie.Element("rating"));
@@ -360,7 +360,7 @@ public sealed class PathAndNfoTests
 
         var movie = XDocument.Parse(Encoding.UTF8.GetString(NfoWriter.Write(sparse, string.Empty))).Root!;
 
-        Assert.Equal(["title", "uniqueid", "tag"], movie.Elements().Select(static e => e.Name.LocalName));
+        Assert.Equal(["title", "plot", "uniqueid", "tag"], movie.Elements().Select(static e => e.Name.LocalName));
         Assert.Equal("true", (string?)movie.Element("uniqueid")!.Attribute("default"));
         Assert.Equal("tvdb", (string?)movie.Element("uniqueid")!.Attribute("type"));
         Assert.Equal(["Shoal"], movie.Elements("tag").Select(static e => e.Value));

@@ -18,7 +18,7 @@ public sealed record SummaryRow(string Cls, string Verdict);
 /// <summary>
 /// Turns measured throughput into verdicts (DESIGN 7.2). Pure: no clock, no I/O.
 /// </summary>
-public static class VerdictEngine
+public static partial class VerdictEngine
 {
     /// <summary>Headroom over a class's reference bitrate (VBR peaks and short-burst variance).</summary>
     public const double Headroom = 1.5;

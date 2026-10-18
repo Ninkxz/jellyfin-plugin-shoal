@@ -224,7 +224,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
         {
             share.ShareUserId = await _users.CreateAsync(share.ShareUserName, password, CancellationToken.None).ConfigureAwait(false);
             await _state.UpdateAsync(s => s.PeerRole.Shares.Add(share), CancellationToken.None).ConfigureAwait(false);
-            await _users.ApplyPolicyAsync(share.ShareUserId, PolicyOf(share), CancellationToken.None).ConfigureAwait(false);
+            await _users.ApplyPolicyAsync(share.ShareUserId, PolicyOf(share, _state.Current), CancellationToken.None).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Whatever failed, the half-made share is rolled back.
         catch (Exception ex)
@@ -283,7 +283,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
         await _state.UpdateAsync(s => s.PeerRole.Shares.First(x => x.ShareId == shareId).Enabled = enabled, cancellationToken).ConfigureAwait(false);
         if (_users.Exists(share.ShareUserId))
         {
-            await _users.ApplyPolicyAsync(share.ShareUserId, PolicyOf(Find(shareId) ?? share), cancellationToken).ConfigureAwait(false);
+            await _users.ApplyPolicyAsync(share.ShareUserId, PolicyOf(Find(shareId) ?? share, _state.Current), cancellationToken).ConfigureAwait(false);
         }
 
         return ShareOutcome.Ok;
@@ -319,7 +319,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
             // Disable first (no new tokens), sign out every device, check none is left (once more if so), then delete (DESIGN 4.5).
             try
             {
-                await _users.ApplyPolicyAsync(share.ShareUserId, PolicyOf(share) with { Disabled = true }, cancellationToken).ConfigureAwait(false);
+                await _users.ApplyPolicyAsync(share.ShareUserId, PolicyOf(share, _state.Current) with { Disabled = true }, cancellationToken).ConfigureAwait(false);
                 disabled = true;
             }
             catch (InvalidOperationException)
@@ -459,6 +459,20 @@ public sealed class ShareService : IShareService, IShareLiveSource
         }
     }
 
+    /// <summary>
+    /// Brings every sharing account's policy in line now (Warden 10 L5): run right after the library tags change (a library created, removed or moved), so a new
+    /// library's tag reaches the friends' accounts at once instead of at the next 60-second sweep.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when every share was checked.</returns>
+    public async Task RepairPoliciesAsync(CancellationToken cancellationToken)
+    {
+        foreach (var share in Shares().ToList())
+        {
+            await RepairAsync(share, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>Whether a Jellyfin user is one of the sharing accounts.</summary>
     /// <param name="userId">The user.</param>
     /// <returns>True for a sharing account.</returns>
@@ -466,8 +480,19 @@ public sealed class ShareService : IShareService, IShareLiveSource
 
     /// <summary>The policy a share's account must have.</summary>
     /// <param name="share">The share.</param>
+    /// <param name="state">The state (the library tags to block), or null for the hide-all tag alone.</param>
     /// <returns>The wanted policy.</returns>
-    internal static SharePolicy PolicyOf(ShareState share) => new(!share.Enabled, share.LibraryIds, share.MaxBitrateMbps is { } mbps ? checked(mbps * 1_000_000) : null, share.ExpectedDeviceIds);
+    internal static SharePolicy PolicyOf(ShareState share, ShoalState? state = null) =>
+        new(!share.Enabled, share.LibraryIds, share.MaxBitrateMbps is { } mbps ? checked(mbps * 1_000_000) : null, share.ExpectedDeviceIds, ShareBlockedTags(state));
+
+    /// <summary>
+    /// The tags a sharing account never sees (K45, the ShareService rule): <c>Shoal</c>, which every stub carries, and the tag of every Shoal library, so the titles
+    /// Home added into a main library stay hidden even from a share of that main library. Friends never chain.
+    /// </summary>
+    /// <param name="state">The state, or null.</param>
+    /// <returns>The tags.</returns>
+    internal static IReadOnlyList<string> ShareBlockedTags(ShoalState? state) =>
+        [LibraryFolders.HideAllTag, .. (state?.Home.Libraries ?? []).Where(static l => !l.IsLegacy).Select(static l => LibraryFolders.LibTag(l.LibKey)).Order(StringComparer.Ordinal)];
 
     private static string Slug(string name)
     {
@@ -496,7 +521,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
         // A library that comes from a friend is listed but cannot be picked, and the page says why (DESIGN v2.6.2; POST Shares still refuses it).
         return
         [
-            .. all.Where(l => !UnderStubRoot(state.StubRoot, l) || shoalIds.Contains(l.Id)).Select(l =>
+            .. all.Where(l => !UnderStubRoot(state, l) || shoalIds.Contains(l.Id)).Select(l =>
             {
                 var federated = shoalIds.Contains(l.Id);
                 return (object)new { id = l.Id, name = l.Name, type = l.CollectionType.Length > 0 ? l.CollectionType : "movies", selectable = !federated, shareable = !federated, reason = federated ? "federated" : null };
@@ -509,12 +534,15 @@ public sealed class ShareService : IShareService, IShareLiveSource
         var state = _state.Current;
         var all = _libraries.List();
         var shoalIds = VisibilityService.ShoalLibraries(state, all).Select(static l => l.Id).ToHashSet();
-        return ids.Distinct().All(id => all.FirstOrDefault(l => l.Id == id) is { } l && !shoalIds.Contains(id) && !UnderStubRoot(state.StubRoot, l));
+        return ids.Distinct().All(id => all.FirstOrDefault(l => l.Id == id) is { } l && !shoalIds.Contains(id) && !UnderStubRoot(state, l));
     }
 
-    // A library under, or containing, the StubRoot would let a friend share what Shoal made from another friend (W§A-20.1).
-    private static bool UnderStubRoot(string stubRoot, LibraryInfo library)
+    // A library under, or containing, the StubRoot would let a friend share what Shoal made from another friend (W§A-20.1). One exception (K45): a main library
+    // that holds the recorded folder of a Shoal library with placement Main stays shareable; that folder is not counted. The friend still never sees those titles:
+    // the sharing account blocks the Shoal tag and every library tag (ShareBlockedTags), and CallerContext never admits a sharing account.
+    private static bool UnderStubRoot(ShoalState state, LibraryInfo library)
     {
+        var stubRoot = state.StubRoot;
         if (string.IsNullOrWhiteSpace(stubRoot))
         {
             return false;
@@ -526,11 +554,19 @@ public sealed class ShareService : IShareService, IShareLiveSource
             var root = Canonical(stubRoot);
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             var sep = System.IO.Path.DirectorySeparatorChar;
-            return library.Locations.Any(l =>
+            var mainFolders = state.Home.Libraries
+                .Where(static l => !l.IsLegacy && l.Placement == LibraryPlacement.Main)
+                .Select(l => LibraryFolders.PathOf(stubRoot, l))
+                .OfType<string>()
+                .Select(Canonical)
+                .ToList();
+            var others = library.Locations.Select(Canonical).Where(path => !mainFolders.Any(m => string.Equals(m, path, comparison))).ToList();
+            if (others.Count == 0 && library.Locations.Count > 0)
             {
-                var path = Canonical(l);
-                return string.Equals(path, root, comparison) || path.StartsWith(root + sep, comparison) || root.StartsWith(path + sep, comparison);
-            });
+                return true; // nothing but Shoal folders: never a library of the admin's own
+            }
+
+            return others.Any(path => string.Equals(path, root, comparison) || path.StartsWith(root + sep, comparison) || root.StartsWith(path + sep, comparison));
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -591,7 +627,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
         // A library that has since come to lie under the StubRoot (a moved folder, a new link) is taken off the share.
         var state = _state.Current;
         var all = _libraries.List();
-        var banned = share.LibraryIds.Where(id => all.FirstOrDefault(l => l.Id == id) is { } l && UnderStubRoot(state.StubRoot, l)).ToList();
+        var banned = share.LibraryIds.Where(id => all.FirstOrDefault(l => l.Id == id) is { } l && UnderStubRoot(state, l)).ToList();
         if (banned.Count > 0)
         {
             await _state.UpdateAsync(s => s.PeerRole.Shares.First(x => x.ShareId == share.ShareId).LibraryIds = [.. s.PeerRole.Shares.First(x => x.ShareId == share.ShareId).LibraryIds.Except(banned)], cancellationToken).ConfigureAwait(false);
@@ -599,7 +635,7 @@ public sealed class ShareService : IShareService, IShareLiveSource
             _logger.LogWarning("A library under the stub root was taken off a share");
         }
 
-        var wanted = PolicyOf(share);
+        var wanted = PolicyOf(share, _state.Current);
         if (!_users.PolicyMatches(share.ShareUserId, wanted))
         {
             await _users.ApplyPolicyAsync(share.ShareUserId, wanted, cancellationToken).ConfigureAwait(false);

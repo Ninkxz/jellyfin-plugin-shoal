@@ -23,3 +23,15 @@ public interface ISyncActivity
     /// <returns>A task that completes when no sync of the server runs any more, or the wait is over.</returns>
     Task StopAsync(string peerKey, TimeSpan wait) => Task.CompletedTask;
 }
+
+/// <summary>
+/// Keeps every sync out while a layout move runs (PLAN v2.9 K44): a move rewrites the folders and catalogs a sync works on.
+/// </summary>
+public interface ISyncHold
+{
+    /// <summary>
+    /// Takes the global sync lock without waiting. While it is held, a sync that starts answers "busy" and is tried again by the scheduler.
+    /// </summary>
+    /// <returns>A handle that releases the lock, or null when a sync is running now.</returns>
+    IDisposable? TryHold();
+}

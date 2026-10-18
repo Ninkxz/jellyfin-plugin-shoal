@@ -83,6 +83,16 @@ public interface ILibraryRefresh
     /// Queues one library scan so the new stubs of a first sync show up without a manual scan.
     /// </summary>
     void QueueScan();
+
+    /// <summary>
+    /// Scans the libraries that hold these folders now (Pilot 14 LAY-SCAN, Pilot 15 R2-MOVE: a library Shoal just created, one a layout move filled or emptied,
+    /// is not reached by a change report alone). The libraries are found by folder, not by a stored id (a library just created or renamed has no id until its
+    /// top folder is validated). Never every library, unless no library holds any of the folders.
+    /// </summary>
+    /// <param name="folders">The library folders that changed.</param>
+    void ScanLibrariesAt(IReadOnlyCollection<string> folders)
+    {
+    }
 }
 
 /// <summary>

@@ -77,6 +77,59 @@ public interface ILibrarySource
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>A task that completes when the library is gone.</returns>
     Task RemoveAsync(string name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds a folder to an existing library (placement Main, K44). Nothing else about the library changes.
+    /// </summary>
+    /// <param name="libraryName">The library's name.</param>
+    /// <param name="path">The folder.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when the path is added.</returns>
+    Task AddPathAsync(string libraryName, string path, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    /// <summary>
+    /// Removes a folder from a library (placement Main, K44). The library and its other folders stay.
+    /// </summary>
+    /// <param name="libraryName">The library's name.</param>
+    /// <param name="path">The folder.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when the path is removed.</returns>
+    Task RemovePathAsync(string libraryName, string path, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    /// <summary>
+    /// Deletes from Jellyfin's database the items of a library whose path is below <paramref name="path"/> (files untouched), so a folder taken out of a main library
+    /// leaves no orphans. Items elsewhere in the library are not touched.
+    /// </summary>
+    /// <param name="libraryId">The library's folder item id.</param>
+    /// <param name="path">The folder.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when the items are gone.</returns>
+    Task PurgeItemsBelowAsync(Guid libraryId, string path, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Renames a library. Its folder item id may change; callers find a Shoal library again by its path.
+    /// </summary>
+    /// <param name="name">The current name.</param>
+    /// <param name="newName">The new name.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when the library has the new name.</returns>
+    Task RenameAsync(string name, string newName, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    /// <summary>
+    /// Puts the locked options of a library Shoal owns back (Pilot 14 LBL3): no metadata saver (NFO), no local metadata saving, no internet metadata or image
+    /// fetchers, no realtime monitor. Everything else the admin set stays.
+    /// </summary>
+    /// <param name="name">The library name.</param>
+    /// <returns>True when something had to be put back.</returns>
+    bool LockOptions(string name) => false;
+
+    /// <summary>
+    /// Makes Jellyfin define the folder id of every library (Pilot 15: a library just created or renamed has no id until the top folders are validated, so it is
+    /// not listed and cannot be scanned). Only the top folders: no library is scanned.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task.</returns>
+    Task RefreshAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 /// <summary>
@@ -100,6 +153,36 @@ public interface IAccountSource
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>A task that completes when the policy is saved.</returns>
     Task SetFoldersAsync(Guid userId, bool enableAllFolders, IReadOnlyList<Guid> enabledFolders, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sets the <c>BlockedTags</c> of one account (K45). It writes that list and nothing else.
+    /// </summary>
+    /// <param name="userId">The account.</param>
+    /// <param name="blockedTags">The whole list.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>A task that completes when the policy is saved.</returns>
+    Task SetBlockedTagsAsync(Guid userId, IReadOnlyList<string> blockedTags, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    /// <summary>
+    /// Takes some tags off one account's <c>BlockedTags</c> and adds others, from the list as it is at the moment of the write (Warden 10 M4: a tag another
+    /// writer set in between is kept), then reads the list back.
+    /// </summary>
+    /// <param name="userId">The account.</param>
+    /// <param name="remove">The tags to take away.</param>
+    /// <param name="add">The tags to add.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The list as read back after the write (the caller checks it held).</returns>
+    async Task<IReadOnlyList<string>> ChangeBlockedTagsAsync(Guid userId, IReadOnlyCollection<string> remove, IReadOnlyCollection<string> add, CancellationToken cancellationToken)
+    {
+        var current = List().FirstOrDefault(a => a.Id == userId)?.BlockedTags ?? throw new InvalidOperationException("The account no longer exists.");
+        var next = PolicyGate.Next(current, remove, add);
+        if (!next.SequenceEqual(current, StringComparer.Ordinal))
+        {
+            await SetBlockedTagsAsync(userId, next, cancellationToken).ConfigureAwait(false);
+        }
+
+        return List().FirstOrDefault(a => a.Id == userId)?.BlockedTags ?? [];
+    }
 }
 
 /// <summary>
@@ -109,7 +192,9 @@ public interface IAccountSource
 /// <param name="Name">The library name.</param>
 /// <param name="Locations">The library's paths.</param>
 /// <param name="CollectionType">The library's collection type in lower case (<c>movies</c>, <c>tvshows</c>, ...), or empty when core does not say.</param>
-public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Locations, string CollectionType = "");
+/// <param name="SavesNfo">Whether the library's NFO metadata saver is on (Pilot 14: a main library holding Shoal stubs must have it off).</param>
+/// <param name="FetchesMetadata">Whether the library fetches internet metadata (Warden 13 L6: in a main library it can rewrite friends' titles).</param>
+public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Locations, string CollectionType = "", bool SavesNfo = false, bool FetchesMetadata = false);
 
 /// <summary>
 /// A Jellyfin account, as the visibility rules see it.
@@ -121,6 +206,7 @@ public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Loc
 /// <param name="IsRestricted">Whether the account has a parental limit, blocks unrated items, allows only some tags or has an access schedule.</param>
 /// <param name="EnableAllFolders">Whether the account has "all libraries".</param>
 /// <param name="EnabledFolders">The explicit library list (meaningful when <paramref name="EnableAllFolders"/> is false).</param>
+/// <param name="BlockedTags">The account's <c>BlockedTags</c>, or null when the source does not say (K45).</param>
 public sealed record AccountInfo(
     Guid Id,
     string Name,
@@ -128,8 +214,16 @@ public sealed record AccountInfo(
     bool IsAdministrator,
     bool IsRestricted,
     bool EnableAllFolders,
-    IReadOnlyList<Guid> EnabledFolders)
+    IReadOnlyList<Guid> EnabledFolders,
+    IReadOnlyList<string>? BlockedTags = null)
 {
+    /// <summary>
+    /// Whether the account can open a Jellyfin library in core: "all libraries", or the library is on its list.
+    /// </summary>
+    /// <param name="libraryId">The library's folder id.</param>
+    /// <returns>True when it can.</returns>
+    public bool CanOpen(Guid libraryId) => EnableAllFolders || EnabledFolders.Contains(libraryId);
+
     /// <summary>
     /// Describes the account for the access rule <see cref="AccessPolicy.Admitted"/>.
     /// </summary>

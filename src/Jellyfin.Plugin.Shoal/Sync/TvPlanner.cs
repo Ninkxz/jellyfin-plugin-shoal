@@ -81,9 +81,26 @@ public sealed class TvPlanner : ITvPlanner
 
         var duplicateLocal = listedSeries.Where(s => SeriesKeys(s.ProviderIds, s.Title, s.Year).Any(input.LocalSeriesKeys.Contains)).Select(static s => s.PeerItemId).ToHashSet();
 
+        // ---- K43: a series another server already shows: its episodes that overlap that server's are hidden sources; the others join the series (same library
+        // folder, merged by the library's series grouping) or, in another folder, stay hidden too
+        var ownedBySeries = new Dictionary<Guid, TvOwnedSeries>();
+        foreach (var s in listedSeries.Where(s => !duplicateLocal.Contains(s.PeerItemId)))
+        {
+            foreach (var key in SeriesKeys(s.ProviderIds, s.Title, s.Year))
+            {
+                if (input.PeerOwned?.GetValueOrDefault(key) is { } owned)
+                {
+                    ownedBySeries[s.PeerItemId] = owned;
+                    break;
+                }
+            }
+        }
+
+        var hidden = new List<TvHiddenEpisode>();
+
         // ---- episodes: orphans, overlaps, caps
         var existingSeries = input.Existing.Where(static e => e.Kind == EntryKind.Series).ToList();
-        var existingEpisodes = input.Existing.Where(static e => e.Kind == EntryKind.Episode).ToList();
+        var existingEpisodes = input.Existing.Where(static e => e.Kind == EntryKind.Episode && e.State != EntryState.DuplicatePeer).ToList(); // K43: hidden sources have no stub and are re-planned each run
         var listedSeriesIds = listedSeries.Select(static s => s.PeerItemId).ToHashSet();
         var accepted = new List<SanitizedEpisode>();
         var seasonsPerPeer = 0;
@@ -96,9 +113,32 @@ public sealed class TvPlanner : ITvPlanner
 
             var resolved = _layout.Resolve([.. group.DistinctBy(static e => e.PeerItemId)]);
             duplicatePeer += resolved.DuplicatePeer;
+            var visibleEpisodes = resolved.Accepted;
+            if (ownedBySeries.TryGetValue(group.Key, out var ownedSeries))
+            {
+                var visible = new List<SanitizedEpisode>();
+                foreach (var episode in resolved.Accepted)
+                {
+                    var over = ownedSeries.Overlap(episode.Season, episode.Number, episode.NumberEnd);
+                    if (over is not null || !ownedSeries.SameFolder)
+                    {
+                        if (hidden.Count < CatalogDocument.MaxEntries)
+                        {
+                            hidden.Add(new TvHiddenEpisode(episode, over?.StubKey));
+                        }
+                    }
+                    else
+                    {
+                        visible.Add(episode);
+                    }
+                }
+
+                visibleEpisodes = visible;
+            }
+
             var seasons = 0;
             var inSeries = 0;
-            foreach (var season in resolved.Accepted.GroupBy(static e => e.Season).OrderBy(static g => g.Key))
+            foreach (var season in visibleEpisodes.GroupBy(static e => e.Season).OrderBy(static g => g.Key))
             {
                 if (seasons >= TvLimits.MaxSeasonsPerSeries || seasonsPerPeer >= TvLimits.MaxSeasonsPerPeer)
                 {
@@ -237,7 +277,7 @@ public sealed class TvPlanner : ITvPlanner
                         goneEpisodes.Add(known);
                         newEpisodes.Add(episode);
                     }
-                    else if (known.PeerEtag != episode.Etag || known.ContentHash is null || known.State == EntryState.HeldRemoval)
+                    else if (known.PeerEtag != episode.Etag || known.ContentHash is null || known.State == EntryState.HeldRemoval || known.LabelVersion < FriendLabel.Version)
                     {
                         updateKeys.Add(known.StubKey);
                     }
@@ -255,7 +295,7 @@ public sealed class TvPlanner : ITvPlanner
         foreach (var series in listedSeries)
         {
             if (existingSeriesById.GetValueOrDefault(series.PeerItemId.ToString("N")) is { } entry && !duplicateLocal.Contains(series.PeerItemId)
-                && (entry.PeerEtag != series.Etag || entry.ContentHash is null))
+                && (entry.PeerEtag != series.Etag || entry.ContentHash is null || entry.LabelVersion < FriendLabel.Version))
             {
                 updateKeys.Add(entry.StubKey);
             }
@@ -391,7 +431,9 @@ public sealed class TvPlanner : ITvPlanner
             pending,
             counts,
             [.. alerts],
-            heldGroups);
+            heldGroups,
+            hidden,
+            ownedBySeries.ToDictionary(static p => p.Key.ToString("N"), static p => p.Value.OwnerSeriesStubKey, StringComparer.Ordinal));
     }
 
     private static int CeilPercent(int count, int percent) => (int)(((long)count * percent) + 99) / 100;

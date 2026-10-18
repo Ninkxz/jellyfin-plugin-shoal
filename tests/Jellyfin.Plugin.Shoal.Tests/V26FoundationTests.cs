@@ -89,7 +89,7 @@ public sealed class V26FoundationTests
     }
 
     [Fact]
-    public async Task TheNewStateFields_SurviveASaveAndAReload_AndTheSchemaStaysTwo()
+    public async Task TheNewStateFields_SurviveASaveAndAReload_AtTheCurrentSchema()
     {
         using var dir = new TempDirectory();
         var paths = new ShoalPaths(dir.Path);
@@ -107,7 +107,7 @@ public sealed class V26FoundationTests
         using var reopened = new StateStore(paths, NullLogger.Instance, TimeProvider.System, null);
 
         Assert.Equal(StateStatus.Ready, reopened.Status);
-        Assert.Equal(2, reopened.Current.Schema);
+        Assert.Equal(ShoalState.CurrentSchema, reopened.Current.Schema);
         Assert.Equal(30, reopened.Current.Home.Peers[0].RotationDays);
         Assert.Equal("1a2b3c4d5e6f", reopened.Current.PeerRole.Shares[0].HomeServerIdPrefix);
         Assert.Equal(2, reopened.Current.PeerRole.Shares[0].RotationCount);

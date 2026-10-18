@@ -77,7 +77,7 @@ public sealed class CatalogTrickplayManifest : ITrickplayManifestSource
 
         foreach (var id in ids)
         {
-            if (_index.Get(id) is not { } stub || _catalog.Find(stub.PeerKey, stub.FolderName) is not { } entry
+            if (_index.Get(id) is not { IsCopy: false } stub || _catalog.Find(stub.PeerKey, stub.FolderName) is not { } entry
                 || entry.State is not (EntryState.Active or EntryState.HeldRemoval) || _resolver.Resolve(id, null) is not { } version)
             {
                 continue;

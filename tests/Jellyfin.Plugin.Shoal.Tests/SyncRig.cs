@@ -427,6 +427,10 @@ internal sealed class FakeRefresh : ILibraryRefresh
     public int Scans { get; private set; }
 
     public void QueueScan() => Scans++;
+
+    public List<string> LibraryScans { get; } = [];
+
+    public void ScanLibrariesAt(IReadOnlyCollection<string> folders) => LibraryScans.AddRange(folders);
 }
 
 /// <summary>

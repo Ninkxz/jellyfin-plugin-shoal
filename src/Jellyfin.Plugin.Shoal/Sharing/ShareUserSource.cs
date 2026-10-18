@@ -97,7 +97,8 @@ public sealed record ShareDevice(string DeviceId, string Name, string App, strin
 /// <param name="Libraries">The only libraries the account sees.</param>
 /// <param name="BitrateLimitBps">The most bits per second per stream, or null.</param>
 /// <param name="AllowedDevices">The only devices that may sign in (the device lock): Home's own.</param>
-public sealed record SharePolicy(bool Disabled, IReadOnlyList<Guid> Libraries, int? BitrateLimitBps, IReadOnlyList<string> AllowedDevices);
+/// <param name="BlockedTags">The tags the account never sees (K45: <c>Shoal</c> and every library tag, so a friend never sees a friend's titles that Home added into a main library), or null to leave the list alone.</param>
+public sealed record SharePolicy(bool Disabled, IReadOnlyList<Guid> Libraries, int? BitrateLimitBps, IReadOnlyList<string> AllowedDevices, IReadOnlyList<string>? BlockedTags = null);
 
 /// <summary>What is running for a sharing account right now.</summary>
 /// <param name="Playing">Sessions that are playing.</param>
@@ -163,11 +164,19 @@ public sealed class JellyfinShareUsers : IShareUserSource
     /// <inheritdoc />
     public async Task ApplyPolicyAsync(Guid userId, SharePolicy policy, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var user = _users.GetUserById(userId) ?? throw new InvalidOperationException("The sharing account no longer exists.");
-        var dto = _users.GetUserDto(user).Policy ?? throw new InvalidOperationException("The account has no policy.");
-        Fill(dto, policy);
-        await _users.UpdatePolicyAsync(userId, dto).ConfigureAwait(false);
+        // Warden 10 M4: the same gate as every other policy write of Shoal; the policy is read inside it.
+        await Jellyfin.Plugin.Shoal.Visibility.PolicyGate.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var user = _users.GetUserById(userId) ?? throw new InvalidOperationException("The sharing account no longer exists.");
+            var dto = _users.GetUserDto(user).Policy ?? throw new InvalidOperationException("The account has no policy.");
+            Fill(dto, policy);
+            await _users.UpdatePolicyAsync(userId, dto).ConfigureAwait(false);
+        }
+        finally
+        {
+            Jellyfin.Plugin.Shoal.Visibility.PolicyGate.Gate.Release();
+        }
     }
 
     /// <inheritdoc />
@@ -208,7 +217,8 @@ public sealed class JellyfinShareUsers : IShareUserSource
             && actual.EnableSharedDeviceControl == wanted.EnableSharedDeviceControl
             && actual.EnableCollectionManagement == wanted.EnableCollectionManagement
             && actual.EnableSubtitleManagement == wanted.EnableSubtitleManagement
-            && actual.EnableLyricManagement == wanted.EnableLyricManagement;
+            && actual.EnableLyricManagement == wanted.EnableLyricManagement
+            && (expected.BlockedTags is null || expected.BlockedTags.All(t => (actual.BlockedTags ?? []).Contains(t, StringComparer.Ordinal)));
     }
 
     /// <inheritdoc />
@@ -296,6 +306,11 @@ public sealed class JellyfinShareUsers : IShareUserSource
         dto.MaxActiveSessions = 1;
         dto.LoginAttemptsBeforeLockout = -1; // three bad passwords by name must not disable the account (Warden L6)
         dto.RemoteClientBitrateLimit = policy.BitrateLimitBps ?? 0;
+        if (policy.BlockedTags is { } blocked)
+        {
+            // Shoal's own tags are set; a tag the owner added by hand stays.
+            dto.BlockedTags = [.. (dto.BlockedTags ?? []).Where(static t => !Jellyfin.Plugin.Shoal.State.LibraryFolders.IsShoalTag(t)).Concat(blocked).Distinct(StringComparer.Ordinal)];
+        }
     }
 
     private static bool SameSet<T>(IEnumerable<T>? a, IEnumerable<T>? b) => new HashSet<T>(a ?? []).SetEquals(b ?? []);

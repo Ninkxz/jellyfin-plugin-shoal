@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Jellyfin.Plugin.Shoal.Configuration;
 using Jellyfin.Plugin.Shoal.State;
+using Jellyfin.Plugin.Shoal.Storage;
 using MediaBrowser.Controller.Library;
 
 namespace Jellyfin.Plugin.Shoal.Api.Admin;
@@ -232,15 +233,23 @@ public sealed class StubRootChecker : IStubRootChecker
         return CanWrite(full, probeWrite) ? StubRootCheck.Ok : StubRootCheck.NotWritable;
     }
 
-    /// <summary>Whether a library lies at <c>root/&lt;32 hex characters&gt;/...</c>: the layout Shoal itself creates for a paired server.</summary>
+    /// <summary>
+    /// Whether a library lies in a folder Shoal itself creates below the stub root: <c>root/&lt;peer key&gt;/...</c> (a per-friend library, now legacy) or
+    /// <c>root/libs/&lt;library key&gt;/...</c> (a v2.9 library layout, Pilot 14: the libs tree was reported as "inside one of your libraries").
+    /// </summary>
     /// <param name="library">The library's folder.</param>
     /// <param name="root">The stub root.</param>
     /// <returns>True for a folder Shoal made.</returns>
     internal static bool IsShoalOwn(string library, string root)
     {
         var relative = Path.GetRelativePath(root, library);
-        var first = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
-        return first.Length == 32 && first.All(static c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+        var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts[0] == ShoalLibrary.LibsFolder)
+        {
+            return parts.Length >= 2 && ShoalPaths.IsValidPeerKey(parts[1]);
+        }
+
+        return ShoalPaths.IsValidPeerKey(parts[0]);
     }
 
     /// <summary>Whether a file system type is one that must not hold Shoal's files (network, or any FUSE mount).</summary>

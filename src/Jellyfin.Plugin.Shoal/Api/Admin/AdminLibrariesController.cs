@@ -290,6 +290,7 @@ public class AdminLibrariesController : ControllerBase
             {
                 AccessError.RecoveryMode => AdminReply.Error(StatusCodes.Status409Conflict, "recovery"),
                 AccessError.UnknownLibrary => AdminReply.Error(StatusCodes.Status404NotFound, "notFound"),
+                AccessError.SharedLibrary => AdminReply.Error(StatusCodes.Status409Conflict, "sharedLibrary"),
                 AccessError.ShareUser => AdminReply.Error(StatusCodes.Status400BadRequest, "shareUser"),
                 AccessError.UnknownUser => AdminReply.Error(StatusCodes.Status400BadRequest, "unknownUser"),
                 AccessError.AcknowledgementRequired => AdminReply.Error(StatusCodes.Status400BadRequest, "acknowledgementRequired"),

@@ -30,10 +30,17 @@ public static class DeviceProfileRebuilder
     /// <param name="client">The client's profile.</param>
     /// <param name="maxStreamingBitrate">The computed streaming limit (DESIGN 6.2.1), or null.</param>
     /// <param name="hlsSubtitlesEnabled">The HLS-subtitle kill switch; when false, <c>Hls</c> subtitle entries are removed.</param>
+    /// <param name="cap">The connection's quality limit (PLAN v2.9 K51), or null: a box adds a video codec profile with required Width and Height conditions.</param>
     /// <returns>The new profile.</returns>
-    public static DeviceProfile Rebuild(DeviceProfile client, int? maxStreamingBitrate, bool hlsSubtitlesEnabled)
+    public static DeviceProfile Rebuild(DeviceProfile client, int? maxStreamingBitrate, bool hlsSubtitlesEnabled, QualityCap? cap = null)
     {
         ArgumentNullException.ThrowIfNull(client);
+        var codecs = (client.CodecProfiles ?? []).Select(Codec).OfType<CodecProfile>().Take(64).ToList();
+        if (cap?.ProfileRule() is { } rule)
+        {
+            codecs.Add(rule); // after the cap of 64, so the client's entries cannot push it out
+        }
+
         return new DeviceProfile
         {
             Name = ProfileName,
@@ -45,7 +52,7 @@ public static class DeviceProfileRebuilder
             DirectPlayProfiles = [.. (client.DirectPlayProfiles ?? []).Select(DirectPlay).OfType<DirectPlayProfile>().Take(64)],
             TranscodingProfiles = [.. (client.TranscodingProfiles ?? []).Select(Transcoding).OfType<TranscodingProfile>().Take(32)],
             ContainerProfiles = [.. (client.ContainerProfiles ?? []).Select(Container).OfType<ContainerProfile>().Take(32)],
-            CodecProfiles = [.. (client.CodecProfiles ?? []).Select(Codec).OfType<CodecProfile>().Take(64)],
+            CodecProfiles = [.. codecs],
             SubtitleProfiles = [.. (client.SubtitleProfiles ?? []).Select(p => Subtitle(p, hlsSubtitlesEnabled)).OfType<SubtitleProfile>().Take(32)],
         };
     }

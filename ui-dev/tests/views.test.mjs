@@ -5,7 +5,7 @@ import { mountPage, makeClock, JUNK } from './helpers.mjs';
 
 const VIEWS = [
     ['overview', {}], ['libraries', {}], ['settings', {}], ['pair', { dir: 'watch' }], ['pair', { dir: 'share' }],
-    ['server', { id: 'h-hops' }], ['server', { id: 'h-fern' }], ['server', { id: 'h-gran' }], ['friend', { id: 'f-sam' }], ['friend', { id: 'f-jo' }], ['overlap', { id: 'h-hops' }]
+    ['server', { id: 'h-hops' }], ['server', { id: 'h-fern' }], ['server', { id: 'h-gran' }], ['friend', { id: 'f-sam' }], ['friend', { id: 'f-jo' }], ['overlap', { id: 'h-hops' }], ['layouts', {}]
 ];
 const SCENARIOS = ['default', 'empty', 'friendsOnly', 'problems', 'keys', 'restored', 'recovery', 'recoveryNewer', 'oneServer', 'nothingShared'];
 
@@ -69,5 +69,24 @@ test('null instead of absent changes nothing on any view', async () => {
 
     for (const id of ['h-cedar', 'h-pine', 'h-maple', 'h-stop', 'h-alder', 'h-elm']) {
         await same('server', { id }, 'problems');
+    }
+});
+
+// v2.9 (U-P1, U-P2, U-Q1, U-Q2): with the play order, quality and card routes on, no junk, and null-for-absent changes nothing.
+test('v2.9 quality and play order: no junk text, and null instead of absent changes nothing', async () => {
+    const mock = { playOrder: true, quality: 'rec', priorityRoute: true, features: { priorityTier: true } };
+    for (const [view, extra] of [['overview', {}], ['server', { id: 'h-hops' }], ['server', { id: 'h-fern' }], ['server', { id: 'h-gran' }]]) {
+        const params = Object.assign({ view }, extra);
+        const clock = makeClock(Date.UTC(2026, 9, 15, 12, 0, 0));
+        const a = await mountPage(Object.assign({ scenario: 'default', params, settleMs: 400, now: clock.now }, mock));
+        const b = await mountPage(Object.assign({ scenario: 'default', params, settleMs: 400, nulls: true, now: clock.now }, mock));
+        try {
+            assert.doesNotMatch(a.text(), JUNK, view + ' ' + JSON.stringify(extra));
+            assert.doesNotMatch(b.text(), JUNK, 'null run: ' + view + ' ' + JSON.stringify(extra));
+            assert.equal(b.text(), a.text(), view + ' ' + JSON.stringify(extra));
+        } finally {
+            a.close();
+            b.close();
+        }
     }
 });

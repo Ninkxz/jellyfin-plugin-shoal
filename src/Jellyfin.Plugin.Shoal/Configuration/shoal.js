@@ -34,10 +34,10 @@ const STRINGS = {
     needsRepairBody: "{server} was paired the old way, which Shoal no longer supports, so it is paused. Its titles stay listed. Ask your friend to install Shoal and send an invite, then re-pair.",
     repairWithInvite: "Re-pair with an invite",
     repairBlockedChip: "Needs a safer address",
-    repairBlockedHint: "Switch this server to Tailscale or https, then pair it again, or remove it.",
+    repairBlockedHint: "Give this server an https address (Tailscale also works), then pair it again, or remove it.",
     repairBlockedTitle: "This server cannot be paired again as it is",
-    repairBlockedBody: "{server} is on plain http outside Tailscale, and invites are refused there. Switch this server to Tailscale or https, then pair it again, or remove it.",
-    changeAddressSteps: "Change the address: give your friend's server a Tailscale name or an https address, then add it again with an invite.",
+    repairBlockedBody: "{server} uses plain http and is not reached through Tailscale, and invites are refused there. Give this server an https address (Tailscale also works), then pair it again, or remove it.",
+    changeAddressSteps: "Change the address: give your friend's server an https address (a Tailscale name also works), then add it again with an invite.",
     removeOrChangeAddress: "Remove or change the address",
     chipNeedsRepair: "Needs re-pair by invite",
     hintNeedsRepair: "{server} was paired the old way and is paused. Re-pair it with an invite.",
@@ -93,14 +93,16 @@ const STRINGS = {
     // step 3, the address
     pv2AddrTitle: "What is your friend's server address?",
     pv2NameHelp: "Your users see this in library names, like Hops Movies.",
-    pv2AddrHelp: "Ask your friend to send it. For example http://myserver.tail1234.ts.net:8096",
+    pv2AddrHelp: "Ask your friend to send it. For example https://movies.example.com. A Tailscale name also works.",
+    pv2ReachPublic: "Internet with https (recommended)",
+    pv2ReachTailnet: "Tailscale (also supported)",
     pv2ReachPrivate: "Private address (home network or Tailscale router)",
-    pv2NetHelpPrivate: "Not encrypted. Works only if your two servers share a network or Tailscale routes it. A Tailscale name is easier.",
+    pv2NetHelpPrivate: "Not encrypted. Works only if your two servers share a network or Tailscale routes it. An https address is easier.",
     pv2NetChose: "Shoal chose this from the address. Change it if it's wrong.",
     pv2AddrTailscale: "Looks like a Tailscale address. Both servers need Tailscale running.",
-    pv2AddrPrivate: "This is a private address inside your friend's network. It only works from here if your servers share a network, or Tailscale routes it. Ask your friend for their Tailscale name if you can.",
+    pv2AddrPrivate: "This is a private address inside your friend's network. It only works from here if your servers share a network, or Tailscale routes it. Ask your friend for their https address, or their Tailscale name.",
     pv2AddrSelf: "That points to this server itself. Use your friend's address.",
-    pv2ShAddrPrivate: "This is a private address inside your own network. It only works for {friend} if the two servers share a network, or Tailscale routes it. A Tailscale name or an https address is easier.",
+    pv2ShAddrPrivate: "This is a private address inside your own network. It only works for {friend} if the two servers share a network, or Tailscale routes it. An https address is easier, and a Tailscale name also works.",
     pv2ShAddrSelf: "localhost and 127 addresses only work on this server. Send an address {friend} can reach.",
     pv2AddrHttpsNumbers: "Addresses made of numbers rarely have a valid https certificate, so the check may fail. A name works better.",
     pv2AddrHttps8096: "Jellyfin uses plain http on port 8096 unless your friend turned on https there. If the check fails, try http, or ask for their https address.",
@@ -116,19 +118,19 @@ const STRINGS = {
     pv2Unreach_3: "If your friend uses Tailscale, check that Tailscale is running on both servers.",
     pv2Unreach_4: "A private address only works if your servers share a network or Tailscale routes it.",
     pv2OpenHelper: "Open the connection helper",
-    pv2ErrCert: "That server's https certificate isn't trusted, so Shoal won't connect. A name usually has a valid certificate. An address made of numbers almost never does. Ask your friend for a name, or use Tailscale.",
+    pv2ErrCert: "That server's https certificate isn't trusted, so Shoal won't connect. A name usually has a valid certificate. An address made of numbers almost never does. Ask your friend for a name with a real certificate. Tailscale also works.",
     pv2ErrNotJellyfin: "That address answered, but it isn't a Jellyfin server. Check the port. Jellyfin usually uses 8096.",
     pv2HelperTitle: "Not sure which address to use?",
     pv2HelperLead: "The address must be one that works from your server, not from your friend's living room.",
-    pv2HelperSay: "Please send me the address of your Jellyfin that I can reach from my server. If you use Tailscale, send the Tailscale name.",
-    pv2Setup1Title: "Your friend shared their server with you in Tailscale",
+    pv2HelperSay: "Please send me the https address of your Jellyfin that I can reach from my server, for example https://movies.example.com. If we use Tailscale instead, send the Tailscale name.",
+    pv2Setup1Title: "Your friend shared their server with you in Tailscale (also supported)",
     pv2Setup1Body: "Use the Tailscale name of the Jellyfin machine, or its Tailscale address that starts with 100, for example http://myserver.tail1234.ts.net:8096. Plain http is fine here, Tailscale encrypts it. The Jellyfin computer needs to be its own Tailscale machine. Choose Tailscale.",
-    pv2Setup2Title: "Your friend shares their home network through a Tailscale router",
+    pv2Setup2Title: "Your friend shares their home network through a Tailscale router (also supported)",
     pv2Setup2Body: "You can use their home address, for example http://10.0.0.20:8096. This only works if Tailscale on your server accepts that route, and your friend approved it. Choose Private address. If it doesn't work, the easy fix is to install Tailscale on the Jellyfin computer itself.",
-    pv2Setup3Title: "Your friend has a public https address",
+    pv2Setup3Title: "Your friend has a public https address (recommended)",
     pv2Setup3Body: "Use the name, for example https://movies.example.com. It must start with https:// and have a real certificate. Usually there is no port number. Choose Internet.",
     pv2Setup4Title: "Your friend put their server in a DMZ or opened a port on the router",
-    pv2Setup4Body: "That is a router setting. Shoal does not need to know about it. What matters is the address you can reach: a public https name, or Tailscale. Plain http over the open internet is not accepted. Choose Internet and use https.",
+    pv2Setup4Body: "That is a router setting. Shoal does not need to know about it. What matters is the address you can reach: a public https name (or Tailscale). Plain http over the open internet is not accepted. Choose Internet and use https.",
     pv2SetupClose: "Same house? Use the home address, for example http://192.168.1.20:8096, and choose Private address.",
     pv2UseSetup: "Use this setup",
     // step 4, the check
@@ -153,7 +155,7 @@ const STRINGS = {
     pv2ErrInviteEmpty: "Paste the invite your friend sent.",
     pv2ErrInviteOther: "That invite is for a different server. Check that you are using the address your friend sent with the invite.",
     pv2ErrInviteGone: "That invite no longer works. It lasts 15 minutes and works once. Ask your friend to choose Create a new invite, then paste it here.",
-    pv2ErrInviteLan: "Invites need Tailscale or an https address so nobody on the network can copy them. There is no other way to pair over plain http. Use a Tailscale name or an https address instead.",
+    pv2ErrInviteLan: "Invites need an https address (or Tailscale) so nobody on the network can copy them. There is no other way to pair over plain http. Use an https address or a Tailscale name instead.",
     pv2ChangeAddress: "Change the address",
     pv2CodeTitle: "Read this code to your friend",
     pv2CodeBody: "Your friend types this code into the box on their Shoal. It proves you are talking to the right person.",
@@ -192,26 +194,26 @@ const STRINGS = {
     pv2ShWhoTitle: "Who are you sharing with?",
     pv2ShNote: "Shoal makes a hidden sharing account for {friend}. It can only watch the libraries you pick, can't change anything, and you can remove it anytime.",
     pv2ShReachTitle: "How will {friend} reach your server?",
-    pv2ShTs: "Through Tailscale. I shared this server with {friend}",
+    pv2ShTs: "Through Tailscale (also supported). I shared this server with {friend}",
     pv2ShTsHint: "Their address will look like http://myserver.tail1234.ts.net:8096",
-    pv2ShPublic: "Through a public https address",
+    pv2ShPublic: "Through a public https address (recommended)",
     pv2ShPublicHint: "Their address will look like https://movies.example.com",
     pv2ShHome: "Through my home network or a Tailscale router",
-    pv2ShHomeHint: "Use only if {friend} is on the same network or routes it. Invites do not work over plain http, so give {friend} a Tailscale name or an https address.",
-    pv2ShHomeHttp: "That address is plain http. Invites need Tailscale or an https address, so {friend} could not use this invite. Use a Tailscale name or an https address instead.",
+    pv2ShHomeHint: "Use only if {friend} is on the same network or routes it. Invites do not work over plain http, so give {friend} an https address or a Tailscale name.",
+    pv2ShHomeHttp: "That address is plain http. Invites need an https address (or Tailscale), so {friend} could not use this invite. Use an https address or a Tailscale name instead.",
     pv2ShAddrLabel: "The address to send",
     pv2ShAddrHelp: "This is the address {friend} will type. It must work from their server.",
     pv2ShAddrHelpEmpty: "Type the address {friend} should use, for example https://movies.example.com",
     pv2ShHelperTitle: "Which address do I use?",
     pv2ShHelperLead: "The address must be one that works from {friend}'s server, not from your living room.",
-    pv2ShSetup1Title: "I shared my server with {friend} in Tailscale",
+    pv2ShSetup1Title: "I shared my server with {friend} in Tailscale (also supported)",
     pv2ShSetup1Body: "Send the Tailscale name of this Jellyfin machine, or its Tailscale address that starts with 100, for example http://myserver.tail1234.ts.net:8096. Plain http is fine here, Tailscale encrypts it. This computer needs to be its own Tailscale machine. Choose Tailscale.",
-    pv2ShSetup2Title: "I share my home network through a Tailscale router",
+    pv2ShSetup2Title: "I share my home network through a Tailscale router (also supported)",
     pv2ShSetup2Body: "{friend} can use this server's home address, for example http://10.0.0.20:8096. This only works if Tailscale on their server accepts that route and you approved it. Choose the home network option. If it doesn't work, the easy fix is to install Tailscale on this computer itself.",
-    pv2ShSetup3Title: "This server has a public https address",
+    pv2ShSetup3Title: "This server has a public https address (recommended)",
     pv2ShSetup3Body: "Send the name, for example https://movies.example.com. It must start with https:// and have a real certificate. Usually there is no port number. Choose the public https option.",
     pv2ShSetup4Title: "I put this server in a DMZ or opened a port on my router",
-    pv2ShSetup4Body: "That is a router setting. Shoal does not need to know about it. What matters is the address {friend} can reach: a public https name, or Tailscale. Plain http over the open internet is not accepted. Choose the public https option and use https.",
+    pv2ShSetup4Body: "That is a router setting. Shoal does not need to know about it. What matters is the address {friend} can reach: a public https name (or Tailscale). Plain http over the open internet is not accepted. Choose the public https option and use https.",
     pv2ShSetupClose: "Same house? Send the home address, for example http://192.168.1.20:8096, and choose the home network option.",
     pv2ShSayMaking: "I'm making the invite now. It lasts 15 minutes. Tell me when you're ready to paste it.",
     pv2ShSendTitle: "Send this to {friend}",
@@ -242,7 +244,7 @@ const STRINGS = {
     unexpectedError: "Something went wrong in this page. Reload it and try again. If it keeps happening, tell the developer: {detail}",
     removeBlockedSyncing: "Shoal is syncing {server} right now, so it can't be removed yet. Wait for the sync to finish, then press Remove server again.",
     removeBlockedPairing: "A pairing with {server} is in progress. Cancel it first (Pair a server, then Cancel pairing), then remove the server.",
-    dedupNote: ["{count} title comes from {winner} instead (it wins when both have the same title). Set priority or remove it to use this server's copy.", "{count} titles come from {winner} instead (it wins when both have the same title). Set priority or remove it to use this server's copy."],
+    dedupNote: ["{count} title is also on {winner}. People see it once: it plays from the best server, and the other stays ready as a backup.", "{count} titles are also on {winner}. People see each once: they play from the best server, and the other stays ready as a backup."],
     dedupNoteHome: ["{count} title is your own copy instead (yours wins when both have the same title).", "{count} titles are your own copies instead (yours win when both have the same title)."],
     removeFailed: "Shoal couldn't remove the server. Nothing was changed. Try again in a moment.",
     ghostPairing: "This pairing is not there any more: the server it was for was removed. Start over to pair again.",
@@ -297,23 +299,15 @@ const STRINGS = {
     syncFailed: "Sync didn't start. Try again in a moment.",
     pairServer: "Pair a server",
     shareWithFriend: "Share with a friend",
-    statusOnline: ["{online} of {total} server online", "{online} of {total} servers online"],
     needAttention: ["{n} needs attention", "{n} need attention"],
-    titlesSharedWithYou: ["{count} title shared with you", "{count} titles shared with you"],
-    titlesOfflineToo: ["{count} title shared with you, {off} more on servers that are offline", "{count} titles shared with you, {off} more on servers that are offline"],
-    titlesOnlyPaused: ["Nothing available right now: {count} title on a paused server", "Nothing available right now: {count} titles on paused servers"],
-    titlesOnlyOffline: ["Nothing available right now: {off} title on a server that is offline", "Nothing available right now: {off} titles on servers that are offline"],
     lastSync: "Last sync {when}",
     notSyncedYet: "Not synced yet",
-    friendsServers: "Friends' servers",
-    selectServerNote: "Select a server to see its speed below",
     noServersYet: "You aren't watching anyone's library yet.",
     emptyTitle: "Watch your friends' movies from your own server",
-    emptyBody: "Shoal adds a friend's Jellyfin library next to yours. Nothing is copied, your friend doesn't need to install anything, and you choose who here can see it.",
-    emptyStep1: "Your friend shares their server with you in Tailscale, or gives you its https address.",
-    emptyStep2: "Pair: send them a code to approve, or paste the invite they sent if they have Shoal.",
-    emptyStep3: "Check the safety code together, then try it yourself before you open it to everyone here.",
-    recentlyShared: "Recently shared with you",
+    emptyBody: "Shoal adds a friend's Jellyfin library next to yours. Nothing is copied. Both servers need Shoal, and you choose who here can see it.",
+    emptyStep1: "Your friend installs Shoal on their server and sends you an invite.",
+    emptyStep2: "Paste the invite here, then check the safety code together.",
+    emptyStep3: "Try it yourself before you open it to everyone here.",
     seeAll: "See all",
     postersNone: "Nothing new lately.",
     postersNoneYet: "Nothing shared with you yet. Titles appear after the first sync.",
@@ -322,7 +316,6 @@ const STRINGS = {
     yourCopy: "Your copy",
     parkedTitles: "{server}'s titles are hidden while it's offline.",
     parkedBack: "They come back on their own.",
-    friendsWatching: "Friends watching from you",
     friendsEmpty: "No one watches from your server yet. Share a library and it shows up on their server, next to theirs.",
     friendMeta: "{libs} · {devs} · last seen {when}",
     friendActive: "Active",
@@ -330,8 +323,118 @@ const STRINGS = {
     friendPaused: "Paused",
     friendRemoved: "Access removed",
     unexpectedDevices: ["{n} unexpected device signed out", "{n} unexpected devices signed out"],
-    playingNow: "Playing now: {n}",
-    playingNowTranscoding: "Playing now: {n} ({t} transcoding)",
+
+    // overview v2 (U-A1, docs/design/ui-v2/overview.html): two tiles, two lanes, play order
+    ovTagline: "Share Jellyfin libraries between friends' servers. Nothing is copied.",
+    actInTitle: "Add a friend's server",
+    actInBody: "Paste the invite your friend sent you. Their movies and shows appear in your libraries.",
+    actOutTitle: "Let a friend watch mine",
+    actOutBody: "Create an invite to send them. You choose which libraries they get.",
+    flowFriend: "Friend",
+    flowYou: "You",
+    laneWatching: "Watching",
+    laneWatched: "Being watched",
+    dirFriendsServers: "Friends' servers",
+    dirYourServerLower: "your server",
+    dirYourServer: "Your server",
+    dirFriendsServersLower: "friends' servers",
+    laneWatchingDesc: "Servers you connect to. You and your people here watch their libraries.",
+    laneWatchedDesc: "Friends you share your library with, and who is using your server right now.",
+    serversYouWatch: "Servers you watch",
+    subOnline: ["{online} of {total} online", "{online} of {total} online"],
+    laneTitlesFrom: ["title from {servers}", "titles from {servers}"],
+    nServers: ["{n} server", "{n} servers"],
+    titlesStayListed: ["{n} title stays listed", "{n} titles stay listed"],
+    offlineFor: "Offline {duration}",
+    rowActionAria: "{action} ({server})",
+    playingFromYours: "Playing from your server now",
+    streamsN: ["{n} stream", "{n} streams"],
+    friendsServerName: "{name}'s server",
+    transcodingN: ["{n} transcoding", "{n} transcoding"],
+    friendsYouShareWith: "Friends you share with",
+    laneFriendsWord: ["friend", "friends"],
+    laneFriendsPlaying: ["friend, {k} playing now", "friends, {k} playing now"],
+    protectionSettings: "Protection settings",
+    protect_Enforce: "Shared videos need sign-in",
+    protect_LogOnly: "Shared videos don't need sign-in yet. Shoal only counts what it would block.",
+    protect_Off: "Protection for shared videos is off",
+    newFromFriends: "New from friends' servers",
+    playOrderTitle: "Which server plays first",
+    playOrderLead: "When several friends have the same title, people see it once. It plays from the first server in this list that's online.",
+    playOrderHowTo: "To change it, open a server.",
+    playRank: "Number {n}: ",
+    playSetByYou: "Set by you",
+    playAutomatic: "Automatic",
+    serverDetailsAria: "{server} server details",
+    playWhy_fastest: "Fastest link",
+    playWhy_slower: "Slower link",
+    playWhy_fasterWaiting: "Faster, waiting to confirm",
+    playWhy_challenger: "A faster server is being checked",
+    playWhy_unstable: "The link is unstable",
+    playWhy_attention: "Needs attention",
+    playWhy_backOnline: "Back online, waiting until it stays up",
+    playWhy_preferred: "Always preferred",
+    playWhy_backupOnly: "Backup only",
+    playWhy_backupOffline: "Backup only, and offline right now",
+    playWhy_offline: "Offline right now",
+    playWhy_notTested: "Not tested yet",
+    backupFor: ["{server} is also the backup for **{count} title**.", "{server} is also the backup for **{count} titles**."],
+    backupForOnly: ["**{server} is the backup for {count} title.** Another server plays it first.", "**{server} is the backup for {count} titles.** Other servers play them first."],
+    // Server detail: priority (U-P1) and quality limit (U-Q1, U-Q2)
+    prioTitle: "When titles are on several servers",
+    prioLead: "People see each title once. This decides whether {server} plays it first.",
+    prioTurn: "{server}'s turn",
+    tier_Prefer: "Always prefer",
+    tier_Normal: "Normal",
+    tier_Backup: "Backup only",
+    prioPlaceAuto: "Automatic: {place} of {count}",
+    prioPlaceSet: "Set by you: {place} of {count}",
+    prioOnlyAuto: "Automatic",
+    prioOnlySet: "Set by you",
+    prioOnlyOne: "the only server for now",
+    prioNotRanked: "not ranked yet",
+    prioDesc: "Normal lets Shoal pick by link speed and steadiness. Always prefer puts {server} first. Backup only uses {server} when no other server has the title online.",
+    prioReadOnly: "{server}'s turn: {tier}. This Shoal version can't change it from here yet.",
+    prioSaved: "{server}'s turn: {tier}.",
+    prioChanged: "Someone else changed this a moment ago. The page now shows the current choice.",
+    qlTitle: "Quality limit",
+    qlLead: "The highest quality {server} sends to your server.",
+    qlLimit: "Limit",
+    qlOff: "Off",
+    qlMbps: "Speed cap (optional)",
+    qlMbpsPlaceholder: "No cap",
+    qlMbpsUnit: "Mbps",
+    qlMbpsHelp: "Leave empty to use only the quality limit.",
+    qlMbpsError: "Enter a whole number from 1 to 1000, or leave it empty.",
+    qlCost: "Titles above this quality will be converted by {server}. That uses their computer's power.",
+    qlFromRec: "Set from the speed test suggestion {when}.",
+    qlSaved: "Quality limit for {server}: {limit}.",
+    qlSavedOff: "Quality limit for {server} is off.",
+    qlChanged: "This limit was changed somewhere else a moment ago. The page now shows the current one.",
+    qlFailed: "The limit wasn't saved. Try again.",
+    qlUpTo: "up to {limit}",
+    qlUpToMbps: "up to {limit} and {mbps} Mbps",
+    qlOnlyMbps: "up to {mbps} Mbps",
+    recTop: "Suggestion from the speed test",
+    recText: "This link is slow for {slow}. Limit {server} to {suggested}?",
+    recDetail: ["Measured {mbps} Mbps. {count} of {known} titles is above {suggested}.", "Measured {mbps} Mbps. {count} of {known} titles are above {suggested}."],
+    recApply: "Apply",
+    recDismiss: "Dismiss",
+    recConfirmTitle: "Limit {server} to {suggested}?",
+    recConfirmBody: "Titles above {suggested} will be converted by {server}. That uses their computer's power. You can change this any time under Quality limit.",
+    recConfirmButton: "Limit to {suggested}",
+    recDismissed: "Suggestion dismissed. It comes back only if the link gets clearly slower.",
+    recStale: "The suggestion changed after a new speed test. The page now shows the current one.",
+    playOrderChanged: "Order last changed {when}.",
+    playOrderChanged_offline: "Order last changed {when}, when {server} went offline.",
+    playOrderChanged_online: "Order last changed {when}, when {server} came back.",
+    playOrderChanged_speed: "Order last changed {when}, after a speed test.",
+    playOrderChanged_admin: "Order last changed {when}, when you changed it.",
+    backupLine: ["**{count} title has a backup server.** If {server} is offline, it plays from another server instead.", "**{count} titles have a backup server.** If {server} is offline, they play from another server instead."],
+    backupLineVia: ["**{count} title has a backup server.** If {server} is offline, it plays from {via} instead.", "**{count} titles have a backup server.** If {server} is offline, they play from {via} instead."],
+    orphanReview: "Review",
+    orphanHint: ["{n} old sharing account is left on your server.", "{n} old sharing accounts are left on your server."],
+    orphanHintSignIn: ["{n} old sharing account can still sign in to your server.", "{n} old sharing accounts can still sign in to your server."],
 
     // server cards
     noPictures: "No pictures yet",
@@ -341,16 +444,7 @@ const STRINGS = {
     viaHome: "via home network",
     viaInternet: "via internet (HTTPS)",
     viaThroughProxy: "through proxy",
-    metricConnection: "Connection",
-    metricLatency: "Latency",
-    metricSpeed: "Speed",
-    connDirect: "Direct",
-    connRelayed: "Relayed",
-    connMaybeRelayed: "Maybe relayed",
-    connProxy: "Proxy",
-    titlesShared: ["**{count}** title shared", "**{count}** titles shared"],
     nextCheck: "Next check in {n} min",
-    speedShownBelow: "Speed shown below",
     testLinkAgain: "Test link again",
     retryNow: "Retry now",
     announceTestStarted: "Testing the link. The result shows in about a minute.",
@@ -365,7 +459,6 @@ const STRINGS = {
     reviewCertificate: "Check certificate",
     thingsToCheck: ["{n} thing to check", "{n} things to check"],
     andKMore: " \u00b7 {k} more",
-    pairingStoppedArt: "Pairing stopped",
     removalsOnHold: ["{count} removal on hold", "{count} removals on hold"],
     additionsOnHold: ["{count} new title on hold", "{count} new titles on hold"],
     chipOnline: "Online",
@@ -793,23 +886,16 @@ const STRINGS = {
     announceOrphanDeleted: "Deleted the account {name}",
 
     // two-way friends (DESIGN v2.6.2)
-    twoWayTitle: "Friends who share both ways",
-    twoWayIntro: "You watch their server and they watch yours.",
-    twoWayWatch: "You watch {name}",
-    twoWayWatched: "{name} watches you",
     titlesN: ["{n} title", "{n} titles"],
     streamsNowN: ["{n} stream now", "{n} streams now"],
-    playingNowN: ["{n} playing now", "{n} playing now"],
     openServerLink: "Open server",
-    openFriendLink: "Open friend",
     alsoYourServer: "Also your server: {name}",
+    alsoWatchesYou: "Also watches your server",
     alsoWatchesTitle: "{name} also watches your libraries",
     alsoWatchesMeta: "{libs} · {devs} · last seen {when}",
     alsoWatchesNote: "Pausing or removing {name} here only changes what you watch. {name} keeps watching your libraries.",
     openFriendAs: "Open {name} as a friend",
     youAlsoWatchTitle: "You also watch {name}",
-    openServerAria: "Open {name} as a server",
-    openFriendAria: "Open {name} as a friend",
     pauseStillWatches: "{name} will still watch your libraries.",
     removeStillWatches: "{name} will still watch your libraries.",
     revokeStillWatching: "You will still watch {name}'s libraries.",
@@ -984,8 +1070,8 @@ const STRINGS = {
     reachTailnet: "Tailscale (private)",
     reachLan: "Home network (same house)",
     reachPublic: "Internet (https only)",
-    netHelpTailnet: "Encrypted by Tailscale. Plain http is fine here.",
-    netHelpPublic: "Needs an https address with a valid certificate.",
+    netHelpTailnet: "Also supported. Tailscale encrypts the link, so plain http is fine here.",
+    netHelpPublic: "Recommended. Needs an https address with a valid certificate.",
     advanced: "Advanced",
     fProxy: "Proxy (optional)",
     fProxyHelp: "Only if Tailscale on this server runs in userspace mode, for example socks5://127.0.0.1:1055",
@@ -1246,6 +1332,10 @@ const STRINGS = {
     alertEntryTitle: "{server}'s library is too big to sync",
     alertEntryBody: "Shoal syncs up to 50,000 titles per server, so syncing stopped. Titles already added still play.",
     changeWhoCanSee: "Change who can see this",
+    libLayoutFrom: "{type} from {friends}",
+    libLayoutNoFriends: "{type}. No friend's server feeds it yet.",
+    libLayoutMain: "Added into one of your own libraries.",
+    libLayoutWhoAria: "Change who can see {library}",
     removeEllipsis: "Remove…",
     addALibrary: "Add a library",
     removeLibraryTitle: "Remove {library}?",
@@ -1344,7 +1434,196 @@ const STRINGS = {
     stopProtect_Off: "Protect your shared videos: protection is off. Choose Require sign in in Settings to turn it on.",
     stopStepProtectWarn: "Without it, a server that kept old links can still play your shared videos until you remove its network access.",
     createInvite: "Create invite",
-    newInvite: "Create a new invite"
+    newInvite: "Create a new invite",
+
+    // Library layouts (PLAN v2.9 U-M1, U-M2; docs/design/ui-v2/layouts.html). The two warnings are the owner's exact words.
+    layTitle: "Library layouts",
+    layLead: "Choose how titles from the servers you watch are grouped into libraries on your server.",
+    layRuleTitle: "Each friend feeds one library per type.",
+    layRuleBody: "One library for their movies and one for their TV shows. A library can hold several friends.",
+    layMoveWarn: "Changing this moves this friend's titles now. It takes a few minutes. Titles may disappear for a moment and come back. Watched marks are kept for most titles.",
+    layNfoSaverOn: "The NFO saver is on for your main library {library}. Jellyfin can overwrite friends' titles' descriptions and art. Turn it off for this library in Jellyfin (Dashboard, Libraries).",
+    layNotLocked: "Your library {library} holds a friends' folder next to your own folders, so Shoal leaves its settings alone. Turn off its NFO saver and internet metadata in Jellyfin (Dashboard, Libraries) if you don't want them to touch friends' titles, or move the friends' folder into a library of its own.",
+    layAccessChangedAnyway: "Who can see this library was changed anyway.",
+    layPlaceWarn: "Everyone who can open that library will see these titles unless you hide them for a person below.",
+    layType_movies: "Movies",
+    layType_tvshows: "TV Shows",
+    layTypeLower_movies: "movies",
+    layTypeLower_tvshows: "TV shows",
+    layJobTitle: "Moving {friend}'s {type} into {library}",
+    layJobTitleGeneric: "Moving friends' titles",
+    layJobCount: "{done} of {total} titles",
+    layJobEta: ["About {n} minute left. Titles may disappear for a moment and come back.", "About {n} minutes left. Titles may disappear for a moment and come back."],
+    layJobNoEta: "It takes a few minutes. Titles may disappear for a moment and come back.",
+    layJobCleanup: "Almost done. Shoal is tidying up libraries that are empty now.",
+    layJobStopped: "The last move stopped before it finished. Shoal picks it up again when Jellyfin restarts.",
+    layJobDone: "Move finished. Your libraries are up to date.",
+    layJobLost: "{names} can no longer see some friends' titles. Change who can see a library below.",
+    laySecPresets: "Start from a layout",
+    layHome: "Your home screen",
+    layMineMovies: "Movies",
+    layMineShows: "Shows",
+    layShoalMovies: "Shoal Movies",
+    layShoalTv: "Shoal TV Shows",
+    layFriendLib: "{friend} {type}",
+    layFriendWord: "Friend",
+    layPreset_AllMixed: "All mixed",
+    layPreset_PerFriend: "One per friend",
+    layPreset_Custom: "Custom",
+    layPreset_CombineIntoMine: "Combine into my libraries",
+    layPresetBody_CombineIntoMine: "Friends' movies go into your Movies library and friends' shows into your TV Shows library.",
+    layRecommended: "Recommended",
+    layTargetLabel_movies: "Put friends' movies into",
+    layTargetLabel_tvshows: "Put friends' shows into",
+    layTargetPick: "Choose a library",
+    layTargetOne_movies: "Friends' movies go into {library}.",
+    layTargetOne_tvshows: "Friends' shows go into {library}.",
+    layTargetNone_movies: "You have no movie library of your own, so friends' movies stay where they are.",
+    layTargetNone_tvshows: "You have no TV library of your own, so friends' shows stay where they are.",
+    layTargetRejected: "That library can't hold friends' titles. Choose another one.",
+    layTargetNeeded: "Choose a library above for friends' titles, then apply.",
+    layErr_targetRequired: "Choose a library for friends' titles first.",
+    layPresetBody_AllMixed: "One Shoal Movies and one Shoal TV Shows library, with every friend in them.",
+    layPresetBody_PerFriend: "A Movies and a TV Shows library for each friend, like {friend} Movies and {friend} TV Shows.",
+    layPresetBody_Custom: "You make the groups yourself: use Move and Create library in the list below. Each move happens right away.",
+    layCustomDiffers: "Your list no longer matches {preset}.",
+    layReviewChanges: "Review changes",
+    layReviewFor: "Review changes for Custom",
+    layReviewTitle: "Review changes: Custom",
+    layCustomReview: "Your libraries no longer match {preset}. Applying Custom keeps them exactly as they are below: nothing moves. Shoal then calls this layout Custom, and new friends' servers follow the New connections setting.",
+    layCustomApply: "Apply Custom",
+    layCustomApplied: "Custom is now your layout. Nothing moved.",
+    layPreview: "Preview",
+    layPreviewFor: "Preview {preset}",
+    layPreviewing: "Previewing below",
+    layCurrent: "Current",
+    layPreviewTitle: "Preview: {preset}",
+    layBecomes: "becomes ",
+    layNoChange: "No change",
+    layPreviewNothing: "Nothing moves. Your libraries already look like this.",
+    layPreviewCollapse: ["{count} title that shows in two libraries today will show in one.", "{count} titles that show in two libraries today will show in one."],
+    layPreviewLosing: "{names} will lose access to some friends' titles. A library that holds several friends lets in only the people each of them let in.",
+    layApplyWarn: ["Applying this moves {n} friend's titles now. It takes a few minutes. Titles may disappear for a moment and come back. Watched marks are kept for most titles.", "Applying this moves {n} friends' titles now. It takes a few minutes. Titles may disappear for a moment and come back. Watched marks are kept for most titles."],
+    layApply: "Apply layout",
+    layWaitJob: "Available when the current move finishes.",
+    layStarted: "Moving titles now. This takes a few minutes.",
+    laySecLibraries: "Shoal libraries",
+    layCreate: "Create library",
+    layColLibrary: "Library",
+    layColPlacement: "Placement",
+    layColFeeds: "Friends who feed it",
+    layColWho: "Who can see it",
+    layPlaceShoal: "Own Shoal library",
+    layPlaceMain: "Added into {library}",
+    layMainMeta: "Your main library",
+    layMetaTitles: ["{count} title", "{count} titles"],
+    layMetaShows: ["{count} show", "{count} shows"],
+    layMainTitles: ["{count} friends' title", "{count} friends' titles"],
+    layNoFeeds: "No friends yet",
+    layNoLibraries: "No Shoal libraries yet. Add a friend's server, or create a library.",
+    layWasWith: "{libraries} ({friends})",
+    layAccessEveryone: "Everyone",
+    layAccessMainEveryone: "Everyone who can open {library}",
+    layAccessExcept: "{who}, except {names}",
+    layRename: "Rename {library}",
+    layDelete: "Delete {library}",
+    layStopMain: "Stop adding into {library}",
+    layMoveFriend: "Move {friend}'s {type}",
+    layMoveTo: "Move {friend}'s {type} to",
+    layNow: "{library} (now)",
+    layNewLib: "A new library…",
+    layNewName: "Name of the new library",
+    layMoveBtn: "Move {friend}",
+    layMoving: "Moving…",
+    layMoveStarted: "Moving {friend}'s {type} into {library}. This takes a few minutes.",
+    laySecOrder: "Library order",
+    layOrderLead: "When a title is in several libraries, people see it in the first one they can open. Drag to reorder, or use the arrows.",
+    layOrderType: "{type} libraries",
+    layUp: "Move {library} up",
+    layDown: "Move {library} down",
+    layOrderMain: "your main library, with {names} added",
+    layOrderSaid: "{library} is now number {n} of {total}.",
+    layOrderFailed: "The order didn't save. Try again in a moment.",
+    layPlanChanged: "Something changed since the preview. Check the new plan below, then apply it.",
+    layDefTitle: "New connections",
+    layDefBody: "Where titles go when you add a friend's server.",
+    layDefLabel: "Layout for new friends' servers",
+    layDefPerFriend: "One per friend (own Movies and TV Shows)",
+    layDefMixed: "Add to {movies} and {tv}",
+    layDefHelp: "You can move a friend later.",
+    layDefNow: "New friends' servers: {choice}.",
+    layDefSaved: "Saved. New friends' servers: {choice}.",
+    layHideTitle: "Hide friends' titles for a person",
+    layHideBody: "Hides every friend's title from that person, in Shoal libraries and in your main libraries.",
+    layHideFor: "Hide friends' titles for {name}",
+    layShown: "Shown",
+    layHidden: "Hidden",
+    layAdminYou: "Admin (you)",
+    layCanSee: ["Can see {k} of {n} library", "Can see {k} of {n} libraries"],
+    layRestricted: "Profile with parental limits",
+    layHideSaved: "Friends' titles are hidden for {name}.",
+    layShowSaved: "Friends' titles are shown to {name} again.",
+    layHideFailed: "That didn't save for {name}. Try again in a moment.",
+    layAccessFriends: "your friends' servers",
+    layAccessLost: "{names} can no longer see {library}.",
+    layRenameTitle: "Rename {library}",
+    layNameLabel: "Name",
+    layNameEmpty: "Type a name.",
+    layRenamed: "Renamed to {library}.",
+    layCreateTitle: "Create a library",
+    layTypeLabel: "Type",
+    layPlaceLabel: "Where the titles show",
+    layPlaceOwn: "As its own library",
+    layPlaceInto: "Added into {library}",
+    layCreated: "Created {library}.",
+    layDeleteTitle: "Delete {library}?",
+    layDeleteBody: "No friend feeds it any more. Deleting it removes it from Jellyfin.",
+    layDeleteBtn: "Delete library",
+    layStopTitle: "Stop adding into {library}?",
+    layStopBody: "Shoal stops adding friends' titles into {library}. Your own titles there stay.",
+    layStopBtn: "Stop adding",
+    layNotEmptyTitle: "{library} still has friends in it",
+    layNotEmptyBody: "Move {names} to another library first. Then you can delete it.",
+    layDeleted: "Deleted {library}.",
+    layErr_recovery: "Shoal is paused until its saved data is fixed. Nothing was changed.",
+    layErr_notFound: "That library or server is gone. The page shows what is there now.",
+    layErr_nameInUse: "Another library already has that name. Pick another one.",
+    layErr_tooMany: "You have 50 libraries, the most Shoal allows. Delete one first.",
+    layErr_notEmpty: "A friend still feeds this library. Move them to another library first.",
+    layErr_legacy: "This library came from an older Shoal and can't be deleted. Move its friend to another library, and Shoal removes it.",
+    layErr_busy: "Another layout change is running. Try again when it finishes.",
+    layErr_syncing: "A sync is running. Try again in a few minutes.",
+    layErr_noStubRoot: "Set the folder for Shoal's library files in Settings first.",
+    layErr_mainLibraryInvalid: "That main library can't take friends' titles. Pick a library of the same type.",
+    layErr_shareUser: "A sharing account can't be picked.",
+    layErr_unknownUser: "One of those accounts is gone. Open the list again.",
+    layErr_acknowledgementRequired: "Tick the box about ratings first.",
+    layErr_createFailed: "Jellyfin couldn't create the library. Check the name and try again.",
+    layLinkTitle: "Library layouts",
+    layLinkCurrent: "Current: {preset}.",
+    layLinkShoal: ["{n} Shoal library", "{n} Shoal libraries"],
+    layLinkMain: ["{n} added into a main library", "{n} added into main libraries"],
+    layLinkBody: "Choose how friends' titles are grouped into libraries, and who sees them.",
+    layLinkBtn: "Change library layouts",
+
+    // Inbox explainer (PLAN v2.9 U-M3). The message itself comes from the server when it sends one.
+    inbTitle: "Message to your users",
+    inbBody: "Post one message to the Moonfin inbox of everyone on this server. It explains why a title from a friend's server may not play.",
+    inbMsgLabel: "The message",
+    inbMsgTitle: "Why might a title not work?",
+    inbMsgBody: "Some titles come from a friend's server. If that server is turned off or its internet is slow, the title may buffer or not play. Quality may be lowered to keep it smooth. Subtitles may be different from what you expect. If something won't play, try again later.",
+    inbPost: "Post to users' inbox",
+    inbPosting: "Posting…",
+    inbPosted: "Posted {when}. Each person gets it once.",
+    inbPostedNow: "Posted to your users' inbox.",
+    inbNoMoonfin: "Moonfin isn't installed on this server, so there is no inbox to post to. Each friend's title still says where it comes from.",
+    inbFailed: "The message didn't post. Try again in a moment.",
+    inbPostAgain: "Post again for new people",
+    inbPostedMissing: ["Posted {when}. {count} person added since then doesn't have it yet.", "Posted {when}. {count} people added since then don't have it yet."],
+    inbEarlier: "earlier",
+    inbNoChange: "It's already in everyone's inbox. Nothing was sent again.",
+    inbErr_refused: "Moonfin refused the message. Check that you are signed in as an administrator, then try again.",
+    inbErr_failed: "Moonfin didn't answer. Try again in a moment."
 };
 
 
@@ -1376,7 +1655,7 @@ const APPS_VERIFIED = { web: false, moonfinIos: false, moonfinOther: false, jmp:
 /** Where the plugin is installed from: the link a friend gets when their server has no Shoal. */
 const INSTALL_URL = 'https://github.com/Ninkxz/jellyfin-plugin-shoal';
 
-const VIEWS = ['overview', 'libraries', 'settings', 'pair', 'server', 'overlap', 'friend'];
+const VIEWS = ['overview', 'libraries', 'settings', 'pair', 'server', 'overlap', 'friend', 'layouts'];
 const TOP_VIEWS = ['overview', 'libraries', 'settings'];
 
 /* Quality thresholds drawn on the chart (DESIGN 7.2: smooth if T >= 1.5 x reference bitrate). */
@@ -1867,6 +2146,7 @@ async function toApiError(err) {
     let retryAfter = 0;
     let kind = '';
     let detail = '';
+    let accessChanged = false;
     try {
         const header = err && err.headers && typeof err.headers.get === 'function' ? err.headers.get('Retry-After') : null;
         retryAfter = header ? Math.max(0, Number(header) || 0) : 0;
@@ -1874,6 +2154,7 @@ async function toApiError(err) {
             const body = await err.json();
             kind = body && typeof body.error === 'string' && /^[A-Za-z]{1,40}$/.test(body.error) ? body.error : '';
             detail = body && typeof body.detail === 'string' && /^[A-Za-z]{1,40}$/.test(body.detail) ? body.detail : '';
+            accessChanged = !!(body && body.accessChanged === true);
         }
     } catch {
         /* an unreadable error body is the same as no error body */
@@ -1884,6 +2165,7 @@ async function toApiError(err) {
     e.retryAfter = retryAfter;
     e.kind = kind;
     e.detail = detail;
+    e.accessChanged = accessChanged;
     return e;
 }
 
@@ -2021,7 +2303,31 @@ function createApi(client) {
         confirmRestore: () => call('POST', 'State/ConfirmRestore', undefined, true),
         removeDevice: (id, device) => call('DELETE', 'Shares/' + enc(id) + '/Devices/' + enc(device)),
         hardening: () => call('GET', 'Hardening'),
-        setHardening: (mode) => call('PUT', 'Hardening', { mode })
+        setHardening: (mode) => call('PUT', 'Hardening', { mode }),
+        // Library layouts (PLAN v2.9 K44/K45; docs/kiro-v2.9-03.md)
+        layouts: () => call('GET', 'Layouts/Libraries'),
+        createLayoutLibrary: (body) => call('POST', 'Layouts/Libraries', body),
+        setLayoutOrder: (order) => call('PUT', 'Layouts/Libraries', { order }),
+        updateLayoutLibrary: (k, body) => call('PUT', 'Layouts/Libraries/' + enc(k), body),
+        deleteLayoutLibrary: (k) => call('DELETE', 'Layouts/Libraries/' + enc(k)),
+        // Combine into my libraries sends the main library picked per type ({ movies, tvshows } ids); the other presets send no targets.
+        layoutPreview: (preset, targets) => call('POST', 'Layouts/Preview', targets && Object.keys(targets).length ? { preset, targets } : { preset }),
+        // Apply sends back the planHash of the preview the admin saw (Warden 10 L3); a plan that changed since is refused with planChanged.
+        layoutApply: (preset, planHash, targets) => call('POST', 'Layouts/Apply', targets && Object.keys(targets).length ? { preset, planHash, targets } : { preset, planHash }),
+        layoutJob: () => call('GET', 'Layouts/Job'),
+        moveConnection: (h, body) => call('PUT', 'Connections/' + enc(h) + '/Library', body),
+        setFriendTitles: (id, hidden) => call('PUT', 'Users/' + enc(id) + '/FriendTitles', { hidden }),
+        // Quality limits and play order (PLAN v2.9 K53; docs/kiro-v2.9-04.md). peerKey is the server handle.
+        quality: (h) => call('GET', 'Peers/' + enc(h) + '/Quality'),
+        setQualityLimit: (h, body) => call('PUT', 'Peers/' + enc(h) + '/QualityLimit', body),
+        dismissRecommendation: (h, suggestedClass) => call('POST', 'Peers/' + enc(h) + '/Recommendations/Dismiss', { suggestedClass }),
+        playOrder: () => call('GET', 'PlayOrder'),
+        // Priority tier (Always prefer / Normal / Backup only) with the tier the admin saw; behind ctx.features.priorityTier (on by default).
+        setPriorityTier: (h, body) => call('PUT', 'Peers/' + enc(h) + '/Priority', body),
+        // Default layout for new connections and the inbox explainer (K49); behind ctx.features.layoutDefault / inboxExplainer (on by default).
+        setLayoutDefault: (body) => call('PUT', 'Layouts/Default', body),
+        inboxExplainer: () => call('GET', 'Inbox/Explainer'),
+        postInboxExplainer: () => call('POST', 'Inbox/Explainer', {})
     };
 }
 
@@ -2246,26 +2552,6 @@ function viaOf(s) {
     }
 
     return { icon: 'lock', text: t('viaTailscale'), host: hostOf(s.url), proxy };
-}
-
-/** Connection metric: label plus icon, or null when unknown. */
-function connectionOf(s, online) {
-    if (!online) {
-        return null;
-    }
-
-    switch (s.path) {
-        case 'direct':
-            return { icon: 'direct', text: t('connDirect') };
-        case 'derp':
-            return { icon: 'relay', text: t('connRelayed') };
-        case 'derp?':
-            return { icon: 'relay', text: t('connMaybeRelayed') };
-        case 'proxy':
-            return { icon: 'lock', text: t('connProxy') };
-        default:
-            return null;
-    }
 }
 
 const FRIEND_STATES = {
@@ -3904,7 +4190,9 @@ function createContext(page, params, deps) {
         now: deps.now,
         fmt: makeFormat(deps.locale, deps.now),
         cooldowns: new Map(),
-        features: Object.assign({ appsWork: false }, deps.features),
+        // layoutDefault (PUT Layouts/Default) and inboxExplainer (K49) are in the backend now; the flags stay so a test or the harness can turn them off.
+        // priorityTier: PUT Peers/{peerKey}/Priority is in the backend; the flag stays so a test can turn the control off.
+        features: Object.assign({ appsWork: false, layoutDefault: true, inboxExplainer: true, priorityTier: true }, deps.features),
 
         every(fn, ms) {
             const id = setInterval(() => ctx.alive && fn(), ms);
@@ -4666,10 +4954,108 @@ function scrollToNode(node) {
     }
 }
 
+/** The sentence under a play-order row (U-A1): known reasons only; an unknown word from a newer server says nothing rather than something wrong. */
+/* The ranker's plain-words reasons (VerdictEngine.ExplainRanks) mapped to STRINGS keys; copy stays in STRINGS, and an unknown reason from a newer server says nothing. */
+const PLAY_ORDER_REASONS = {
+    'fastest link': 'fastest',
+    'slower link': 'slower',
+    'faster, waiting to confirm': 'fasterWaiting',
+    'a faster server is being checked': 'challenger',
+    'not measured yet': 'notTested',
+    'unstable link': 'unstable',
+    offline: 'offline',
+    'needs attention': 'attention',
+    'back online, waiting until it stays up': 'backOnline'
+};
+const PLAY_ORDER_CHANGES = ['offline', 'online', 'speed', 'admin'];
+const PRIORITY_TIERS = ['Prefer', 'Normal', 'Backup'];
+
+/** The sentence for one connection's place: Backup only says so (and whether it is offline); otherwise the ranker's reason; Always prefer without one says that. */
+function playWhy(tier, reason) {
+    const key = Object.prototype.hasOwnProperty.call(PLAY_ORDER_REASONS, reason) ? PLAY_ORDER_REASONS[reason] : '';
+    if (tier === 'Backup') {
+        return t(key === 'offline' ? 'playWhy_backupOffline' : 'playWhy_backupOnly');
+    }
+
+    if (key) {
+        return t('playWhy_' + key);
+    }
+
+    return tier === 'Prefer' ? t('playWhy_preferred') : '';
+}
+
+/** "1st", "2nd", "23rd", "11th". */
+function ordinalPlace(n) {
+    const v = Math.trunc(Number(n)) || 0;
+    const suffix = [11, 12, 13].includes(v % 100) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[v % 10] || 'th';
+    return v + suffix;
+}
+
+/**
+ * The rows of "Which server plays first" from GET PlayOrder ({ playOrder: [{ peerKey, tier, reason?, ... }] }), in order, matched to the servers the
+ * page knows: names come from the server list, never from this answer, and a row for a server the page does not list is dropped.
+ */
+function playOrderRows(answer, servers) {
+    const entries = answer && Array.isArray(answer.playOrder) ? answer.playOrder : [];
+    const byHandle = new Map((servers || []).map((s) => [s.handle, s]));
+    return entries.filter((e) => e && typeof e.peerKey === 'string' && byHandle.has(e.peerKey)).map((e) => {
+        const tier = PRIORITY_TIERS.includes(e.tier) ? e.tier : 'Normal';
+        return { server: byHandle.get(e.peerKey), tier, setByYou: tier !== 'Normal', reason: playWhy(tier, e.reason) };
+    });
+}
+
+/** The one other server a title can fall back to, when the play order lists exactly two the page knows; otherwise null ("another server"). */
+function backupVia(answer, servers, cur) {
+    const rows = playOrderRows(answer, servers);
+    if (!cur || rows.length !== 2 || !rows.some((r) => r.server.handle === cur.handle)) {
+        return null;
+    }
+
+    return rows.find((r) => r.server.handle !== cur.handle).server;
+}
+
+/**
+ * The overlap's backup line from GET Peers/{h}/Overlap backups { sharedWithOthers, playsFirst, backupFor } (K53): titles this server plays first that
+ * another server can also play, then the titles it is a hidden backup for. Null when there is nothing to say (no groups, or no shared titles).
+ */
+function backupSentence(ctx, ov, cur, via) {
+    const b = ov && ov.backups;
+    if (!b || !cur) {
+        return null;
+    }
+
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.trunc(v) : 0);
+    const first = num(b.playsFirst);
+    const backup = num(b.backupFor);
+    if (!first && !backup) {
+        return null;
+    }
+
+    const frag = document.createDocumentFragment();
+    if (first) {
+        frag.append(tRich(via ? 'backupLineVia' : 'backupLine', { n: first, count: ctx.fmt.num(first), server: cur.displayName, via: via ? via.displayName : '' }));
+        if (backup) {
+            frag.append(' ', tRich('backupFor', { n: backup, count: ctx.fmt.num(backup), server: cur.displayName }));
+        }
+    } else {
+        frag.append(tRich('backupForOnly', { n: backup, count: ctx.fmt.num(backup), server: cur.displayName }));
+    }
+
+    return frag;
+}
+
 function overviewScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="overview"]');
+    // One set of listeners per screen instance: a screen made again (recovery mode ending) never doubles a click.
+    const wiring = [];
+    const on = (node, type, fn) => {
+        node.addEventListener(type, fn);
+        wiring.push([node, type, fn]);
+    };
+    const added = [];
     const versionHost = el('div', { class: 'shoal-version' });
     view.append(versionHost);
+    added.push(versionHost);
     fillVersion(ctx, versionHost);
     const blocks = {};
     for (const name of ['loading', 'error', 'empty', 'content']) {
@@ -4681,29 +5067,44 @@ function overviewScreen(ctx) {
     const syncNote = slot(view, 'syncnote');
     syncNote.id = uid('shoal-sn');
     const actionError = slot(view, 'actionerror');
-    const cardsHost = slot(view, 'cards');
-    let legacyNode = null;
+    const rowsHost = slot(view, 'cards');
     const noServers = slot(view, 'noservers');
-    const serversNote = slot(view, 'serversnote');
+    const inCount = slot(view, 'incount');
+    const inNotes = slot(view, 'innotes');
+    const lastSyncNode = slot(view, 'lastsync');
+    const outCount = slot(view, 'outcount');
+    const outNotes = slot(view, 'outnotes');
+    const playingBlock = slot(view, 'playing');
+    const playingList = slot(view, 'playinglist');
+    const liveCount = slot(view, 'livecount');
+    const friendsHost = slot(view, 'friends');
+    const friendsEmpty = slot(view, 'friendsempty');
+    const orphanHost = slot(view, 'orphans');
+    const protectHost = slot(view, 'protect');
+    const protectText = slot(view, 'protecttext');
     const speedHost = slot(view, 'speedhost');
     const overlapSection = q(view, '[data-section="overlap"]');
     const overlapTitle = slot(view, 'overlaptitle');
     const overlapBody = slot(view, 'overlapbody');
+    const backupLine = slot(view, 'backupline');
     const postersSection = q(view, '[data-section="posters"]');
     const postersHost = slot(view, 'posters');
     const postersEmpty = slot(view, 'postersempty');
-    const seeAll = slot(view, 'seeall');
-    const friendsHost = slot(view, 'friends');
-    const friendsEmpty = slot(view, 'friendsempty');
-    let orphanHost = null;
-    let linkedHost = null;
+    const playOrderSection = q(view, '[data-section="playorder"]');
+    const playOrderList = slot(view, 'playorder');
+    const playOrderChanged = slot(view, 'playorderchanged');
+    const flowIn = slot(view, 'flowin');
+    const flowOut = slot(view, 'flowout');
+    const rows = new Map();
+    let legacyNode = null;
+    let countedNote = null;
     let sandboxHost = null;
-    const cards = new Map();
     let inviteNotice = null;
-    const st = { data: null, selected: null, speed: null, overlapHandle: null, overlapSeq: 0, polls: 0, prev: new Map(), posterSig: '', friendSig: '', loaded: false, lastAnnounce: 0 };
+    const st = { data: null, selected: null, speed: null, overlapHandle: null, overlapSeq: 0, polls: 0, prev: new Map(), loaded: false, lastAnnounce: 0, hardening: null, hardeningAsked: false, orphansOpen: false };
     const poller = createPoller(ctx, () => load(false), STATUS_POLL_MS);
 
-    ctx.link(seeAll, 'libraries');
+    ctx.link(slot(view, 'seeall'), 'libraries');
+    ctx.link(slot(view, 'protectlink'), 'settings');
 
     function setBlock(name) {
         for (const [key, node] of Object.entries(blocks)) {
@@ -4723,16 +5124,17 @@ function overviewScreen(ctx) {
         cooldownNote(ctx, 'sync', syncNote, syncBtn);
     }
 
+    // The two jobs (owner decision 7): add a friend's server is the watch direction, let a friend watch mine is the share direction.
     for (const b of qa(view, '[data-action="pair"]')) {
-        b.addEventListener('click', () => ctx.navigate('pair', { dir: 'watch' }));
+        on(b, 'click', () => ctx.navigate('pair', { dir: 'watch' }));
     }
 
     for (const b of qa(view, '[data-action="share"]')) {
-        b.addEventListener('click', () => ctx.navigate('pair', { dir: 'share' }));
+        on(b, 'click', () => ctx.navigate('pair', { dir: 'share' }));
     }
 
-    q(view, '[data-action="retry-load"]').addEventListener('click', () => load(true));
-    syncBtn.addEventListener('click', () => {
+    on(q(view, '[data-action="retry-load"]'), 'click', () => load(true));
+    on(syncBtn, 'click', () => {
         runAction(ctx, syncBtn, {
             busyText: t('syncing'),
             cooldownKey: 'sync',
@@ -4753,75 +5155,114 @@ function overviewScreen(ctx) {
         });
     });
 
-    /* ---------- status line ---------- */
-
-    function sep() {
-        return el('span', { class: 'shoal-status__sep', 'aria-hidden': 'true', text: '·' });
+    function dot() {
+        return el('span', { class: 'shoal-row__sep', 'aria-hidden': 'true', text: '·' });
     }
 
-    function renderStatusLine(servers, friends) {
-        if (servers.length === 0) {
-            statusLine.hidden = true;
+    /** Joins text and nodes with a muted dot the screen reader skips. */
+    function dotted(parts) {
+        const out = [];
+        parts.filter(Boolean).forEach((p, i) => {
+            if (i > 0) {
+                out.push(' ', dot(), ' ');
+            }
+
+            out.push(typeof p === 'string' ? el('span', { text: p }) : p);
+        });
+        return out;
+    }
+
+    /* ---------- the two tiles: real art travelling in the direction of the connection ---------- */
+
+    function fillFlow(host, items) {
+        const list = (items || []).filter((p) => p && p.localItemId && p.primaryTag).slice(0, 3);
+        const sig = JSON.stringify(list.map((p) => [p.localItemId, p.primaryTag]));
+        if (host.dataset.sig === sig) {
             return;
         }
 
-        statusLine.hidden = false;
-        const sum = summarizeServers(servers, ctx.fmt, friends);
-        const needs = sum.attention.length + sum.attentionFriends.length;
-        const problem = needs > 0 || sum.online < sum.total;
-        const items = [el('span', { class: 'shoal-status__item shoal-tone--' + (problem ? 'warn' : 'ok') }, icon(problem ? 'warn' : 'ok', true), t('statusOnline', { online: sum.online, total: sum.total }))];
-        if (needs > 0) {
-            items.push(sep(), linkButton(t('needAttention', { n: needs }), () => {
-                const first = sortServers(servers).find((s) => sum.attention.includes(s.handle));
-                const card = first && cards.get(first.handle);
-                const link = card ? slot(card, 'name') : q(friendsHost, '[data-attention="1"]');
-                if (link) {
-                    link.focus();
-                }
-            }, 'shoal-status__link'));
+        host.dataset.sig = sig;
+        clear(host);
+        host.hidden = list.length === 0;
+        for (const p of list) {
+            const img = el('img', { class: 'shoal-flow__img', alt: '', width: '40', height: '60', decoding: 'async' });
+            host.append(img);
+            loadImageChain(img, [{ url: itemImageUrl(ctx, p.localItemId, 'Primary', p.primaryTag, 40, 80) }], () => img.remove());
+        }
+    }
+
+    function renderFlows(data) {
+        fillFlow(flowIn, (data.recentlyShared || []).filter((p) => p.kind !== 'yourCopy'));
+        // Titles of this server for the share tile: only when the server sends them (docs/kiro2-v2.9-01.md, missing API 3).
+        fillFlow(flowOut, Array.isArray(data.ownLatest) ? data.ownLatest : []);
+    }
+
+    /* ---------- Watching lane: head, sub line and foot ---------- */
+
+    function renderWatchingMeta(servers) {
+        const sum = summarizeServers(servers, ctx.fmt);
+        const listed = servers.filter((s) => {
+            const key = serverStateKey(s);
+            return key !== 'pairing' && !((key === 'pairingStopped' || key === 'pairingSafety') && s.paired === false);
+        });
+        const titles = listed.reduce((n, s) => n + (s.titleCount || 0), 0);
+        if (servers.length === 0) {
+            clear(inCount);
+            clear(statusLine);
+        } else {
+            replaceKids(inCount, el('b', { text: ctx.fmt.num(titles) }), ' ', el('span', { text: t('laneTitlesFrom', { n: titles, servers: t('nServers', { n: listed.length }) }) }));
+            const problem = sum.attention.length > 0 || sum.online < sum.total;
+            const items = [el('span', { class: 'shoal-sub__state shoal-tone--' + (problem ? 'warn' : 'ok') }, icon(problem ? 'warn' : 'ok', true), t('subOnline', { online: sum.online, total: sum.total, n: sum.total }))];
+            if (sum.attention.length > 0) {
+                items.push(linkButton(t('needAttention', { n: sum.attention.length }), () => {
+                    const first = q(rowsHost, 'a[data-attention="1"]');
+                    if (first) {
+                        first.focus();
+                    }
+                }, 'shoal-sub__link'));
+            }
+
+            replaceKids(statusLine, items);
         }
 
-        const off = sum.titlesOffline || 0;
-        const paused = sum.titlesPaused || 0;
-        const titlesText = paused > 0 && off === 0 && sum.titles === 0
-            ? t('titlesOnlyPaused', { n: paused, count: ctx.fmt.num(paused) })
-            : off > 0 && sum.titles === 0
-            ? t('titlesOnlyOffline', { n: off, off: ctx.fmt.num(off) })
-            : off > 0 ? t('titlesOfflineToo', { n: sum.titles, count: ctx.fmt.num(sum.titles), off: ctx.fmt.num(off) }) : t('titlesSharedWithYou', { n: sum.titles, count: ctx.fmt.num(sum.titles) });
-        items.push(sep(), el('span', { class: 'shoal-status__item', text: titlesText }));
         const syncing = servers.some((s) => s.syncing);
         const last = servers.reduce((m, s) => Math.max(m, toMs(s.lastSync && s.lastSync.atUtc) || 0), 0);
-        items.push(sep(), el('span', { class: 'shoal-status__item' }, icon('clock', true), syncing ? t('syncingNow') : last ? t('lastSync', { when: ctx.fmt.relative(last) }) : t('notSyncedYet')));
-        // Servers paired the old way (D17): one calm banner above the cards, with the way forward on each card.
+        replaceKids(lastSyncNode, icon('clock', true), el('span', { text: syncing ? t('syncingNow') : last ? t('lastSync', { when: ctx.fmt.relative(last) }) : t('notSyncedYet') }));
+
+        // Servers paired the old way (D17): one calm note above the rows, with the way forward on each row.
         const legacy = servers.filter((x) => x.needsRepair === true || x.pairingMethod === 'qc').length;
         if (legacyNode) {
             legacyNode.remove();
             legacyNode = null;
         }
 
-        if (legacy > 0 && cardsHost.parentNode) {
+        if (legacy > 0) {
             legacyNode = hint('warn', 'keyoff', t('legacyBanner', { n: legacy }));
             legacyNode.classList.add('shoal-legacybanner');
-            cardsHost.parentNode.insertBefore(legacyNode, cardsHost);
+            inNotes.append(legacyNode);
         }
 
         // What counts as a title, in plain sight (Lumen 04): touch and keyboard users never see a tooltip.
-        items.push(el('span', { class: 'shoal-status__note shoal-meta', text: t('titlesCounted') }));
-        replaceKids(statusLine, items);
+        if (!countedNote) {
+            countedNote = el('p', { class: 'shoal-lane__note shoal-meta', text: t('titlesCounted') });
+            noServers.after(countedNote);
+        }
+
+        countedNote.hidden = listed.length === 0;
     }
 
-    /* ---------- cards ---------- */
+    /* ---------- Watching lane: one row per friend's server ---------- */
 
-    function buildCard(server) {
-        const node = ctx.tmpl('card');
-        node.dataset.handle = server.handle;
-        const nameId = uid('shoal-cn');
-        const chipId = uid('shoal-cc');
-        slot(node, 'name').id = nameId;
-        slot(node, 'chip').dataset.chipId = chipId;
-        node.setAttribute('aria-labelledby', nameId + ' ' + chipId);
-        ctx.link(slot(node, 'name'), 'server', { id: server.handle });
-        return node;
+    function rowTarget(s, key) {
+        if (key === 'pairing') {
+            return { view: 'pair', query: { dir: 'watch' } };
+        }
+
+        if (key === 'pairingStopped' || key === 'pairingSafety') {
+            return { view: 'pair', query: { id: s.handle } };
+        }
+
+        return { view: 'server', query: { id: s.handle } };
     }
 
     function artChain(s) {
@@ -4831,79 +5272,101 @@ function overviewScreen(ctx) {
         }
 
         return [
-            l.backdropTag ? { url: itemImageUrl(ctx, l.localItemId, 'Backdrop', l.backdropTag, 400, 80), cls: 'backdrop' } : null,
-            l.primaryTag ? { url: itemImageUrl(ctx, l.localItemId, 'Primary', l.primaryTag, 400, 80), cls: 'primary' } : null
+            l.backdropTag ? { url: itemImageUrl(ctx, l.localItemId, 'Backdrop', l.backdropTag, 104, 80), cls: 'backdrop' } : null,
+            l.primaryTag ? { url: itemImageUrl(ctx, l.localItemId, 'Primary', l.primaryTag, 104, 80), cls: 'primary' } : null
         ].filter(Boolean);
     }
 
-    function updateCard(node, s) {
+    function fillArt(img, ph, s) {
+        const chain = artChain(s);
+        const key = chain.map((c) => c.url).join('|');
+        if (key === img.dataset.artKey) {
+            return;
+        }
+
+        img.dataset.artKey = key;
+        if (chain.length) {
+            ph.hidden = true;
+            loadImageChain(img, chain, () => {
+                ph.hidden = false;
+            });
+        } else {
+            img.hidden = true;
+            img.removeAttribute('src');
+            ph.hidden = false;
+        }
+    }
+
+    function rowMeta(s, model) {
+        const n = s.titleCount || 0;
+        const via = viaOf(s);
+        const viaNode = el('span', { class: 'shoal-row__via' }, icon(via.icon, true), el('span', { text: via.text }), via.proxy ? el('span', { text: via.proxy }) : null);
+        if (model.keysLocked) {
+            return dotted([countText(ctx, 'titlesN', n), model.verdict]);
+        }
+
+        switch (model.key) {
+            case 'pairing':
+                return dotted([t('waitingFor', { server: s.displayName }), viaNode]);
+            case 'pairingStopped':
+            case 'pairingSafety':
+                return dotted([model.neverPaired ? t('notPaired') : countText(ctx, 'titlesN', n), viaNode]);
+            case 'offline':
+                return dotted([
+                    countText(ctx, 'titlesStayListed', n),
+                    s.offlineSinceUtc ? t('offlineFor', { duration: ctx.fmt.durationSince(s.offlineSinceUtc) }) : null,
+                    s.nextCheckUtc ? t('nextCheck', { n: ctx.fmt.minutesUntil(s.nextCheckUtc) }) : null
+                ]);
+            default:
+                return dotted([countText(ctx, 'titlesN', n), viaNode, model.online ? model.verdict : null]);
+        }
+    }
+
+    /** A friend who also watches this server (DESIGN v2.6.2) is named in both lanes, so the same person is easy to find. */
+    function watchesBack(s) {
+        const links = Array.isArray(st.data && st.data.friendLinks) ? st.data.friendLinks : [];
+        return links.some((l) => l && l.linked && l.share && l.watch && l.watch.peerHandle === s.handle);
+    }
+
+    function updateRow(node, s) {
         const keysLocked = !!(ctx.status && ctx.status.secretsUnreadable);
         const model = describeServer(s, ctx.fmt, { keysLocked });
-        const isSelected = st.selected === s.handle;
-        const sig = JSON.stringify([s, isSelected, keysLocked, ctx.cooldownMinutes('test:' + s.handle)]) + Math.floor(ctx.now() / 60000);
+        const back = watchesBack(s);
+        const sig = JSON.stringify([s, keysLocked, back, ctx.cooldownMinutes('test:' + s.handle)]) + Math.floor(ctx.now() / 60000);
         if (node.dataset.sig === sig) {
             return;
         }
 
         node.dataset.sig = sig;
         node.dataset.state = model.key;
-        node.classList.toggle('is-selected', isSelected);
         node.classList.toggle('is-dim', model.dim);
-
-        // art
-        const img = slot(node, 'img');
-        const ph = slot(node, 'ph');
-        const pill = slot(node, 'pill');
-        const chain = artChain(s);
-        const key = chain.map((c) => c.url).join('|');
-        if (key !== img.dataset.artKey) {
-            img.dataset.artKey = key;
-            if (chain.length) {
-                ph.hidden = true;
-                loadImageChain(img, chain, () => {
-                    ph.hidden = false;
-                });
-            } else {
-                img.hidden = true;
-                img.removeAttribute('src');
-                ph.hidden = false;
-            }
-        }
-
-        slot(node, 'phtext').textContent = model.key === 'pairing' ? t('waitingFor', { server: s.displayName }) : model.key === 'pairingStopped' || model.key === 'pairingSafety' ? t('pairingStoppedArt') : t('noPictures');
-        pill.hidden = false;
-        const pillIcon = q(pill, 'svg');
-        if (model.key === 'offline' || model.key === 'paused') {
-            pill.hidden = true; // the status chip beside the name says it; a second "Offline" on the picture only repeats it
-        } else if (s.latest && s.latest.title) {
-            replaceIcon(pillIcon, 'play');
-            slot(pill, 'pilltext').textContent = t('pillLatest', { server: s.displayName, title: s.latest.title });
+        const link = slot(node, 'link');
+        const target = rowTarget(s, model.key);
+        ctx.link(link, target.view, target.query);
+        if (model.attention) {
+            link.dataset.attention = '1';
         } else {
-            pill.hidden = true;
+            delete link.dataset.attention;
         }
 
-        // name and chip
+        fillArt(slot(node, 'img'), slot(node, 'ph'), s);
         slot(node, 'nametext').textContent = s.displayName;
-        const chipHost = slot(node, 'chip');
-        replaceKids(chipHost, chip(model.tone, model.icon, model.chipText, chipHost.dataset.chipId));
+        replaceKids(slot(node, 'chip'), chip(model.tone, model.icon, model.chipText));
+        replaceKids(slot(node, 'meta'), rowMeta(s, model));
+        const backLine = q(node, '.shoal-row__also');
+        if (backLine) {
+            backLine.remove();
+        }
 
-        // via line
-        const via = viaOf(s);
-        replaceKids(slot(node, 'via'), icon(via.icon, true), el('span', { text: via.text }), via.host ? [el('span', { 'aria-hidden': 'true', text: '·' }), el('span', { class: 'shoal-card__host', text: via.host })] : null, via.proxy ? el('span', { text: via.proxy }) : null);
+        if (back) {
+            slot(node, 'meta').after(el('span', { class: 'shoal-row__meta shoal-row__also', text: t('alsoWatchesYou') }));
+        }
 
-        // metrics
-        const conn = connectionOf(s, model.online);
-        replaceKids(slot(node, 'mconn'), conn ? [icon(conn.icon, true), conn.text] : unknownValue());
-        replaceKids(slot(node, 'mrtt'), model.online && typeof s.rttMs === 'number' ? ctx.fmt.ms(s.rttMs) : unknownValue());
-        replaceKids(slot(node, 'mspeed'), model.online && typeof s.mbps === 'number' ? ctx.fmt.mbps(s.mbps) : unknownValue());
+        // What needs doing, under the row and outside its link (no button inside a link).
+        const hintHost = slot(node, 'hint');
+        const hintIcon = model.hint && (model.hint.tone === 'bad' ? 'warn' : model.icon === 'offline' || model.icon === 'pause' ? 'info' : 'warn');
+        replaceKids(hintHost, model.hint ? hint(model.hint.tone, hintIcon, model.hint.text) : null, dedupNote(s));
 
-        // verdict and hint
-        const verdict = slot(node, 'verdict');
-        verdict.hidden = !model.verdict;
-        slot(node, 'verdicttext').textContent = model.verdict;
-        replaceKids(slot(node, 'hint'), model.hint ? hint(model.hint.tone, model.hint.tone === 'bad' ? 'warn' : model.icon === 'offline' || model.icon === 'pause' ? 'info' : 'warn', model.hint.text) : null);
-
-        // alerts line (ui-spec 7): the first that applies, "and k more" when more exist; a link to the server's alerts
         const hold = slot(node, 'hold');
         const alertCount = s.alertCount || 0;
         hold.hidden = alertCount <= 0 || model.keysLocked;
@@ -4928,16 +5391,6 @@ function overviewScreen(ctx) {
             replaceKids(hold, icon('warn', true), ctx.linkEl('server', { id: s.handle, focus: 'alerts' }, 'shoal-link', text));
         }
 
-        // footer: title count (or next check), action
-        const titles = slot(node, 'titles');
-        if (model.key === 'offline' && s.nextCheckUtc) {
-            titles.textContent = t('nextCheck', { n: ctx.fmt.minutesUntil(s.nextCheckUtc) });
-        } else if (model.key === 'pairing' || ((model.key === 'pairingStopped' || model.key === 'pairingSafety') && model.neverPaired)) {
-            titles.textContent = model.key === 'pairing' ? '' : t('notPaired');
-        } else {
-            replaceKids(titles, [tRich('titlesShared', { n: s.titleCount || 0, count: ctx.fmt.num(s.titleCount || 0) }), dedupNote(s)]);
-        }
-
         const actionHost = slot(node, 'action');
         if (model.action) {
             const existing = q(actionHost, 'button[data-kind]');
@@ -4947,46 +5400,20 @@ function overviewScreen(ctx) {
                     label.textContent = model.action.label;
                 }
             } else {
-                const btn = button({ label: model.action.label, small: true, onClick: () => cardAction(model.action.kind, s.handle, btn) });
+                const btn = button({ label: model.action.label, small: true, onClick: () => rowAction(model.action.kind, s.handle, btn) });
                 btn.dataset.kind = model.action.kind;
+                // The button names its server: a list of "Retry now" buttons is otherwise ambiguous to a screen reader.
+                btn.setAttribute('aria-label', t('rowActionAria', { action: model.action.label, server: s.displayName }));
                 replaceKids(actionHost, btn);
-            }
-        } else if (isSelected) {
-            const existing = q(actionHost, 'button[data-kind="below"]');
-            if (!existing) {
-                const b = linkButton(t('speedShownBelow'), () => scrollToSpeed(), 'shoal-card__below');
-                b.dataset.kind = 'below';
-                b.prepend(icon('down', true));
-                replaceKids(actionHost, b);
             }
         } else {
             clear(actionHost);
         }
+
+        slot(node, 'more').hidden = !model.hint && hold.hidden && !model.action && !dedupNote(s);
     }
 
-    function replaceIcon(svg, name) {
-        const use = svg && svg.querySelector('use');
-        if (use) {
-            use.setAttribute('href', '#shoal-i-' + name);
-        }
-    }
-
-    function scrollToSpeed() {
-        if (st.speed) {
-            const shown = serversOf().find((x) => x.handle === st.selected);
-            ctx.toast(t('announceShowingSpeed', { server: shown ? shown.displayName : '' }));
-            scrollToNode(st.speed.root);
-            const h = q(st.speed.root, 'h2');
-            if (h) {
-                h.focus({ preventScroll: true });
-            }
-
-            st.speed.root.classList.add('is-flash');
-            ctx.later(() => st.speed.root.classList.remove('is-flash'), 1600);
-        }
-    }
-
-    function cardAction(kind, handle, btn) {
+    function rowAction(kind, handle, btn) {
         switch (kind) {
             case 'test':
             case 'retry':
@@ -5031,41 +5458,31 @@ function overviewScreen(ctx) {
         }
     }
 
-    cardsHost.addEventListener('click', (ev) => {
-        if (ev.target.closest('a, button')) {
-            return;
-        }
-
-        const card = ev.target.closest('.shoal-card');
-        if (card && card.dataset.handle) {
-            select(card.dataset.handle, true);
-        }
-    });
-
-    function renderCards(servers) {
+    function renderRows(servers) {
         const keep = new Set();
         servers.forEach((s, index) => {
             keep.add(s.handle);
-            let node = cards.get(s.handle);
+            let node = rows.get(s.handle);
             if (!node) {
-                node = buildCard(s);
-                cards.set(s.handle, node);
+                node = ctx.tmpl('serverrow');
+                node.dataset.handle = s.handle;
+                rows.set(s.handle, node);
             }
 
-            updateCard(node, s);
-            if (cardsHost.children[index] !== node) {
-                cardsHost.insertBefore(node, cardsHost.children[index] || null);
+            updateRow(node, s);
+            if (rowsHost.children[index] !== node) {
+                rowsHost.insertBefore(node, rowsHost.children[index] || null);
             }
         });
-        for (const [handle, node] of cards) {
+        for (const [handle, node] of rows) {
             if (!keep.has(handle)) {
                 node.remove();
-                cards.delete(handle);
+                rows.delete(handle);
             }
         }
     }
 
-    /* ---------- selection, speed and overlap ---------- */
+    /* ---------- selection, speed and overlap (the speed panel's Server select drives both) ---------- */
 
     function select(handle, announce) {
         if (!handle || handle === st.selected) {
@@ -5074,11 +5491,14 @@ function overviewScreen(ctx) {
 
         st.selected = handle;
         ctx.storage.set(SELECTED_KEY, handle);
-        applySelection();
+        if (st.speed) {
+            st.speed.setServers(serversOf(), st.selected);
+        }
+
+        loadOverlap();
         if (announce) {
             const s = serversOf().find((x) => x.handle === handle);
             ctx.announce(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
-ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         }
     }
 
@@ -5086,20 +5506,13 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         return sortServers((st.data && st.data.servers) || []);
     }
 
-    function applySelection() {
-        const servers = serversOf();
-        for (const s of servers) {
-            const node = cards.get(s.handle);
-            if (node) {
-                updateCard(node, s);
-            }
+    function renderBackupLine(ov, cur) {
+        st.overlapLast = { ov, cur };
+        const frag = backupSentence(ctx, ov, cur, backupVia(st.playOrder, serversOf(), cur));
+        backupLine.hidden = !frag;
+        if (frag) {
+            replaceKids(slot(backupLine, 'backuptext'), frag);
         }
-
-        if (st.speed) {
-            st.speed.setServers(servers, st.selected);
-        }
-
-        loadOverlap();
     }
 
     async function loadOverlap() {
@@ -5120,9 +5533,12 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
 
             st.overlapHandle = handle;
             fillOverlap(ctx, overlapBody, cur.displayName, ov, { view: 'overlap', query: { id: handle } });
+            renderBackupLine(ov, cur);
         } catch {
             if (mine === st.overlapSeq) {
                 replaceKids(overlapBody, el('p', { class: 'shoal-meta shoal-emptyline', text: t('overlapNone') }));
+                backupLine.hidden = true;
+                st.overlapLast = null;
             }
         }
     }
@@ -5136,7 +5552,7 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         speedHost.append(st.speed.root);
     }
 
-    /* ---------- posters and friends ---------- */
+    /* ---------- New from friends' servers ---------- */
 
     function visiblePosterCount() {
         const size = sizeClass(ctx.root);
@@ -5159,7 +5575,7 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
             return;
         }
 
-        const sig = JSON.stringify(list) + visiblePosterCount();
+        const sig = JSON.stringify(list) + visiblePosterCount() + JSON.stringify(data.parkedServers || []);
         if (sig === st.posterSig) {
             return;
         }
@@ -5202,7 +5618,11 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         });
         const source = slot(node, 'source');
         source.classList.toggle('is-yours', yours);
-        replaceIcon(q(source, 'svg'), yours ? 'check' : 'share');
+        const use = q(source, 'use');
+        if (use) {
+            use.setAttribute('href', '#shoal-i-' + (yours ? 'check' : 'share'));
+        }
+
         slot(node, 'sourcetext').textContent = yours ? t('yourCopy') : p.serverName;
         slot(node, 'title').textContent = p.title;
         slot(node, 'meta').textContent = yours
@@ -5211,54 +5631,213 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         return node;
     }
 
-    function renderInviteNotice(data) {
-        const f = data.inviteFailures;
-        const show = !!(f && f.notice);
-        if (!inviteNotice) {
-            inviteNotice = hint('info', 'info', t('inviteNotice', { n: show ? f.lastHour : 0 }));
-            inviteNotice.hidden = true;
-            friendsHost.before(inviteNotice);
+    /* ---------- Which server plays first (shown only when the server sends the order) ---------- */
+
+    // GET PlayOrder (K53) is read with each Status; an older server without the route answers 404 once and is not asked again.
+    async function loadPlayOrder() {
+        if (st.playOrderMissing) {
+            return;
         }
 
-        inviteNotice.hidden = !show;
-        if (show) {
+        try {
+            const answer = await ctx.api.playOrder();
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.playOrder = answer && typeof answer === 'object' ? answer : null;
+        } catch (err) {
+            if (!ctx.alive) {
+                return;
+            }
+
+            if (err && err.status === 404) {
+                st.playOrderMissing = true;
+            }
+
+            st.playOrder = null;
+        }
+
+        renderPlayOrder(serversOf());
+        if (st.overlapLast) {
+            renderBackupLine(st.overlapLast.ov, st.overlapLast.cur);
+        }
+    }
+
+    function renderPlayOrder(servers) {
+        const list = playOrderRows(st.playOrder, servers);
+        playOrderSection.hidden = list.length < 2;
+        if (playOrderSection.hidden) {
+            return;
+        }
+
+        const sig = JSON.stringify([st.playOrder, list.map((r) => [r.server.handle, r.server.displayName, describeServer(r.server, ctx.fmt).dim])]) + Math.floor(ctx.now() / 60000);
+        if (sig === st.playOrderSig) {
+            return;
+        }
+
+        st.playOrderSig = sig;
+        clear(playOrderList);
+        list.forEach((r, i) => {
+            const s = r.server;
+            const model = describeServer(s, ctx.fmt);
+            const img = el('img', { class: 'shoal-row__img', alt: '', width: '104', height: '52', loading: 'lazy', decoding: 'async', hidden: true });
+            const ph = el('span', { class: 'shoal-row__ph' }, icon('server'));
+            const art = el('span', { class: 'shoal-row__art' + (model.dim ? ' is-dim' : '') }, img, ph);
+            fillArt(img, ph, s);
+            const details = ctx.linkEl('server', { id: s.handle }, 'shoal-iconbtn shoal-row__go', icon('right'));
+            details.setAttribute('aria-label', t('serverDetailsAria', { server: s.displayName }));
+            playOrderList.append(el('li', {},
+                el('span', { class: 'shoal-rank', 'aria-hidden': 'true', text: String(i + 1) }),
+                art,
+                ' ',
+                el('span', { class: 'shoal-prio__text' },
+                    el('span', { class: 'shoal-prio__name' }, el('span', { class: 'shoal-sr', text: t('playRank', { n: i + 1 }) }), el('span', { text: s.displayName })),
+                    ' ',
+                    r.reason ? el('span', { class: 'shoal-prio__why', text: r.reason }) : null),
+                ' ',
+                el('span', { class: 'shoal-mode shoal-mode--' + (r.setByYou ? 'set' : 'auto') }, icon(r.setByYou ? 'pin' : 'auto', true), el('span', { text: t(r.setByYou ? 'playSetByYou' : 'playAutomatic') })),
+                details));
+        });
+
+        // changedUtc / changeReason / changeServer are proposed (docs/kiro2-v2.9-03.md): the line stays empty until the answer carries them.
+        const po = st.playOrder || {};
+        const changedMs = toMs(po.changedUtc);
+        const about = po.changeServer ? servers.find((s) => s.handle === po.changeServer) : null;
+        const reason = PLAY_ORDER_CHANGES.includes(po.changeReason) && (about || po.changeReason === 'speed' || po.changeReason === 'admin') ? po.changeReason : '';
+        playOrderChanged.textContent = changedMs ? t(reason ? 'playOrderChanged_' + reason : 'playOrderChanged', { when: ctx.fmt.relative(changedMs), server: about ? about.displayName : '' }) : '';
+    }
+
+    /* ---------- Being watched lane ---------- */
+
+    function renderInviteNotice(data) {
+        const f = data.inviteFailures;
+        const visible = !!(f && f.notice);
+        if (!inviteNotice) {
+            inviteNotice = hint('info', 'info', t('inviteNotice', { n: visible ? f.lastHour : 0 }));
+            outNotes.append(inviteNotice);
+        }
+
+        inviteNotice.hidden = !visible;
+        if (visible) {
             q(inviteNotice, '.shoal-hint__body').textContent = t('inviteNotice', { n: f.lastHour });
         }
     }
 
-    // Leftover sharing accounts (Warden 08 M7): listed with a Delete button; Shoal never deletes one by itself, and the dialog wants the name typed.
+    function renderPlaying(friends) {
+        const playing = friends.filter((f) => (f.playingNow || 0) > 0);
+        const total = playing.reduce((n, f) => n + f.playingNow, 0);
+        playingBlock.hidden = total === 0;
+        const sig = JSON.stringify(playing.map((f) => [f.handle, f.name, f.playingNow, f.transcodingNow]));
+        if (sig === st.playingSig) {
+            return;
+        }
+
+        st.playingSig = sig;
+        replaceKids(liveCount, el('i', { 'aria-hidden': 'true' }), el('span', { text: t('streamsN', { n: total }) }));
+        clear(playingList);
+        for (const f of playing) {
+            const go = icon('right');
+            go.classList.add('shoal-row__go');
+            const link = ctx.linkEl('friend', { id: f.handle }, 'shoal-row shoal-row--live',
+                el('span', { class: 'shoal-livedisc', 'aria-hidden': 'true' }, icon('play')),
+                el('span', { class: 'shoal-row__main' },
+                    el('span', { class: 'shoal-row__name' }, el('span', { class: 'shoal-row__nametext', text: t('friendsServerName', { name: f.name }) })),
+                    ' ',
+                    el('span', { class: 'shoal-row__meta' }, dotted([countText(ctx, 'streamsNowN', f.playingNow), f.transcodingNow > 0 ? t('transcodingN', { n: f.transcodingNow }) : null]))),
+                go);
+            playingList.append(el('li', { class: 'shoal-lanerow' }, link));
+        }
+    }
+
+    function renderFriends(data) {
+        const friends = data.friends || [];
+        renderInviteNotice(data);
+        renderPlaying(friends);
+        const total = friends.reduce((n, f) => n + (f.playingNow || 0), 0);
+        replaceKids(outCount, el('b', { text: ctx.fmt.num(friends.length) }), ' ', el('span', { text: total > 0 ? t('laneFriendsPlaying', { n: friends.length, k: total }) : t('laneFriendsWord', { n: friends.length }) }));
+        // Linked friends (DESIGN v2.6.2) are named once in each lane, so the same person is easy to find in both.
+        const alsoServer = new Map((Array.isArray(data.friendLinks) ? data.friendLinks : []).filter((l) => l && l.linked && l.share).map((l) => [l.share.shareHandle, l.name]));
+        const sig = JSON.stringify(friends) + JSON.stringify(Array.from(alsoServer)) + Math.floor(ctx.now() / 60000);
+        friendsEmpty.hidden = friends.length > 0;
+        if (sig === st.friendSig) {
+            return;
+        }
+
+        st.friendSig = sig;
+        clear(friendsHost);
+        for (const f of friends) {
+            const node = ctx.tmpl('friend-row');
+            const link = q(node, 'a');
+            ctx.link(link, 'friend', { id: f.handle });
+            slot(node, 'initial').textContent = initialOf(f.name);
+            slot(node, 'name').textContent = f.name;
+            const metaNode = slot(node, 'meta');
+            metaNode.textContent = t('friendMeta', { libs: t('nLibraries', { n: f.libraryCount }), devs: t('nDevices', { n: f.deviceCount }), when: f.lastSeenUtc ? ctx.fmt.relative(f.lastSeenUtc) : t('never') });
+            const model = describeFriend(f);
+            slot(node, 'chip').append(chip(model.tone, model.icon, model.text));
+            if (f.unexpectedDeviceCount > 0) {
+                link.dataset.attention = '1';
+                metaNode.after(' ', el('span', { class: 'shoal-row__meta shoal-tone--warn shoal-row__warn' }, icon('warn', true), t('unexpectedDevices', { n: f.unexpectedDeviceCount })));
+            }
+
+            if (alsoServer.has(f.handle)) {
+                metaNode.after(' ', el('span', { class: 'shoal-row__meta shoal-row__also', text: t('alsoYourServer', { name: alsoServer.get(f.handle) }) }));
+            }
+
+            friendsHost.append(node);
+        }
+    }
+
+    // Leftover sharing accounts (Warden 08 M7), now inside Being watched: one line with Review; the list opens under it. Shoal never deletes one by itself.
     function renderOrphans(data) {
         const list = Array.isArray(data.orphanAccounts) ? data.orphanAccounts.filter((a) => a && typeof a.id === 'string' && typeof a.name === 'string') : [];
         const sig = JSON.stringify(list.map((a) => [a.id, a.name, !!a.isDisabled]));
-        if (!orphanHost) {
-            orphanHost = el('section', { class: 'shoal-orphans', 'aria-labelledby': 'shoal-orphans-h-' + ctx.instance });
-            orphanHost.hidden = true;
-            blocks.content.before(orphanHost);
-        }
-
+        orphanHost.hidden = list.length === 0;
         if (sig === st.orphanSig) {
             return;
         }
 
         st.orphanSig = sig;
         clear(orphanHost);
-        orphanHost.hidden = list.length === 0;
         if (!list.length) {
+            st.orphansOpen = false;
             return;
         }
 
-        const rows = list.map((a) => {
-            const del = button({ label: t('orphanDelete'), variant: 'danger', onClick: () => deleteOrphan(a) });
+        const canSignIn = list.filter((a) => !a.isDisabled).length;
+        const panelId = uid('shoal-orphans');
+        const headId = uid('shoal-orphans-h');
+        const review = button({ label: t('orphanReview'), small: true });
+        review.setAttribute('aria-expanded', String(st.orphansOpen));
+        review.setAttribute('aria-controls', panelId);
+        const rowsList = list.map((a) => {
+            const del = button({ label: t('orphanDelete'), variant: 'danger', small: true, onClick: () => deleteOrphan(a) });
             del.setAttribute('aria-label', t('orphanDeleteLabel', { name: a.name }));
             return el('li', { class: 'shoal-row shoal-orphans__row' },
                 el('span', { class: 'shoal-row__name', text: a.name }),
                 chip(a.isDisabled ? 'off' : 'warn', a.isDisabled ? 'pause' : 'warn', t(a.isDisabled ? 'orphanDisabled' : 'orphanActive')),
                 del);
         });
-        orphanHost.append(
-            el('h2', { class: 'shoal-h2', id: 'shoal-orphans-h-' + ctx.instance, text: t('orphanTitle') }),
-            hint('warn', 'warn', t('orphanBody')),
-            el('ul', { class: 'shoal-list shoal-orphans__list' }, rows));
+        const panel = el('section', { class: 'shoal-orphans', id: panelId, 'aria-labelledby': headId, hidden: !st.orphansOpen },
+            el('h4', { class: 'shoal-orphans__title', id: headId, text: t('orphanTitle') }),
+            el('p', { class: 'shoal-meta', text: t('orphanBody') }),
+            el('ul', { class: 'shoal-orphans__list' }, rowsList));
+        review.addEventListener('click', () => {
+            st.orphansOpen = !st.orphansOpen;
+            panel.hidden = !st.orphansOpen;
+            review.setAttribute('aria-expanded', String(st.orphansOpen));
+            if (st.orphansOpen) {
+                const first = q(panel, 'button');
+                if (first) {
+                    first.focus();
+                }
+            }
+        });
+        const line = hint('warn', 'warn', canSignIn > 0 ? t('orphanHintSignIn', { n: canSignIn }) : t('orphanHint', { n: list.length }));
+        line.classList.add('shoal-orphans__hint');
+        line.append(review);
+        orphanHost.append(line, panel);
     }
 
     async function deleteOrphan(account) {
@@ -5286,12 +5865,40 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         load(true);
     }
 
+    /** The lane's foot says whether shared videos need a sign-in (8.4); read once per visit, not on every poll. */
+    function renderProtection() {
+        const mode = st.hardening && st.hardening.mode;
+        const known = mode === 'Enforce' || mode === 'LogOnly' || mode === 'Off';
+        protectHost.hidden = !known;
+        if (!known) {
+            return;
+        }
+
+        const tone = mode === 'Enforce' ? 'ok' : mode === 'LogOnly' ? 'warn' : 'bad';
+        replaceKids(protectText, el('span', { class: 'shoal-tone--' + tone }, icon(mode === 'Enforce' ? 'shield' : 'warn', true)), el('span', { text: t('protect_' + mode) }));
+    }
+
+    function askHardening(data) {
+        if (st.hardeningAsked || (data.state && data.state.mode === 'Recovery')) {
+            return;
+        }
+
+        st.hardeningAsked = true;
+        ctx.api.hardening().then((h) => {
+            if (ctx.alive) {
+                st.hardening = h;
+                renderProtection();
+            }
+        }).catch(() => {});
+    }
+
     // The picture check could not start (DESIGN v2.6.7): a calm alert with the way to Settings; pictures go on the usual way meanwhile.
     function renderSandboxNotice(data) {
         if (!sandboxHost) {
             sandboxHost = el('section', { class: 'shoal-sandboxalert' });
             sandboxHost.hidden = true;
             blocks.content.before(sandboxHost);
+            added.push(sandboxHost);
         }
 
         const down = !!(data.imageSandbox && data.imageSandbox.state === 'unavailable');
@@ -5306,103 +5913,6 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         sandboxHost.hidden = !down;
         if (down) {
             sandboxHost.append(hint('warn', 'warn', el('strong', { text: t('sandboxAlertTitle') }), el('span', { class: 'shoal-hint__line', text: t('sandboxUnavailable_' + reason) }), ctx.linkEl('settings', {}, 'shoal-link', t('openSettings'))));
-        }
-    }
-
-    // Friends who share both ways (DESIGN v2.6.2): one card, two rows, and the worse of the two states as the chip. Unlinked friends stay as they were.
-    function renderLinkedFriends(data) {
-        const linked = (Array.isArray(data.friendLinks) ? data.friendLinks : []).filter((l) => l && l.linked && l.watch && l.share);
-        if (!linkedHost) {
-            linkedHost = el('section', { class: 'shoal-twoway', 'aria-labelledby': 'shoal-twoway-h-' + ctx.instance });
-            linkedHost.hidden = true;
-            // Its own block above the servers, not inside the servers' header row.
-            const serversSection = serversNote.closest('.shoal-section');
-            if (serversSection) {
-                serversSection.before(linkedHost);
-            } else {
-                cardsHost.before(linkedHost);
-            }
-        }
-
-        const sig = JSON.stringify(linked);
-        if (sig === st.linkedSig) {
-            return;
-        }
-
-        st.linkedSig = sig;
-        clear(linkedHost);
-        linkedHost.hidden = linked.length === 0;
-        if (!linked.length) {
-            return;
-        }
-
-        const cardsList = linked.map((l) => {
-            const roll = describeLinkStatus(l.status);
-            const watch = describeLinkStatus(l.watch.status);
-            const share = describeLinkStatus(l.share.status);
-            const watchMeta = [countText(ctx, 'titlesN', l.watch.titles), l.watch.activeStreams > 0 ? countText(ctx, 'streamsNowN', l.watch.activeStreams) : null].filter(Boolean).join(' · ');
-            const sharedMeta = [t('nLibraries', { n: l.share.libraryCount }), t('nDevices', { n: l.share.deviceCount }), l.share.playingNow > 0 ? countText(ctx, 'playingNowN', l.share.playingNow) : null].filter(Boolean).join(' · ');
-            const openServer = ctx.linkEl('server', { id: l.watch.peerHandle }, 'shoal-link', t('openServerLink'));
-            openServer.setAttribute('aria-label', t('openServerAria', { name: l.name }));
-            const openFriend = ctx.linkEl('friend', { id: l.share.shareHandle }, 'shoal-link', t('openFriendLink'));
-            openFriend.setAttribute('aria-label', t('openFriendAria', { name: l.name }));
-            // The card's own chip is only worth showing when it says something the two rows do not.
-            const rollNeeded = roll.text !== watch.text && roll.text !== share.text;
-            return el('li', { class: 'shoal-twoway__card' },
-                el('div', { class: 'shoal-twoway__head' }, el('span', { class: 'shoal-twoway__name', text: l.name }), rollNeeded ? chip(roll.tone, roll.icon, roll.text) : null),
-                el('div', { class: 'shoal-twoway__row' },
-                    el('span', { class: 'shoal-twoway__label', text: t('twoWayWatch', { name: l.name }) }),
-                    chip(watch.tone, watch.icon, watch.text),
-                    el('span', { class: 'shoal-meta', text: watchMeta }),
-                    openServer),
-                el('div', { class: 'shoal-twoway__row' },
-                    el('span', { class: 'shoal-twoway__label', text: t('twoWayWatched', { name: l.name }) }),
-                    chip(share.tone, share.icon, share.text),
-                    el('span', { class: 'shoal-meta', text: sharedMeta }),
-                    openFriend));
-        });
-        linkedHost.append(
-            el('h2', { class: 'shoal-h2', id: 'shoal-twoway-h-' + ctx.instance, text: t('twoWayTitle') }),
-            el('p', { class: 'shoal-meta', text: t('twoWayIntro') }),
-            el('ul', { class: 'shoal-twoway__list' }, cardsList));
-    }
-
-    function renderFriends(data) {
-        const friends = data.friends || [];
-        renderInviteNotice(data);
-        const alsoServer = new Map((Array.isArray(data.friendLinks) ? data.friendLinks : []).filter((l) => l && l.linked && l.share).map((l) => [l.share.shareHandle, l.name]));
-        const sig = JSON.stringify(friends) + JSON.stringify(Array.from(alsoServer));
-        friendsEmpty.hidden = friends.length > 0;
-        if (sig === st.friendSig) {
-            return;
-        }
-
-        st.friendSig = sig;
-        clear(friendsHost);
-        for (const f of friends) {
-            const node = ctx.tmpl('friend-row');
-            ctx.link(q(node, 'a'), 'friend', { id: f.handle });
-            slot(node, 'name').textContent = f.name;
-            const metaNode = slot(node, 'meta');
-            metaNode.textContent = t('friendMeta', { libs: t('nLibraries', { n: f.libraryCount }), devs: t('nDevices', { n: f.deviceCount }), when: f.lastSeenUtc ? ctx.fmt.relative(f.lastSeenUtc) : t('never') });
-            const model = describeFriend(f);
-            slot(node, 'chip').append(chip(model.tone, model.icon, model.text));
-            if (f.unexpectedDeviceCount > 0) {
-                q(node, 'a').dataset.attention = '1';
-                metaNode.after(el('span', { class: 'shoal-row__meta shoal-meta shoal-tone--warn shoal-row__warn' }, icon('warn', true), t('unexpectedDevices', { n: f.unexpectedDeviceCount })));
-            }
-
-            if (alsoServer.has(f.handle)) {
-                metaNode.after(el('span', { class: 'shoal-row__meta shoal-meta shoal-row__also', text: t('alsoYourServer', { name: alsoServer.get(f.handle) }) }));
-            }
-
-            const now = slot(node, 'now');
-            if (f.playingNow > 0) {
-                now.hidden = false;
-                now.textContent = f.transcodingNow > 0 ? t('playingNowTranscoding', { n: f.playingNow, t: f.transcodingNow }) : t('playingNow', { n: f.playingNow });
-            }
-
-            friendsHost.append(node);
         }
     }
 
@@ -5440,13 +5950,13 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         st.data = data;
         const servers = sortServers(data.servers || []);
         const friends = data.friends || [];
+        const orphans = Array.isArray(data.orphanAccounts) ? data.orphanAccounts : [];
         ctx.applyStatus(data);
-        const firstRun = servers.length === 0 && friends.length === 0;
+        // Leftover accounts keep the lanes on screen: after a reset they are the one thing to act on.
+        const firstRun = servers.length === 0 && friends.length === 0 && orphans.length === 0;
         setBlock(firstRun ? 'empty' : 'content');
-        renderOrphans(data);
+        renderFlows(data);
         renderSandboxNotice(data);
-        renderLinkedFriends(data);
-        renderStatusLine(servers, friends);
         if (data.cooldowns && data.cooldowns.syncAllUntilUtc) {
             const secs = Math.round((toMs(data.cooldowns.syncAllUntilUtc) - ctx.now()) / 1000);
             if (secs > 0) {
@@ -5458,14 +5968,14 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
             syncBtn.classList.toggle('is-syncing', servers.some((s) => s.syncing));
         }
 
-        // With the keys locked, sync is replaced by Pair again on each card (ui-spec 8.8).
-        syncBtn.hidden = !!data.secretsUnreadable;
-
+        // With the keys locked, sync is replaced by Pair again on each row (ui-spec 8.8).
+        syncBtn.hidden = !!data.secretsUnreadable || servers.length === 0;
         syncCooldown();
         if (firstRun) {
             return;
         }
 
+        askHardening(data);
         const remembered = ctx.storage.get(SELECTED_KEY);
         if (!st.selected || !servers.some((s) => s.handle === st.selected)) {
             st.selected = pickSelection(servers, remembered, ctx.fmt);
@@ -5473,19 +5983,16 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
 
         const hasServers = servers.length > 0;
         noServers.hidden = hasServers;
-        cardsHost.hidden = !hasServers;
-        serversNote.hidden = !hasServers;
-        renderCards(servers);
+        rowsHost.hidden = !hasServers;
+        renderWatchingMeta(servers);
+        renderRows(servers);
         ensureSpeedPanel();
         speedHost.hidden = !hasServers;
         if (hasServers) {
-            const changed = st.speed.setServersIfChanged ? false : false;
             st.speed.setServers(servers, st.selected);
-            if (!changed) {
-                st.polls += 1;
-                if (st.polls % SPEED_REFRESH_EVERY === 0) {
-                    st.speed.refresh(false);
-                }
+            st.polls += 1;
+            if (st.polls % SPEED_REFRESH_EVERY === 0) {
+                st.speed.refresh(false);
             }
 
             if (st.overlapHandle !== st.selected) {
@@ -5496,10 +6003,14 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         }
 
         renderPosters(data);
+        renderPlayOrder(servers);
+        loadPlayOrder();
         renderFriends(data);
+        renderOrphans(data);
+        renderProtection();
         if (ctx.params.focus === 'friends' && !st.focusedFriends) {
             st.focusedFriends = true;
-            ctx.later(() => scrollToNode(friendsHost), 50);
+            ctx.later(() => scrollToNode(q(view, '[data-section="friends"]')), 50);
         }
 
         announceChanges(servers);
@@ -5533,13 +6044,9 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
     }
 
     return {
-        show(restored) {
-            if (!st.loaded) {
-                load(true);
-            } else {
-                load(false);
-            }
-
+        show() {
+            st.hardeningAsked = false;
+            load(!st.loaded);
             poller.start();
         },
         hide() {
@@ -5547,6 +6054,14 @@ ctx.toast(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
         },
         destroy() {
             poller.stop();
+            for (const [node, type, fn] of wiring.splice(0)) {
+                node.removeEventListener(type, fn);
+            }
+
+            for (const node of added) {
+                node.remove();
+            }
+
             if (st.speed) {
                 st.speed.destroy();
             }
@@ -6047,6 +6562,46 @@ function librariesScreen(ctx) {
         return el('article', { class: 'shoal-libblock', id: 'lib-' + mapping.mappingKey, 'aria-labelledby': titleId }, main, access, drift ? el('div', { class: 'shoal-libblock__drift' }, drift) : null);
     }
 
+    /* ----- v2.9 (Pilot 14 7a): the libraries that really exist, from GET Layouts/Libraries; the per-friend list is only for a server without layouts ----- */
+
+    function layoutLibBlock(lib) {
+        const titleId = uid('shoal-lib');
+        const friends = (Array.isArray(lib.connections) ? lib.connections : []).map((c) => (c && typeof c.name === 'string' ? c.name : '')).filter(Boolean);
+        const meta = friends.length ? t('libLayoutFrom', { type: layoutTypeWord(lib.type), friends: nameList(friends, 3) }) : t('libLayoutNoFriends', { type: layoutTypeWord(lib.type) });
+        const a = lib.access && typeof lib.access === 'object' ? lib.access : { mode: 'Selected', selectedUserIds: [], includeRestricted: false };
+        const access = { mode: a.mode === 'Everyone' ? 'Everyone' : 'Selected', selectedUserIds: Array.isArray(a.selectedUserIds) ? a.selectedUserIds : [], includeRestricted: !!a.includeRestricted };
+        const change = button({ label: t('changeWhoCanSee'), small: true, onClick: () => editLayoutAccess(lib) });
+        change.dataset.fkey = 'who:' + lib.libKey;
+        change.setAttribute('aria-label', t('libLayoutWhoAria', { library: lib.name }));
+        return el('article', { class: 'shoal-libblock', id: 'lib-' + lib.libKey, 'aria-labelledby': titleId },
+            el('div', { class: 'shoal-libblock__main' },
+                el('span', { class: 'shoal-row__title', id: titleId, text: lib.name }),
+                el('span', { class: 'shoal-row__meta shoal-meta', text: meta }),
+                lib.placement === 'Main' ? el('span', { class: 'shoal-row__meta shoal-meta', text: t('libLayoutMain') }) : null),
+            el('div', { class: 'shoal-libblock__access' }, el('div', { class: 'shoal-libblock__summary' }, accessSummary(access, st.data.users, youId()), change)));
+    }
+
+    async function editLayoutAccess(lib) {
+        st.focusKey = 'who:' + lib.libKey;
+        const res = await openLayoutAccess(ctx, lib, st.data.users, youId(), nameList((lib.connections || []).map((c) => c.name).filter(Boolean), 3) || t('layAccessFriends'));
+        if (!res) {
+            render();
+            return;
+        }
+
+        try {
+            const answer = await ctx.api.updateLayoutLibrary(lib.libKey, res);
+            const lost = sortUsers(st.data.users.filter((u) => answer && Array.isArray(answer.losing) && answer.losing.includes(u.id))).map((u) => u.name);
+            const text = lost.length ? t('layAccessLost', { names: nameList(lost, 5), library: lib.name }) : t('announceAccessSaved', { library: lib.name });
+            ctx.announce(text);
+            ctx.toast(text);
+        } catch (err) {
+            ctx.fail(err && LAYOUT_ERRORS.includes(err.kind) ? layoutError(err) : t('accessFailed', { library: lib.name }));
+        }
+
+        await load(false);
+    }
+
     function shareRow(f) {
         const model = describeFriend(f);
         const names = f.libraryNames || [];
@@ -6066,9 +6621,14 @@ function librariesScreen(ctx) {
     function render() {
         const data = st.data;
         clear(body);
+        body.append(layoutLinkPanel(ctx, null));
         const incoming = section(t('sharedWithYou'), { intro: t('sharedWithYouIntro') });
-        const mappings = data.mappings || [];
-        if (!mappings.length) {
+        const layoutLibs = st.layout && Array.isArray(st.layout.libraries) ? st.layout.libraries.filter((l) => l && typeof l.libKey === 'string' && typeof l.name === 'string') : null;
+        // With layouts (v2.9) the list is the real libraries; the old per-friend mappings would name libraries that a layout already removed.
+        const mappings = layoutLibs ? [] : data.mappings || [];
+        if (layoutLibs && layoutLibs.length) {
+            incoming.body.append(el('div', { class: 'shoal-libblocks' }, layoutLibs.map(layoutLibBlock)));
+        } else if (!mappings.length) {
             incoming.body.append(el('div', { class: 'shoal-emptybox' },
                 el('p', { class: 'shoal-lead', text: t('noLibrariesYet') }),
                 button({ label: t('pairServer'), variant: 'primary', icon: 'plus', onClick: () => ctx.navigate('pair', { dir: 'watch' }) })));
@@ -6126,7 +6686,8 @@ function librariesScreen(ctx) {
         }
 
         try {
-            const [data, shares, status] = await Promise.all([ctx.api.libraries(), ctx.api.shares().catch(() => ({ shares: [] })), ctx.api.status().catch(() => null)]);
+            // GET Layouts/Libraries answers on a v2.9 server; an older one (404) keeps the per-friend list.
+            const [data, shares, status, layout] = await Promise.all([ctx.api.libraries(), ctx.api.shares().catch(() => ({ shares: [] })), ctx.api.status().catch(() => null), ctx.api.layouts().catch(() => null)]);
             if (!ctx.alive) {
                 return;
             }
@@ -6134,6 +6695,7 @@ function librariesScreen(ctx) {
             // Sharing accounts Shoal made for friends are never listed or counted (ui-spec 8.4.3, DESIGN 5.6).
             st.data = Object.assign({}, data, { users: (data.users || []).filter((u) => !u.isShareUser) });
             st.shares = shares;
+            st.layout = layout && typeof layout === 'object' ? layout : null;
             st.servers = status ? status.servers || [] : st.servers;
             st.loaded = true;
             render();
@@ -6159,6 +6721,1570 @@ function loadErrorBox(onRetry) {
         icon('warn', true),
         el('p', { class: 'shoal-loaderror__text', text: t('loadFailed') }),
         button({ label: t('tryAgain'), small: true, onClick: onRetry }));
+}
+
+/* ====================================================================================== */
+/* Screen: Library layouts (PLAN v2.9 U-M1, U-M2; docs/design/ui-v2/layouts.html)          */
+/* ====================================================================================== */
+
+const LAYOUT_PRESETS = ['AllMixed', 'PerFriend', 'CombineIntoMine', 'Custom'];
+const LAYOUT_TYPES = ['movies', 'tvshows'];
+const LAYOUT_ERRORS = ['targetRequired', 'recovery', 'notFound', 'nameInUse', 'tooMany', 'notEmpty', 'legacy', 'busy', 'syncing', 'noStubRoot', 'mainLibraryInvalid', 'shareUser', 'unknownUser', 'acknowledgementRequired', 'createFailed'];
+const LAYOUT_JOB_PHASES_OPEN = ['Planned', 'Running', 'Cleanup'];
+const LAYOUT_JOB_POLL_MS = 2000;
+const NEW_LIBRARY = 'new';
+
+/** The words the layout routes answer with become a sentence; anything else is the generic one. */
+function layoutError(err) {
+    const text = err && LAYOUT_ERRORS.includes(err.kind) ? t('layErr_' + err.kind) : failureMessage(err);
+    // A refused rename after the access part was saved: say that who can see the library did change (Warden 12 L4).
+    return err && err.accessChanged ? text + ' ' + t('layAccessChangedAnyway') : text;
+}
+
+function layoutTypeWord(type) {
+    return t('layType_' + (type === 'tvshows' ? 'tvshows' : 'movies'));
+}
+
+function layoutTypeLower(type) {
+    return t('layTypeLower_' + (type === 'tvshows' ? 'tvshows' : 'movies'));
+}
+
+/** The move job runs now. */
+function layoutJobActive(job) {
+    return !!job && job.running === true;
+}
+
+/** A job that stopped half way (Jellyfin restarted): the server finishes it at the next start and refuses new changes until then. */
+function layoutJobStopped(job) {
+    return !!job && job.running !== true && LAYOUT_JOB_PHASES_OPEN.includes(job.phase);
+}
+
+/** Libraries of a known type, in the server's order. A type this page does not know is left out, never guessed. */
+function layoutLibraries(data) {
+    const libs = (data && Array.isArray(data.libraries) ? data.libraries : []).filter((l) => l && typeof l.libKey === 'string' && LAYOUT_TYPES.includes(l.type));
+    const order = data && Array.isArray(data.order) ? data.order : [];
+    const pos = (k) => {
+        const i = order.indexOf(k);
+        return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return libs.slice().sort((a, b) => pos(a.libKey) - pos(b.libKey));
+}
+
+/**
+ * The full order (every library once, which is what the server takes) after one library moves to place toIndex among the libraries of its
+ * own type. Libraries of the other type keep their places.
+ */
+function placeWithinType(libs, order, key, toIndex) {
+    const typeOf = new Map(libs.map((l) => [l.libKey, l.type]));
+    const full = (Array.isArray(order) ? order : []).filter((k) => typeof k === 'string');
+    for (const l of libs) {
+        if (!full.includes(l.libKey)) {
+            full.push(l.libKey);
+        }
+    }
+
+    const type = typeOf.get(key);
+    const slots = [];
+    const same = [];
+    full.forEach((k, i) => {
+        if (typeOf.get(k) === type) {
+            slots.push(i);
+            same.push(k);
+        }
+    });
+    const from = same.indexOf(key);
+    if (from < 0) {
+        return full;
+    }
+
+    same.splice(from, 1);
+    same.splice(Math.max(0, Math.min(same.length, toIndex)), 0, key);
+    const out = full.slice();
+    slots.forEach((slot, j) => {
+        out[slot] = same[j];
+    });
+    return out;
+}
+
+/**
+ * The rows of a preset preview: the moves grouped by where the titles are now ("Shoal TV Shows (Fernwood, Granite)" becomes "Fernwood TV Shows,
+ * Granite TV Shows"), then one "No change" row for the libraries nothing leaves. to is null for that row.
+ */
+function previewRows(preview, libs) {
+    const moves = preview && Array.isArray(preview.moves) ? preview.moves.filter((m) => m && typeof m.to === 'string') : [];
+    const groups = new Map();
+    for (const m of moves) {
+        const from = (Array.isArray(m.from) ? m.from : []).filter((x) => typeof x === 'string' && x).join(', ');
+        const key = m.type + '|' + from;
+        if (!groups.has(key)) {
+            groups.set(key, { from, friends: [], to: [] });
+        }
+
+        const g = groups.get(key);
+        if (m.peerName && !g.friends.includes(m.peerName)) {
+            g.friends.push(m.peerName);
+        }
+
+        if (!g.to.includes(m.to)) {
+            g.to.push(m.to);
+        }
+    }
+
+    const rows = Array.from(groups.values()).map((g) => ({
+        was: g.from ? (g.friends.length ? t('layWasWith', { libraries: g.from, friends: g.friends.join(', ') }) : g.from) : g.friends.join(', '),
+        to: g.to.join(', ')
+    }));
+    const moving = new Set(moves.map((m) => m.peerKey + '|' + m.type));
+    const removed = new Set((preview && Array.isArray(preview.removed) ? preview.removed : []).map((r) => r && r.libKey));
+    const still = libs.filter((l) => !removed.has(l.libKey) && (l.connections || []).length > 0 && (l.connections || []).every((c) => !moving.has(c.peerKey + '|' + l.type)));
+    if (still.length) {
+        rows.push({ was: still.map((l) => l.name).join(', '), to: null });
+    }
+
+    return rows;
+}
+
+/** "Current: Custom. 4 Shoal libraries, 1 added into a main library." for the Settings link panel. */
+function layoutSummary(data) {
+    const libs = layoutLibraries(data);
+    const main = libs.filter((l) => l.placement === 'Main').length;
+    const preset = data && data.layout && LAYOUT_PRESETS.includes(data.layout.preset) ? data.layout.preset : null;
+    const parts = [];
+    if (preset) {
+        parts.push(t('layLinkCurrent', { preset: t('layPreset_' + preset) }));
+    }
+
+    parts.push(t('layLinkShoal', { n: libs.length - main }) + (main ? ', ' + t('layLinkMain', { n: main }) : '') + '.');
+    return parts.join(' ');
+}
+
+/** The panel that links to the layouts screen (Settings and Libraries & access). data: the layout, or null for the plain sentence. */
+/**
+ * The main libraries holding friends' titles whose NFO saver is on (K: mainLibrariesSavingNfo in Status and Layouts/Libraries, Pilot 15 R6): names only,
+ * text-only, one per library, duplicates and non-strings dropped.
+ */
+function nfoSaverNames(...sources) {
+    const out = [];
+    for (const list of sources) {
+        for (const name of Array.isArray(list) ? list : []) {
+            if (typeof name === 'string' && name.trim() && !out.includes(name)) {
+                out.push(name);
+            }
+        }
+    }
+
+    return out;
+}
+
+function notLockedWarning(name) {
+    const box = warnBox(t('layNotLocked', { library: name }));
+    box.classList.add('shoal-warnbox--notlocked');
+    return box;
+}
+
+function nfoSaverWarning(name) {
+    const box = warnBox(t('layNfoSaverOn', { library: name }));
+    box.classList.add('shoal-warnbox--nfo');
+    return box;
+}
+
+function layoutLinkPanel(ctx, data, nfoNames, notLocked) {
+    const headId = uid('shoal-h');
+    return el('section', { class: 'shoal-panel shoal-linkpanel', 'aria-labelledby': headId },
+        el('div', { class: 'shoal-link-panel' },
+            el('div', { class: 'shoal-link-panel__text' },
+                el('h2', { class: 'shoal-h2', id: headId, text: t('layLinkTitle') }),
+                el('p', { class: 'shoal-meta', text: data ? layoutSummary(data) : t('layLinkBody') })),
+            ctx.linkEl('layouts', {}, 'emby-button raised shoal-btn', t('layLinkBtn'))),
+        (nfoNames || []).map(nfoSaverWarning),
+        (notLocked || []).map(notLockedWarning));
+}
+
+/** The owner's warning box: an icon and one sentence, as a note. */
+function warnBox(text, id) {
+    return el('div', { class: 'shoal-warnbox', role: 'note', id }, icon('warn', true), el('span', { text }));
+}
+
+/**
+ * Who can see one library (U-M2): the two modes, the people, and profiles with parental limits behind the ratings box. Resolves the body of
+ * PUT Layouts/Libraries/{libKey} ({ access }) or undefined. Account ids stay in this closure: none reaches the page.
+ */
+function openLayoutAccess(ctx, lib, users, youId, serverText) {
+    const a = lib.access || { mode: 'Selected', selectedUserIds: [], includeRestricted: false };
+    let mode = a.mode === 'Everyone' ? 'Everyone' : 'Selected';
+    const selected = new Set(Array.isArray(a.selectedUserIds) ? a.selectedUserIds : []);
+    const list = sortUsers(users);
+    const anyRestricted = list.some((u) => u.restricted);
+    const rows = new Map();
+    let ack = null;
+    let include = null;
+    let dlgRef = null;
+
+    function sync() {
+        const acked = !!(ack && ack.input.checked);
+        for (const u of list) {
+            const row = rows.get(u.id);
+            row.input.checked = selected.has(u.id);
+            row.input.disabled = mode === 'Everyone' || (u.restricted && !acked);
+            row.root.classList.toggle('is-disabled', row.input.disabled);
+        }
+
+        if (include) {
+            include.root.hidden = mode !== 'Everyone';
+            include.input.disabled = !acked;
+            if (!acked) {
+                include.input.checked = false;
+            }
+        }
+
+        if (dlgRef && dlgRef.buttons.save) {
+            const needsAck = (mode === 'Selected' && list.some((u) => u.restricted && selected.has(u.id))) || (mode === 'Everyone' && include && include.input.checked);
+            dlgRef.buttons.save.disabled = !!needsAck && !acked;
+        }
+    }
+
+    return openDialog(ctx, {
+        title: t('pickerTitle', { library: lib.name }),
+        wide: true,
+        build(body) {
+            const name = uid('shoal-amode');
+            const pick = (value) => {
+                mode = value;
+                sync();
+            };
+            const sel = choiceCard({ name, value: 'Selected', id: uid('shoal-am'), title: t('modeSelected'), body: t('accessDescSelected'), checked: mode === 'Selected', onChange: pick });
+            const all = choiceCard({ name, value: 'Everyone', id: uid('shoal-am'), title: t('modeEveryone'), body: t('accessDescEveryone'), checked: mode === 'Everyone', onChange: pick });
+            body.append(el('fieldset', { class: 'shoal-modecards shoal-layaccess__modes' }, el('legend', { class: 'shoal-sr', text: t('accessLabel', { library: lib.name }) }), sel.root, all.root));
+            if (anyRestricted) {
+                ack = checkRow({ id: uid('shoal-aack'), label: t('pickerAck', { server: serverText }), checked: !!a.includeRestricted || list.some((u) => u.restricted && selected.has(u.id)), onChange: () => sync() });
+                body.append(el('div', { class: 'shoal-picker__ack' }, ack.root));
+                include = checkRow({ id: uid('shoal-aincl'), label: t('includeRestricted'), note: t('includeRestrictedNote', { server: serverText }), checked: !!a.includeRestricted, onChange: () => sync() });
+                body.append(include.root);
+            }
+
+            const ul = el('ul', { class: 'shoal-picker' });
+            for (const u of list) {
+                const row = checkRow({
+                    id: uid('shoal-au'),
+                    label: u.name,
+                    note: userNotes(u, serverText, u.id === youId).join(' · '),
+                    checked: selected.has(u.id),
+                    onChange: (checked) => {
+                        if (checked) {
+                            selected.add(u.id);
+                        } else {
+                            selected.delete(u.id);
+                        }
+
+                        sync();
+                    }
+                });
+                row.root.classList.add('shoal-picker__row');
+                row.root.prepend(avatar(ctx, u));
+                rows.set(u.id, row);
+                ul.append(el('li', {}, row.root));
+            }
+
+            body.append(ul);
+            sync();
+            return mode === 'Selected' ? sel.input : all.input;
+        },
+        onOpen(dlg) {
+            dlgRef = dlg;
+            sync();
+        },
+        buttons: [
+            { label: t('cancel'), close: undefined },
+            {
+                label: t('save'),
+                variant: 'primary',
+                key: 'save',
+                onClick: (dlg) => {
+                    dlg.close({
+                        access: {
+                            mode,
+                            selectedUserIds: list.filter((u) => selected.has(u.id)).map((u) => u.id),
+                            includeRestricted: !!(include && include.input.checked),
+                            ratingsAcknowledged: !!(ack && ack.input.checked)
+                        }
+                    });
+                }
+            }
+        ]
+    });
+}
+
+function layoutsScreen(ctx) {
+    const view = q(ctx.root, '[data-shoal-view="layouts"]');
+    const body = slot(view, 'body');
+    const st = {
+        data: null, users: [], youId: null, servers: [], posters: [], loaded: false,
+        previewing: null, preview: null,
+        move: null, // { libKey, peerKey, choice, newName, newPlace }
+        job: null, jobSamples: [], lastMove: null, jobNote: null,
+        focusKey: null, dragKey: null
+    };
+    const jobHost = el('div', { class: 'shoal-jobhost' });
+    const poller = createPoller(ctx, pollJob, LAYOUT_JOB_POLL_MS);
+
+    const libs = () => layoutLibraries(st.data);
+    const blocked = () => layoutJobActive(st.job) || layoutJobStopped(st.job);
+    const hiddenSet = () => new Set(st.data && Array.isArray(st.data.hiddenFriendTitles) ? st.data.hiddenFriendTitles : []);
+    const serverOf = (peerKey) => st.servers.find((s) => s.handle === peerKey) || null;
+    const friendName = (c) => (c && c.name) || (serverOf(c && c.peerKey) || {}).displayName || t('layFriendWord');
+    const mainName = (lib) => (typeof lib.mainLibraryName === 'string' && lib.mainLibraryName) || lib.name;
+    const shownName = (lib) => (lib.placement === 'Main' ? mainName(lib) : lib.name);
+    const mainLibraries = (type) => (st.data && Array.isArray(st.data.mainLibraries) ? st.data.mainLibraries : []).filter((m) => m && typeof m.name === 'string' && m.id && (!type || m.type === type));
+    /**
+     * The name of the main library a Main placement row is added into (Pilot 16): targetLibraryName or mainLibraryName when the row carries it, else the
+     * main library whose id is the row's jellyfinLibraryId (a Main placement records its target's id), else null. Never the Shoal library's own name.
+     */
+    const targetOf = (lib) => {
+        if (!lib || lib.placement !== 'Main') {
+            return null;
+        }
+
+        for (const v of [lib.targetLibraryName, lib.mainLibraryName]) {
+            if (typeof v === 'string' && v.trim()) {
+                return v;
+            }
+        }
+
+        const m = lib.jellyfinLibraryId ? mainLibraries(null).find((x) => x.id === lib.jellyfinLibraryId) : null;
+        return m ? m.name : null;
+    };
+    /**
+     * The main libraries with the NFO saver on that a row is added into. With the target known, exactly that one. Without it (an answer that does not
+     * name the target), the listed names no known target claims go to the one Main row whose target is unknown; with several such rows they are shown
+     * above the list instead (nfoUnplaced), never guessed onto a row.
+     */
+    const nfoTargets = () => nfoSaverNames(st.data && st.data.mainLibrariesSavingNfo);
+    const nfoUnresolved = () => {
+        const mains = libs().filter((l) => l.placement === 'Main');
+        const claimed = new Set(mains.map(targetOf).filter(Boolean));
+        return { rows: mains.filter((l) => !targetOf(l)), left: nfoTargets().filter((n) => !claimed.has(n)) };
+    };
+    const nfoFor = (lib) => {
+        const names = nfoTargets();
+        const target = targetOf(lib);
+        if (!names.length || lib.placement !== 'Main') {
+            return [];
+        }
+
+        if (target) {
+            return names.includes(target) ? [target] : [];
+        }
+
+        const u = nfoUnresolved();
+        return u.rows.length === 1 ? u.left : [];
+    };
+    // shoalLibrariesNotLocked (Warden 12 L2): Jellyfin libraries holding a Shoal folder beside other folders. Matched by the row's Jellyfin library name.
+    const jellyfinNameOf = (lib) => (lib.placement === 'Main' ? targetOf(lib) : lib.name);
+    const notLockedFor = (lib) => {
+        const name = jellyfinNameOf(lib);
+        return name && nfoSaverNames(st.data && st.data.shoalLibrariesNotLocked).includes(name) ? [name] : [];
+    };
+    const notLockedUnplaced = () => {
+        const shown = new Set(libs().map(jellyfinNameOf).filter(Boolean));
+        return nfoSaverNames(st.data && st.data.shoalLibrariesNotLocked).filter((n) => !shown.has(n));
+    };
+    const nfoUnplaced = () => {
+        const u = nfoUnresolved();
+        return u.rows.length > 1 ? u.left : [];
+    };
+    const fkeyNode = (key) => qa(body, '[data-fkey]').find((n) => n.dataset.fkey === key) || null;
+
+    function iconButton(name, label, fkey, onClick, disabled) {
+        const b = el('button', { type: 'button', class: 'shoal-iconbtn', 'aria-label': label, 'data-fkey': fkey, disabled: !!disabled }, icon(name));
+        b.addEventListener('click', () => {
+            try {
+                const r = onClick(b);
+                if (r && typeof r.catch === 'function') {
+                    r.catch((err) => reportUnexpected(err));
+                }
+            } catch (err) {
+                reportUnexpected(err);
+            }
+        });
+        return b;
+    }
+
+    function serverText(lib) {
+        const names = (lib.connections || []).map(friendName);
+        return names.length ? nameList(names, 3) : t('layAccessFriends');
+    }
+
+    /* ---------- the move job (4) ---------- */
+
+    function jobTitle(job) {
+        const cur = job && job.current;
+        if (cur && typeof cur.peerName === 'string' && typeof cur.toName === 'string' && LAYOUT_TYPES.includes(cur.type)) {
+            return t('layJobTitle', { friend: cur.peerName, type: layoutTypeLower(cur.type), library: cur.toName });
+        }
+
+        if (st.lastMove) {
+            return t('layJobTitle', st.lastMove);
+        }
+
+        return t('layJobTitleGeneric');
+    }
+
+    function etaText(done, total) {
+        const s = st.jobSamples;
+        if (s.length >= 2 && total > done) {
+            const first = s[0];
+            const last = s[s.length - 1];
+            const rate = (last.done - first.done) / Math.max(1, last.t - first.t);
+            if (rate > 0) {
+                const n = Math.max(1, Math.ceil((total - done) / rate / 60000));
+                return t('layJobEta', { n });
+            }
+        }
+
+        return t('layJobNoEta');
+    }
+
+    function renderJob() {
+        clear(jobHost);
+        const job = st.job;
+        if (layoutJobActive(job)) {
+            const total = Math.max(0, Number(job.steps) || 0);
+            const done = Math.min(total, Math.max(0, Number(job.stepsDone) || 0));
+            const titleId = uid('shoal-job');
+            const count = t('layJobCount', { done: ctx.fmt.num(done), total: ctx.fmt.num(total) });
+            const pct = total ? Math.round((done / total) * 1000) / 10 : 0;
+            const bar = el('div', {
+                class: 'shoal-bar', role: 'progressbar', 'aria-labelledby': titleId, 'aria-valuemin': '0', 'aria-valuemax': String(Math.max(total, 1)), 'aria-valuenow': String(done),
+                'aria-valuetext': total ? count : t('layJobNoEta')
+            }, el('i', { class: 'shoal-bar__fill', vars: { '--shoal-progress': pct + '%' } }));
+            jobHost.append(el('section', { class: 'shoal-job', 'aria-labelledby': titleId },
+                el('div', { class: 'shoal-job__top' }, el('span', { class: 'shoal-job__title', id: titleId, text: jobTitle(job) }), total ? el('span', { class: 'shoal-job__count', text: count }) : null),
+                bar,
+                el('p', { text: job.phase === 'Cleanup' ? t('layJobCleanup') : etaText(done, total) })));
+            return;
+        }
+
+        if (layoutJobStopped(job)) {
+            jobHost.append(el('div', { class: 'shoal-jobnote' }, hint('warn', 'warn', el('p', { text: t('layJobStopped') }))));
+            return;
+        }
+
+        if (st.jobNote) {
+            const names = sortUsers(st.users.filter((u) => st.jobNote.lost.includes(u.id))).map((u) => u.name);
+            const dismiss = button({ label: t('dismiss'), small: true, onClick: () => {
+                st.jobNote = null;
+                renderJob();
+                ctx.focusHeading();
+            } });
+            jobHost.append(el('div', { class: 'shoal-jobnote' }, hint(names.length ? 'info' : 'ok', names.length ? 'info' : 'ok',
+                el('p', { text: t('layJobDone') }),
+                names.length ? el('p', { text: t('layJobLost', { names: nameList(names, 5) }) }) : null,
+                el('div', { class: 'shoal-hint__actions' }, dismiss))));
+        }
+    }
+
+    async function pollJob() {
+        let job;
+        try {
+            job = await ctx.api.layoutJob();
+        } catch {
+            return;
+        }
+
+        if (!ctx.alive) {
+            return;
+        }
+
+        const was = layoutJobActive(st.job);
+        st.job = job || null;
+        if (layoutJobActive(st.job)) {
+            st.jobSamples.push({ t: ctx.now(), done: Number(st.job.stepsDone) || 0 });
+            if (st.jobSamples.length > 30) {
+                st.jobSamples.splice(1, 1);
+            }
+
+            renderJob();
+            return;
+        }
+
+        poller.stop();
+        if (was) {
+            st.jobSamples = [];
+            st.lastMove = null;
+            st.jobNote = { lost: Array.isArray(st.job && st.job.lostAccess) ? st.job.lostAccess : [] };
+            ctx.announce(t('layJobDone'));
+            await load(false);
+        } else {
+            render();
+        }
+    }
+
+    function startJob(job) {
+        st.job = job && typeof job === 'object' ? job : { running: true, phase: 'Planned', steps: 0, stepsDone: 0 };
+        st.jobSamples = [];
+        st.jobNote = null;
+        if (layoutJobActive(st.job)) {
+            st.jobSamples.push({ t: ctx.now(), done: Number(st.job.stepsDone) || 0 });
+            poller.start();
+        }
+    }
+
+    /* ---------- presets (1) and the preview ---------- */
+
+    function friendNames() {
+        const names = [];
+        for (const l of libs()) {
+            for (const c of l.connections || []) {
+                const n = friendName(c);
+                if (!names.includes(n)) {
+                    names.push(n);
+                }
+            }
+        }
+
+        if (!names.length) {
+            st.servers.forEach((s) => s.displayName && !names.includes(s.displayName) && names.push(s.displayName));
+        }
+
+        return names.sort((x, y) => String(x).localeCompare(String(y)));
+    }
+
+    function miniPic(preset, names) {
+        const a = names[0] || t('layFriendWord');
+        const b = names[1] || a;
+        const word = (type) => layoutTypeWord(type);
+        const tiles = {
+            AllMixed: [['mine', t('layMineMovies')], ['mine', t('layMineShows')], ['friend', t('layShoalMovies')], ['friend', t('layShoalTv')]],
+            PerFriend: [['mine', t('layMineMovies')], ['friend', t('layFriendLib', { friend: a, type: word('movies') })], ['friend', t('layFriendLib', { friend: a, type: word('tvshows') })], ['friend', t('layFriendLib', { friend: b, type: word('movies') })]],
+            CombineIntoMine: [['mixed', t('layMineMovies')], ['mixed', t('layMineShows')]],
+            Custom: [['mine', t('layMineMovies')], ['friend', t('layFriendLib', { friend: a, type: word('movies') })], ['friend', t('layShoalMovies')], ['friend', t('layShoalTv')]]
+        }[preset];
+        const posters = st.posters.filter((p) => p && p.localItemId);
+        let next = LAYOUT_PRESETS.indexOf(preset);
+        const cover = (kind) => {
+            const box = el('span', { class: 'mini-lib__cov' });
+            for (let i = 0; i < 2; i += 1) {
+                const p = (kind === 'friend' || (kind === 'mixed' && i === 1)) && posters.length ? posters[next % posters.length] : null;
+                next += 1;
+                const url = p ? itemImageUrl(ctx, p.localItemId, 'Primary', p.primaryTag, 40) : '';
+                if (url) {
+                    const img = el('img', { alt: '', width: '40', height: '60', loading: 'lazy', decoding: 'async' });
+                    img.addEventListener('error', () => {
+                        img.hidden = true;
+                    });
+                    img.src = url;
+                    box.append(img);
+                } else {
+                    box.append(el('span', { class: 'mini-lib__blank' }));
+                }
+            }
+
+            return box;
+        };
+        return el('span', { class: 'shoal-choice__pic', 'aria-hidden': 'true' },
+            el('span', { class: 'mini-lbl', text: t('layHome') }),
+            el('span', { class: 'mini-libs mini-libs--' + tiles.length }, tiles.map(([kind, label]) => el('span', { class: 'mini-lib mini-lib--' + kind }, cover(kind), el('span', { class: 'mini-lib__cap', text: label })))));
+    }
+
+    function presetCard(preset, current, names) {
+        const titleId = uid('shoal-preset');
+        const previewing = st.previewing === preset;
+        let action = el('span');
+        // Custom is the list below, edited by hand (each move applies at once). Once that list no longer matches the named layout, the card offers
+        // to review and apply Custom (Pilot 15): a plan with no moves, applied with its planHash like the others, so Custom becomes the current layout.
+        let differs = null;
+        if (preset === 'Custom' && !current && st.customDiffers && LAYOUT_PRESETS.includes(st.data.layout && st.data.layout.preset)) {
+            differs = el('p', { class: 'shoal-meta shoal-preset__differs', text: t('layCustomDiffers', { preset: t('layPreset_' + st.data.layout.preset) }) });
+            action = button({ label: t('layReviewChanges'), small: true, onClick: (ev, btn) => togglePreview(preset, btn) });
+            action.setAttribute('aria-pressed', String(previewing));
+            action.setAttribute('aria-label', t('layReviewFor'));
+            action.dataset.fkey = 'preset:' + preset;
+        } else if (preset !== 'Custom') {
+            action = button({ label: t('layPreview'), small: true, onClick: (ev, btn) => togglePreview(preset, btn) });
+            action.setAttribute('aria-pressed', String(previewing));
+            action.setAttribute('aria-label', t('layPreviewFor', { preset: t('layPreset_' + preset) }));
+            action.dataset.fkey = 'preset:' + preset;
+        }
+
+        return el('article', { class: 'shoal-preset' + (previewing ? ' is-previewing' : '') + (preset === 'AllMixed' ? ' shoal-preset--recommended' : ''), 'aria-labelledby': titleId },
+            miniPic(preset, names),
+            el('h3', { class: 'shoal-preset__title', id: titleId },
+                el('span', { text: t('layPreset_' + preset) }),
+                previewing ? el('span', { class: 'shoal-prev-tag' }, icon('right', true), t('layPreviewing')) : null,
+                current ? el('span', { class: 'shoal-cur' }, icon('ok', true), t('layCurrent')) : null,
+                preset === 'AllMixed' ? el('span', { class: 'shoal-rec-tag' }, t('layRecommended')) : null),
+            el('p', { text: t('layPresetBody_' + preset, { friend: names[0] || t('layFriendWord') }) }),
+            differs,
+            action);
+    }
+
+    async function togglePreview(preset, btn) {
+        if (st.previewing === preset) {
+            st.previewing = null;
+            st.preview = null;
+            st.focusKey = 'preset:' + preset;
+            render();
+            return;
+        }
+
+        st.previewTargets = {};
+        await runAction(ctx, btn, {
+            busyText: t('layPreview'),
+            run: () => ctx.api.layoutPreview(preset),
+            onDone: (res) => {
+                st.previewing = preset;
+                st.preview = res && typeof res === 'object' ? res : {};
+                st.focusKey = 'previewHead';
+                render();
+            },
+            onError: (err) => ctx.fail(layoutError(err))
+        });
+    }
+
+    function previewSection() {
+        if (!st.previewing || !st.preview) {
+            return null;
+        }
+
+        const pv = st.preview;
+        const preset = st.previewing;
+        const headId = uid('shoal-pv');
+        const whyId = uid('shoal-pvwhy');
+        const moves = Array.isArray(pv.moves) ? pv.moves.filter((m) => m && typeof m.to === 'string') : [];
+        const friends = new Set(moves.map((m) => m.peerKey)).size;
+        const rows = previewRows(pv, libs());
+        const losing = sortUsers(st.users.filter((u) => Array.isArray(pv.usersLosingAccess) && pv.usersLosingAccess.includes(u.id))).map((u) => u.name);
+        const collapsing = Number(pv.titlesCollapsing) || 0;
+        const isBlocked = blocked();
+        const custom = preset === 'Custom';
+        const combine = preset === 'CombineIntoMine';
+        const needsTargets = combine && pv.needsTargets === true;
+        const needId = uid('shoal-pvneed');
+        const apply = button({ label: t(custom ? 'layCustomApply' : 'layApply'), variant: 'primary', onClick: (ev, b) => applyPreset(preset, b) });
+        apply.dataset.fkey = 'apply';
+        if (isBlocked || needsTargets || (friends === 0 && !custom)) {
+            apply.setAttribute('aria-disabled', 'true');
+        }
+
+        if (isBlocked) {
+            apply.setAttribute('aria-describedby', whyId);
+        } else if (needsTargets) {
+            apply.setAttribute('aria-describedby', needId);
+        }
+
+        // Combine puts friends' titles into the admin's own libraries: the placement warning, and the libraries whose NFO saver is on or that Shoal leaves unlocked.
+        const combineNotes = combine
+            ? [warnBox(t('layPlaceWarn')), nfoSaverNames(pv.targetsSavingNfo).map(nfoSaverWarning), nfoSaverNames(pv.shoalLibrariesNotLocked).map(notLockedWarning)]
+            : [];
+
+        const cancel = button({ label: t('cancel'), onClick: () => {
+            st.previewing = null;
+            st.preview = null;
+            st.focusKey = 'preset:' + preset;
+            render();
+        } });
+        return el('section', { class: 'shoal-preview', 'aria-labelledby': headId },
+            el('h3', { class: 'shoal-preview__title', id: headId, tabindex: '-1', 'data-fkey': 'previewHead', text: custom ? t('layReviewTitle') : t('layPreviewTitle', { preset: t('layPreset_' + preset) }) }),
+            combine ? targetChoices(pv) : null,
+            rows.length ? el('ul', { class: 'shoal-diff' }, rows.map((r) => el('li', {},
+                el('span', { class: 'was', text: r.was }),
+                icon('arrow'),
+                r.to === null ? el('span', { text: t('layNoChange') }) : el('span', {}, el('span', { class: 'shoal-sr', text: t('layBecomes') }), r.to)))) : null,
+            collapsing > 0 ? el('p', { class: 'shoal-meta shoal-preview__note', text: t('layPreviewCollapse', { n: collapsing, count: ctx.fmt.num(collapsing) }) }) : null,
+            losing.length ? el('p', { class: 'shoal-meta shoal-preview__note', text: t('layPreviewLosing', { names: nameList(losing, 5) }) }) : null,
+            friends > 0 ? warnBox(t('layApplyWarn', { n: friends }))
+                : el('p', { class: 'shoal-meta shoal-preview__note', text: custom ? t('layCustomReview', { preset: t('layPreset_' + ((st.data.layout && st.data.layout.preset) || 'AllMixed')) }) : t('layPreviewNothing') }),
+            combineNotes,
+            el('div', { class: 'shoal-btnrow' }, apply, cancel, isBlocked ? el('span', { class: 'shoal-meta', id: whyId, text: t('layWaitJob') }) : null,
+                !isBlocked && needsTargets ? el('span', { class: 'shoal-meta', id: needId, text: t('layTargetNeeded') }) : null));
+    }
+
+    async function applyPreset(preset, btn) {
+        await runAction(ctx, btn, {
+            busyText: t('applying'),
+            run: () => ctx.api.layoutApply(preset, st.preview && typeof st.preview.planHash === 'string' ? st.preview.planHash : null, preset === 'CombineIntoMine' ? st.previewTargets : null),
+            onDone: (res) => {
+                st.previewing = null;
+                st.preview = null;
+                startJob(res && res.job);
+                if (preset === 'Custom') {
+                    // Nothing moves: Custom simply becomes the current layout. Read the layout again so the cards and the New connections panel follow.
+                    ctx.announce(t('layCustomApplied'));
+                    load(false).then(() => ctx.focusHeading());
+                    return;
+                }
+
+                ctx.announce(t('layStarted'));
+                render();
+                ctx.focusHeading();
+            },
+            onError: (err) => {
+                if (err && (err.kind === 'planChanged' || err.kind === 'targetRequired')) {
+                    rePreview(preset);
+                    return;
+                }
+
+                ctx.fail(layoutError(err));
+            }
+        });
+    }
+
+    // Something changed since the preview (a friend added, a library moved): show the new plan and let the admin apply that one.
+    // Combine into my libraries: a main library picked for a type previews again with it, keeping focus on that choice.
+    async function pickTarget(type, id) {
+        st.previewTargets = Object.assign({}, st.previewTargets);
+        if (id) {
+            st.previewTargets[type] = id;
+        } else {
+            delete st.previewTargets[type];
+        }
+
+        try {
+            const res = await ctx.api.layoutPreview('CombineIntoMine', st.previewTargets);
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.preview = res && typeof res === 'object' ? res : {};
+            st.focusKey = 'target:' + type;
+            render();
+        } catch (err) {
+            ctx.fail(layoutError(err));
+        }
+    }
+
+    function targetChoices(pv) {
+        const list = Array.isArray(pv.targets) ? pv.targets.filter((c) => c && LAYOUT_TYPES.includes(c.type)) : [];
+        return list.map((c) => {
+            const candidates = (Array.isArray(c.candidates) ? c.candidates : []).filter((x) => x && typeof x.id === 'string' && typeof x.name === 'string');
+            if (!candidates.length) {
+                return el('p', { class: 'shoal-meta shoal-preview__note', text: t('layTargetNone_' + c.type) });
+            }
+
+            // One library of the type: it is the target, said in words. Several: a plain select. The page never shows a library id (option values are indexes).
+            if (candidates.length === 1 && candidates[0].id === c.chosen) {
+                return el('p', { class: 'shoal-meta shoal-preview__note', text: t('layTargetOne_' + c.type, { library: candidates[0].name }) });
+            }
+
+            const chosen = candidates.findIndex((x) => x.id === c.chosen);
+            const options = (chosen < 0 ? [{ value: '', label: t('layTargetPick') }] : []).concat(candidates.map((x, i) => ({ value: String(i), label: x.name })));
+            const field = selectField({ id: uid('shoal-target'), label: t('layTargetLabel_' + c.type), options, value: chosen < 0 ? '' : String(chosen) });
+            field.select.dataset.fkey = 'target:' + c.type;
+            field.select.addEventListener('change', () => {
+                const pick = candidates[Number(field.select.value)];
+                pickTarget(c.type, field.select.value === '' || !pick ? null : pick.id);
+            });
+            return el('div', { class: 'shoal-preview__target' }, field.root, c.rejected ? el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: t('layTargetRejected') })) : null);
+        });
+    }
+
+    async function rePreview(preset) {
+        try {
+            const res = await ctx.api.layoutPreview(preset, preset === 'CombineIntoMine' ? st.previewTargets : null);
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.previewing = preset;
+            st.preview = res && typeof res === 'object' ? res : {};
+            st.focusKey = 'previewHead';
+            render();
+            ctx.alertMessage(t('layPlanChanged'));
+        } catch (err) {
+            ctx.fail(layoutError(err));
+        }
+    }
+
+    /* ---------- Shoal libraries (2), moving a friend, per-library access (U-M2) ---------- */
+
+    function accessText(lib) {
+        const a = lib.access || { mode: 'Selected', selectedUserIds: [], includeRestricted: false };
+        if (a.mode === 'Everyone') {
+            if (lib.placement !== 'Main') {
+                return t('layAccessEveryone');
+            }
+
+            const who = t('layAccessMainEveryone', { library: mainName(lib) });
+            const hidden = hiddenSet();
+            const except = sortUsers(st.users.filter((u) => hidden.has(u.id) || (u.restricted && !a.includeRestricted))).map((u) => u.name);
+            return except.length ? t('layAccessExcept', { who, names: nameList(except, 2) }) : who;
+        }
+
+        const names = selectionNames({ selectedUserIds: Array.isArray(a.selectedUserIds) ? a.selectedUserIds : [] }, st.users, st.youId);
+        if (!names.length) {
+            return t('accessHidden');
+        }
+
+        if (names.length === 1 && names[0] === t('youWord')) {
+            return t('accessOnlyYou');
+        }
+
+        return t('accessPeople', { n: names.length, names: nameList(names, 2) });
+    }
+
+    function libMeta(lib) {
+        const parts = [lib.placement === 'Main' ? t('layMainMeta') : layoutTypeWord(lib.type)];
+        if (typeof lib.titleCount === 'number' && lib.titleCount >= 0) {
+            const vars = { n: lib.titleCount, count: ctx.fmt.num(lib.titleCount) };
+            parts.push(lib.placement === 'Main' ? t('layMainTitles', vars) : t(lib.type === 'tvshows' ? 'layMetaShows' : 'layMetaTitles', vars));
+        }
+
+        return parts.join(' · ');
+    }
+
+    function feedChip(lib, c) {
+        const friend = friendName(c);
+        const open = !!(st.move && st.move.libKey === lib.libKey && st.move.peerKey === c.peerKey);
+        const s = serverOf(c.peerKey);
+        const art = s && s.latest && s.latest.localItemId ? itemImageUrl(ctx, s.latest.localItemId, 'Primary', s.latest.primaryTag, 22) : '';
+        const face = el('span', { class: 'shoal-feed__face', 'aria-hidden': 'true' }, el('span', { class: 'shoal-feed__initial', text: initialOf(friend) }));
+        if (art) {
+            const img = el('img', { alt: '', width: '22', height: '22', loading: 'lazy', decoding: 'async' });
+            img.addEventListener('error', () => {
+                img.hidden = true;
+            });
+            img.src = art;
+            face.append(img);
+        }
+
+        const chipBtn = el('button', { type: 'button', class: 'shoal-feed', 'aria-expanded': String(open), 'aria-label': t('layMoveFriend', { friend, type: layoutTypeLower(lib.type) }), 'data-fkey': 'feed:' + lib.libKey + ':' + c.peerKey },
+            face, el('span', { class: 'shoal-feed__name', text: friend }));
+        chipBtn.addEventListener('click', () => {
+            st.move = open ? null : { libKey: lib.libKey, peerKey: c.peerKey, choice: lib.libKey, newName: t('layFriendLib', { friend, type: layoutTypeWord(lib.type) }), newPlace: 'Shoal' };
+            st.focusKey = open ? 'feed:' + lib.libKey + ':' + c.peerKey : 'move:select';
+            render();
+        });
+        return chipBtn;
+    }
+
+    function movePanel(lib) {
+        const m = st.move;
+        const conn = (lib.connections || []).find((c) => c.peerKey === m.peerKey);
+        if (!conn) {
+            return null;
+        }
+
+        const friend = friendName(conn);
+        const typeL = layoutTypeLower(lib.type);
+        const same = libs().filter((l) => l.type === lib.type);
+        const warnId = uid('shoal-mvw');
+        const placeId = uid('shoal-mvp');
+        const whyId = uid('shoal-mvwhy');
+        const options = same.map((l) => ({
+            value: l.libKey,
+            label: l.libKey === lib.libKey ? t('layNow', { library: shownName(l) }) : l.placement === 'Main' ? t('layPlaceMain', { library: mainName(l) }) : l.name
+        })).concat([{ value: NEW_LIBRARY, label: t('layNewLib') }]);
+        const sel = selectField({ id: uid('shoal-mv'), label: t('layMoveTo', { friend, type: typeL }), options, value: m.choice });
+        sel.select.dataset.fkey = 'move:select';
+        sel.select.addEventListener('change', () => {
+            m.choice = sel.select.value;
+            st.focusKey = 'move:select';
+            render();
+        });
+        const kids = [sel.root];
+        let nameField = null;
+        const mains = mainLibraries(lib.type);
+        let targetMain = false;
+        if (m.choice === NEW_LIBRARY) {
+            nameField = textField({ id: uid('shoal-mvn'), label: t('layNewName'), value: m.newName, maxlength: '100' });
+            nameField.input.addEventListener('input', () => {
+                m.newName = nameField.input.value;
+                nameField.setError('');
+            });
+            kids.push(nameField.root);
+            if (mains.length) {
+                const place = selectField({
+                    id: uid('shoal-mvpl'),
+                    label: t('layPlaceLabel'),
+                    options: [{ value: 'Shoal', label: t('layPlaceOwn') }].concat(mains.map((x, i) => ({ value: 'main' + i, label: t('layPlaceInto', { library: x.name }) }))),
+                    value: m.newPlace
+                });
+                place.select.dataset.fkey = 'move:place';
+                place.select.addEventListener('change', () => {
+                    m.newPlace = place.select.value;
+                    st.focusKey = 'move:place';
+                    render();
+                });
+                kids.push(place.root);
+            }
+
+            targetMain = m.newPlace !== 'Shoal' && !!mains[Number(String(m.newPlace).replace('main', ''))];
+        } else {
+            const target = same.find((l) => l.libKey === m.choice);
+            targetMain = !!(target && target.placement === 'Main' && target.libKey !== lib.libKey);
+        }
+
+        sel.select.setAttribute('aria-describedby', warnId + (targetMain ? ' ' + placeId : ''));
+        kids.push(warnBox(t('layMoveWarn'), warnId));
+        if (targetMain) {
+            kids.push(warnBox(t('layPlaceWarn'), placeId));
+        }
+
+        const isBlocked = blocked();
+        const go = button({ label: t('layMoveBtn', { friend }), variant: 'primary', onClick: (ev, b) => runMove(lib, conn, b, nameField) });
+        go.dataset.fkey = 'move:go';
+        if (isBlocked || m.choice === lib.libKey) {
+            go.setAttribute('aria-disabled', 'true');
+        }
+
+        if (isBlocked) {
+            go.setAttribute('aria-describedby', whyId);
+        }
+
+        const cancel = button({ label: t('cancel'), onClick: () => {
+            st.move = null;
+            st.focusKey = 'feed:' + lib.libKey + ':' + conn.peerKey;
+            render();
+        } });
+        kids.push(el('div', { class: 'shoal-btnrow' }, go, cancel, isBlocked ? el('span', { class: 'shoal-meta', id: whyId, text: t('layWaitJob') }) : null));
+        return el('div', { class: 'shoal-lib__more shoal-move' }, kids);
+    }
+
+    async function runMove(lib, conn, btn, nameField) {
+        const m = st.move;
+        const friend = friendName(conn);
+        let bodyOut;
+        let targetName;
+        if (m.choice === NEW_LIBRARY) {
+            const name = String(m.newName || '').trim();
+            if (!name) {
+                nameField.setError(t('layNameEmpty'));
+                nameField.input.focus();
+                return;
+            }
+
+            const mains = mainLibraries(lib.type);
+            const main = m.newPlace !== 'Shoal' ? mains[Number(String(m.newPlace).replace('main', ''))] : null;
+            bodyOut = { type: lib.type, newLibrary: main ? { name, placement: 'Main', mainLibraryId: main.id } : { name, placement: 'Shoal' } };
+            targetName = main ? main.name : name;
+        } else {
+            const target = libs().find((l) => l.libKey === m.choice);
+            if (!target) {
+                return;
+            }
+
+            bodyOut = { type: lib.type, libKey: target.libKey };
+            targetName = shownName(target);
+        }
+
+        await runAction(ctx, btn, {
+            busyText: t('layMoving'),
+            run: () => ctx.api.moveConnection(conn.peerKey, bodyOut),
+            onDone: (res) => {
+                const words = { friend, type: layoutTypeLower(lib.type), library: targetName };
+                st.lastMove = words;
+                st.move = null;
+                startJob(res && res.job);
+                ctx.announce(t('layMoveStarted', words));
+                load(false).then(() => ctx.focusHeading());
+            },
+            onError: (err) => ctx.fail(layoutError(err))
+        });
+    }
+
+    async function editAccess(lib) {
+        st.focusKey = 'who:' + lib.libKey;
+        const res = await openLayoutAccess(ctx, lib, st.users, st.youId, serverText(lib));
+        if (!res) {
+            return;
+        }
+
+        try {
+            const answer = await ctx.api.updateLayoutLibrary(lib.libKey, res);
+            if (answer && answer.library && answer.library.libKey === lib.libKey) {
+                const i = st.data.libraries.findIndex((l) => l.libKey === lib.libKey);
+                if (i >= 0) {
+                    st.data.libraries[i] = answer.library;
+                }
+            } else {
+                lib.access = res.access;
+            }
+
+            const lost = sortUsers(st.users.filter((u) => answer && Array.isArray(answer.losing) && answer.losing.includes(u.id))).map((u) => u.name);
+            const text = lost.length ? t('layAccessLost', { names: nameList(lost, 5), library: lib.name }) : t('announceAccessSaved', { library: lib.name });
+            ctx.announce(text);
+            ctx.toast(text);
+        } catch (err) {
+            ctx.fail(err && LAYOUT_ERRORS.includes(err.kind) ? layoutError(err) : t('accessFailed', { library: lib.name }));
+        }
+
+        render();
+    }
+
+    function nameDialog(o) {
+        let field = null;
+        return openDialog(ctx, {
+            title: o.title,
+            build(dlgBody) {
+                field = textField({ id: uid('shoal-lname'), label: t('layNameLabel'), value: o.value || '', maxlength: '100', required: true });
+                dlgBody.append(field.root);
+                for (const extra of o.extras || []) {
+                    dlgBody.append(extra.root || extra);
+                }
+
+                return field.input;
+            },
+            buttons: [
+                { label: t('cancel'), close: undefined },
+                {
+                    label: o.saveLabel || t('save'),
+                    variant: 'primary',
+                    onClick: async (dlg, btn) => {
+                        const name = field.value();
+                        if (!name) {
+                            field.setError(t('layNameEmpty'));
+                            field.input.focus();
+                            return;
+                        }
+
+                        dlg.setError('');
+                        btn.disabled = true;
+                        try {
+                            await o.run(name);
+                            dlg.close(name);
+                        } catch (err) {
+                            dlg.setError(layoutError(err));
+                            btn.disabled = false;
+                        }
+                    }
+                }
+            ]
+        });
+    }
+
+    async function renameLibrary(lib) {
+        st.focusKey = 'rename:' + lib.libKey;
+        const name = await nameDialog({ title: t('layRenameTitle', { library: lib.name }), value: lib.name, run: (n) => ctx.api.updateLayoutLibrary(lib.libKey, { name: n }) });
+        if (name) {
+            ctx.announce(t('layRenamed', { library: name }));
+            await load(false);
+        }
+    }
+
+    async function createLibrary() {
+        st.focusKey = 'create';
+        const type = selectField({ id: uid('shoal-ltype'), label: t('layTypeLabel'), options: LAYOUT_TYPES.map((x) => ({ value: x, label: layoutTypeWord(x) })), value: 'movies' });
+        const all = mainLibraries(null);
+        const place = all.length ? selectField({ id: uid('shoal-lplace'), label: t('layPlaceLabel'), options: [{ value: 'Shoal', label: t('layPlaceOwn') }].concat(all.map((x, i) => ({ value: 'main' + i, label: t('layPlaceInto', { library: x.name }) }))), value: 'Shoal' }) : null;
+        const warn = place ? warnBox(t('layPlaceWarn')) : null;
+        if (warn) {
+            warn.hidden = true;
+            place.select.addEventListener('change', () => {
+                warn.hidden = place.select.value === 'Shoal';
+            });
+        }
+
+        const name = await nameDialog({
+            title: t('layCreateTitle'),
+            saveLabel: t('layCreate'),
+            extras: [type, place, warn].filter(Boolean),
+            run: (n) => {
+                const main = place && place.select.value !== 'Shoal' ? all[Number(place.select.value.replace('main', ''))] : null;
+                return ctx.api.createLayoutLibrary(main ? { name: n, type: main.type || type.select.value, placement: 'Main', mainLibraryId: main.id } : { name: n, type: type.select.value, placement: 'Shoal' });
+            }
+        });
+        if (name) {
+            ctx.announce(t('layCreated', { library: name }));
+            await load(false);
+        }
+    }
+
+    async function deleteLibrary(lib) {
+        st.focusKey = 'delete:' + lib.libKey;
+        const shown = shownName(lib);
+        const conns = lib.connections || [];
+        if (conns.length) {
+            await openDialog(ctx, {
+                title: t('layNotEmptyTitle', { library: shown }),
+                build(dlgBody) {
+                    dlgBody.append(paragraph(t('layNotEmptyBody', { names: nameList(conns.map(friendName), 5) })));
+                    return null;
+                },
+                buttons: [{ label: t('close'), close: undefined }]
+            });
+            return;
+        }
+
+        const main = lib.placement === 'Main';
+        const res = await confirmDialog(ctx, {
+            title: t(main ? 'layStopTitle' : 'layDeleteTitle', { library: shown }),
+            intro: t(main ? 'layStopBody' : 'layDeleteBody', { library: shown }),
+            confirmLabel: t(main ? 'layStopBtn' : 'layDeleteBtn'),
+            danger: true,
+            run: () => ctx.api.deleteLayoutLibrary(lib.libKey),
+            errorText: layoutError
+        });
+        if (res.confirmed) {
+            st.focusKey = 'create';
+            ctx.announce(t('layDeleted', { library: shown }));
+            await load(false);
+        }
+    }
+
+    function libRow(lib) {
+        const isMain = lib.placement === 'Main';
+        const conns = (lib.connections || []).filter((c) => c && typeof c.peerKey === 'string');
+        const shown = shownName(lib);
+        const who = linkButton(accessText(lib), () => editAccess(lib).catch((err) => reportUnexpected(err)), 'c4 shoal-lib__who');
+        who.setAttribute('data-l', t('layColWho'));
+        who.dataset.fkey = 'who:' + lib.libKey;
+        const acts = el('span', { class: 'shoal-lib__acts' });
+        if (isMain) {
+            acts.append(iconButton('trash', t('layStopMain', { library: mainName(lib) }), 'delete:' + lib.libKey, () => deleteLibrary(lib)));
+        } else {
+            acts.append(iconButton('edit', t('layRename', { library: lib.name }), 'rename:' + lib.libKey, () => renameLibrary(lib)));
+            if (!lib.legacy) {
+                acts.append(iconButton('trash', t('layDelete', { library: lib.name }), 'delete:' + lib.libKey, () => deleteLibrary(lib)));
+            }
+        }
+
+        const open = st.move && st.move.libKey === lib.libKey ? movePanel(lib) : null;
+        return el('li', { class: 'shoal-lib' + (isMain ? ' shoal-lib--main' : '') },
+            el('span', { class: 'shoal-lib__name' },
+                el('span', { class: 'shoal-typeicon', 'aria-hidden': 'true' }, icon(lib.type === 'tvshows' ? 'tv' : 'film')),
+                el('span', { class: 'shoal-lib__text' }, el('span', { class: 'shoal-lib__title', text: shown }), el('small', { text: libMeta(lib) }))),
+            el('span', { class: 'c2 shoal-place' + (isMain ? ' shoal-place--main' : ''), 'data-l': t('layColPlacement') },
+                icon(isMain ? 'merge' : 'lib', true), el('span', { text: isMain ? t('layPlaceMain', { library: targetOf(lib) || mainName(lib) }) : t('layPlaceShoal') })),
+            el('span', { class: 'c3', 'data-l': t('layColFeeds') }, conns.length ? el('span', { class: 'shoal-feeds' }, conns.map((c) => feedChip(lib, c))) : el('span', { class: 'shoal-meta', text: t('layNoFeeds') })),
+            who,
+            acts,
+            open,
+            isMain ? el('div', { class: 'shoal-lib__more shoal-lib__warn' }, warnBox(t('layPlaceWarn')), nfoFor(lib).map(nfoSaverWarning), notLockedFor(lib).map(notLockedWarning)) : null,
+            !isMain && notLockedFor(lib).length ? el('div', { class: 'shoal-lib__more shoal-lib__warn' }, notLockedFor(lib).map(notLockedWarning)) : null);
+    }
+
+    function librariesSection() {
+        const headId = uid('shoal-libs');
+        const create = button({ label: t('layCreate'), icon: 'plus', onClick: () => createLibrary() });
+        create.dataset.fkey = 'create';
+        const list = libs();
+        return [
+            el('div', { class: 'shoal-under__head' }, el('h2', { class: 'shoal-h2 shoal-sec', id: headId, text: t('laySecLibraries') }), create),
+            nfoUnplaced().map(nfoSaverWarning),
+            notLockedUnplaced().map(notLockedWarning),
+            el('ul', { class: 'shoal-libs', 'aria-labelledby': headId },
+                el('li', { class: 'shoal-libs__head', 'aria-hidden': 'true' },
+                    el('span', { text: t('layColLibrary') }), el('span', { text: t('layColPlacement') }), el('span', { text: t('layColFeeds') }), el('span', { text: t('layColWho') }), el('span')),
+                list.length ? list.map(libRow) : el('li', { class: 'shoal-lib shoal-lib--none' }, el('span', { class: 'shoal-meta', text: t('layNoLibraries') })))
+        ];
+    }
+
+    /* ---------- library order (drag, or the arrows for the keyboard) ---------- */
+
+    async function moveOrder(key, toIndex, focusDir) {
+        const all = libs();
+        const current = Array.isArray(st.data.order) ? st.data.order : all.map((l) => l.libKey);
+        const next = placeWithinType(all, current, key, toIndex);
+        if (next.length === current.length && next.every((k, i) => k === current[i])) {
+            return;
+        }
+
+        const lib = all.find((l) => l.libKey === key);
+        try {
+            const res = await ctx.api.setLayoutOrder(next);
+            st.data.order = res && Array.isArray(res.order) ? res.order : next;
+            const same = libs().filter((l) => l.type === lib.type);
+            const n = same.findIndex((l) => l.libKey === key) + 1;
+            st.focusKey = 'order:' + key + ':' + focusDir;
+            render();
+            ctx.announce(t('layOrderSaid', { library: shownName(lib), n, total: same.length }));
+        } catch (err) {
+            ctx.fail(err && LAYOUT_ERRORS.includes(err.kind) ? layoutError(err) : t('layOrderFailed'));
+            st.focusKey = 'order:' + key + ':' + focusDir;
+            render();
+        }
+    }
+
+    function orderList(type, labelId, descId) {
+        const all = libs();
+        const same = all.filter((l) => l.type === type);
+        const ol = el('ol', { class: 'shoal-order', 'aria-labelledby': labelId, 'aria-describedby': descId });
+        same.forEach((lib, i) => {
+            const shown = shownName(lib);
+            const feeders = (lib.connections || []).map(friendName);
+            const small = lib.placement === 'Main' ? t('layOrderMain', { names: feeders.length ? nameList(feeders, 3) : t('layNoFeeds') }) : feeders.join(', ');
+            const up = iconButton('chevup', t('layUp', { library: shown }), 'order:' + lib.libKey + ':up', () => moveOrder(lib.libKey, i - 1, 'up'), i === 0);
+            const down = iconButton('down', t('layDown', { library: shown }), 'order:' + lib.libKey + ':down', () => moveOrder(lib.libKey, i + 1, 'down'), i === same.length - 1);
+            const li = el('li', { class: 'shoal-order__item', draggable: 'true' },
+                icon('grip'),
+                el('span', { class: 'shoal-rank', 'aria-hidden': 'true', text: ctx.fmt.num(i + 1) }),
+                el('span', { class: 'shoal-order__name' }, el('span', { text: shown }), small ? el('small', { text: small }) : null),
+                el('span', { class: 'shoal-updown' }, up, down));
+            li.querySelector('.shoal-icon').classList.add('shoal-grip');
+            li.addEventListener('dragstart', (ev) => {
+                st.dragKey = lib.libKey;
+                li.classList.add('is-dragging');
+                if (ev.dataTransfer) {
+                    ev.dataTransfer.effectAllowed = 'move';
+                    try {
+                        ev.dataTransfer.setData('text/plain', shown);
+                    } catch {
+                        /* some browsers refuse data on a synthetic drag; the key is kept here */
+                    }
+                }
+            });
+            li.addEventListener('dragover', (ev) => {
+                const dragged = all.find((l) => l.libKey === st.dragKey);
+                if (dragged && dragged.type === type) {
+                    ev.preventDefault();
+                    li.classList.add('is-over');
+                }
+            });
+            li.addEventListener('dragleave', () => li.classList.remove('is-over'));
+            li.addEventListener('drop', (ev) => {
+                ev.preventDefault();
+                li.classList.remove('is-over');
+                const key = st.dragKey;
+                st.dragKey = null;
+                const dragged = all.find((l) => l.libKey === key);
+                if (dragged && dragged.type === type && key !== lib.libKey) {
+                    moveOrder(key, i, 'down').catch((err) => reportUnexpected(err));
+                }
+            });
+            li.addEventListener('dragend', () => {
+                st.dragKey = null;
+                li.classList.remove('is-dragging');
+            });
+            ol.append(li);
+        });
+        return ol;
+    }
+
+    function orderSection() {
+        const all = libs();
+        const types = LAYOUT_TYPES.filter((type) => all.filter((l) => l.type === type).length >= 2);
+        if (!types.length) {
+            return null;
+        }
+
+        const headId = uid('shoal-ord');
+        const descId = uid('shoal-ordd');
+        const kids = [el('h2', { class: 'shoal-h2 shoal-sec', id: headId, text: t('laySecOrder') }), el('p', { class: 'shoal-lead shoal-order__lead', id: descId, text: t('layOrderLead') })];
+        for (const type of types) {
+            let labelId = headId;
+            if (types.length > 1) {
+                labelId = uid('shoal-ordt');
+                kids.push(el('h3', { class: 'shoal-h3 shoal-order__type', id: labelId, text: t('layOrderType', { type: layoutTypeWord(type) }) }));
+            }
+
+            kids.push(orderList(type, labelId, descId));
+        }
+
+        return el('section', { class: 'shoal-ordersec', 'aria-labelledby': headId }, kids);
+    }
+
+    /* ---------- new connections (3) and Hide friends' titles (5) ---------- */
+
+    function defaultPanel() {
+        const headId = uid('shoal-def');
+        const layout = (st.data && st.data.layout) || {};
+        const targets = layout.defaultTargets && typeof layout.defaultTargets === 'object' ? layout.defaultTargets : {};
+        const nameOfKey = (k, fallbackKey) => {
+            const l = libs().find((x) => x.libKey === k);
+            return l ? shownName(l) : t(fallbackKey);
+        };
+        const mixedLabel = t('layDefMixed', { movies: nameOfKey(targets.movies, 'layShoalMovies'), tv: nameOfKey(targets.tvshows, 'layShoalTv') });
+        const choice = layout.preset === 'PerFriend' ? 'PerFriend' : 'AllMixed';
+        const label = (v) => (v === 'PerFriend' ? t('layDefPerFriend') : mixedLabel);
+        const kids = [el('h2', { class: 'shoal-h2', id: headId, text: t('layDefTitle') }), el('p', { class: 'shoal-meta shoal-panel__lead', text: t('layDefBody') })];
+        if (ctx.features.layoutDefault) {
+            const sel = selectField({ id: uid('shoal-defsel'), label: t('layDefLabel'), options: [{ value: 'PerFriend', label: label('PerFriend') }, { value: 'AllMixed', label: label('AllMixed') }], value: choice, help: t('layDefHelp') });
+            sel.select.dataset.fkey = 'default';
+            sel.select.addEventListener('change', async () => {
+                const value = sel.select.value;
+                sel.select.disabled = true;
+                try {
+                    // The route stores the preset new connections follow (Layout.Default, which GET reads back as layout.preset) and keeps the targets.
+                    const res = await ctx.api.setLayoutDefault({ preset: value, defaultTargets: targets });
+                    layout.preset = res && LAYOUT_PRESETS.includes(res.preset) ? res.preset : value;
+                    if (res && res.defaultTargets && typeof res.defaultTargets === 'object') {
+                        layout.defaultTargets = res.defaultTargets;
+                    }
+                    ctx.announce(t('layDefSaved', { choice: label(value) }));
+                } catch (err) {
+                    sel.select.value = choice;
+                    ctx.fail(layoutError(err));
+                } finally {
+                    sel.select.disabled = false;
+                }
+            });
+            kids.push(sel.root);
+        } else {
+            kids.push(el('p', { class: 'shoal-body-text', text: t('layDefNow', { choice: label(choice) }) }), el('p', { class: 'shoal-meta', text: t('layDefHelp') }));
+        }
+
+        return el('section', { class: 'shoal-panel shoal-defpanel', 'aria-labelledby': headId }, kids);
+    }
+
+    function personNote(u) {
+        if (u.id === st.youId) {
+            return t('layAdminYou');
+        }
+
+        if (u.restricted) {
+            return t('layRestricted');
+        }
+
+        const all = libs();
+        if (!all.length) {
+            return u.isAdmin ? t('noteAdmin') : '';
+        }
+
+        const k = all.filter((l) => admittedUsers({ access: Object.assign({ mode: 'Selected', selectedUserIds: [], includeRestricted: false }, l.access) }, [u]).length > 0).length;
+        return t('layCanSee', { k, n: all.length });
+    }
+
+    function peoplePanel() {
+        const headId = uid('shoal-ppl');
+        const hidden = hiddenSet();
+        const users = sortUsers(st.users);
+        const rows = users.map((u, i) => {
+            const input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': t('layHideFor', { name: u.name }), 'data-fkey': 'hide:' + i });
+            input.checked = hidden.has(u.id);
+            input.addEventListener('change', async () => {
+                const want = input.checked;
+                input.disabled = true;
+                try {
+                    await ctx.api.setFriendTitles(u.id, want);
+                    const list = Array.isArray(st.data.hiddenFriendTitles) ? st.data.hiddenFriendTitles.filter((id) => id !== u.id) : [];
+                    if (want) {
+                        list.push(u.id);
+                    }
+
+                    st.data.hiddenFriendTitles = list;
+                    ctx.announce(t(want ? 'layHideSaved' : 'layShowSaved', { name: u.name }));
+                    st.focusKey = 'hide:' + i;
+                    render();
+                } catch (err) {
+                    input.checked = !want;
+                    input.disabled = false;
+                    ctx.fail(err && LAYOUT_ERRORS.includes(err.kind) ? layoutError(err) : t('layHideFailed', { name: u.name }));
+                }
+            });
+            const note = personNote(u);
+            return el('li', { class: 'shoal-person' },
+                avatar(ctx, u),
+                el('span', { class: 'shoal-person__text' }, el('b', { text: u.name }), note ? el('small', { text: note }) : null),
+                el('label', { class: 'shoal-switch' }, input, el('span', { class: 'off', 'aria-hidden': 'true', text: t('layShown') }), el('span', { class: 'on', 'aria-hidden': 'true', text: t('layHidden') })));
+        });
+        return el('section', { class: 'shoal-panel shoal-peoplepanel', 'aria-labelledby': headId },
+            el('h2', { class: 'shoal-h2', id: headId, text: t('layHideTitle') }),
+            el('p', { class: 'shoal-meta shoal-panel__lead', text: t('layHideBody') }),
+            el('ul', { class: 'shoal-people' }, rows));
+    }
+
+    /* ---------- the page ---------- */
+
+    function render() {
+        clear(body);
+        renderJob();
+        const names = friendNames();
+        const preset = st.data && st.data.layout ? st.data.layout.preset : null;
+        appendKids(body, [
+            el('p', { class: 'shoal-lead shoal-layouts__lead', text: t('layLead') }),
+            el('div', { class: 'shoal-rule', role: 'note' }, icon('info'), el('span', {}, el('b', { text: t('layRuleTitle') }), ' ', t('layRuleBody'))),
+            jobHost,
+            el('h2', { class: 'shoal-h2 shoal-sec', text: t('laySecPresets') }),
+            el('div', { class: 'shoal-presets' }, LAYOUT_PRESETS.map((p) => presetCard(p, preset === p, names))),
+            previewSection(),
+            librariesSection(),
+            orderSection(),
+            el('div', { class: 'shoal-two' }, defaultPanel(), peoplePanel())]);
+
+        if (st.focusKey) {
+            const [kind, key, dir] = st.focusKey.split(':');
+            let target = fkeyNode(st.focusKey);
+            if (kind === 'order' && target && target.disabled) {
+                target = fkeyNode('order:' + key + ':' + (dir === 'up' ? 'down' : 'up'));
+            }
+
+            if (target && typeof target.focus === 'function') {
+                target.focus();
+            }
+
+            st.focusKey = null;
+        }
+    }
+
+    async function load(initial) {
+        if (initial && !st.loaded) {
+            replaceKids(body, el('div', { class: 'shoal-skel', 'aria-busy': 'true' }, el('span', { class: 'shoal-sr', text: t('loadingShoal') }), el('div', { class: 'shoal-skel__panel' }), el('div', { class: 'shoal-skel__panel shoal-skel__panel--short' })));
+        }
+
+        try {
+            const [data, people, status] = await Promise.all([ctx.api.layouts(), ctx.api.libraries().catch(() => null), ctx.api.status().catch(() => null)]);
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.data = data && typeof data === 'object' ? data : {};
+            if (!Array.isArray(st.data.libraries)) {
+                st.data.libraries = [];
+            }
+
+            // Does the list still match the named layout? Its preview has no moves when it does. Only asked when the layout has a name (not Custom).
+            const named = st.data.layout && st.data.layout.preset;
+            st.customDiffers = false;
+            if (named === 'AllMixed' || named === 'PerFriend') {
+                const check = await ctx.api.layoutPreview(named).catch(() => null);
+                if (!ctx.alive) {
+                    return;
+                }
+
+                st.customDiffers = !!(check && Array.isArray(check.moves) && check.moves.length > 0);
+            }
+
+            // Sharing accounts Shoal made for friends are never listed (DESIGN 5.6).
+            st.users = (people && Array.isArray(people.users) ? people.users : []).filter((u) => u && !u.isShareUser);
+            st.youId = currentUserId(ctx, people);
+            st.servers = status && Array.isArray(status.servers) ? status.servers : st.servers;
+            st.posters = status && Array.isArray(status.recentlyShared) ? status.recentlyShared : st.posters;
+            st.loaded = true;
+            const wasActive = layoutJobActive(st.job);
+            st.job = st.data.job || null;
+            if (layoutJobActive(st.job)) {
+                if (!wasActive && !st.jobSamples.length) {
+                    st.jobSamples.push({ t: ctx.now(), done: Number(st.job.stepsDone) || 0 });
+                }
+
+                poller.start();
+            }
+
+            render();
+        } catch (err) {
+            if (!st.loaded && ctx.alive) {
+                replaceKids(body, loadErrorBox(() => load(true)));
+            } else if (ctx.alive) {
+                ctx.fail(layoutError(err));
+            }
+        }
+    }
+
+    return {
+        show() {
+            load(!st.loaded);
+        },
+        hide() {
+            poller.stop();
+        },
+        destroy() {
+            poller.stop();
+        }
+    };
+}
+
+/* ====================================================================================== */
+/* Inbox explainer (PLAN v2.9 U-M3) against K49: GET/POST Shoal/Admin/Inbox/Explainer      */
+/* (installed, posted, postedUtc, recipients, missingRecipients, title, body, buttonNote,  */
+/* fallbackNote, error; POST answers { sent, explainer }).                                 */
+/* ====================================================================================== */
+
+/** The message body as plain text for the preview: markdown bold marks dropped, and the title left out when the body starts with it. */
+function inboxPreviewBody(title, body) {
+    let text = String(body || '').replace(/\*\*/g, '').trim();
+    if (title && text.startsWith(title)) {
+        text = text.slice(title.length).trim();
+    }
+
+    return text;
+}
+
+function inboxCard(ctx) {
+    const headId = uid('shoal-inb');
+    const status = el('p', { class: 'shoal-meta shoal-inbox__status', role: 'status' });
+    const note = el('p', { class: 'shoal-meta shoal-inbox__note', hidden: true });
+    const msgTitle = el('strong', { class: 'shoal-inbox__msgtitle', text: t('inbMsgTitle') });
+    const msgBody = el('span', { class: 'shoal-inbox__msgbody', text: t('inbMsgBody') });
+    const post = button({ label: t('inbPost'), variant: 'primary', icon: 'inbox' });
+    post.dataset.fkey = 'inbox:post';
+    const root = el('section', { class: 'shoal-panel shoal-inbox', 'aria-labelledby': headId, hidden: true },
+        el('h2', { class: 'shoal-h2', id: headId, text: t('inbTitle') }),
+        el('p', { class: 'shoal-meta shoal-panel__lead', text: t('inbBody') }),
+        el('figure', { class: 'shoal-inbox__msg' }, el('figcaption', { class: 'shoal-label', text: t('inbMsgLabel') }), el('blockquote', {}, msgTitle, ' ', msgBody)),
+        el('div', { class: 'shoal-btnrow' }, post),
+        status,
+        note);
+    const label = q(post, '.shoal-btn__label');
+    const count = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
+
+    function fill(data) {
+        const d = data && typeof data === 'object' ? data : {};
+        if (typeof d.title === 'string' && d.title) {
+            msgTitle.textContent = d.title;
+        }
+
+        const body = inboxPreviewBody(msgTitle.textContent, d.body);
+        if (body) {
+            msgBody.textContent = body;
+        }
+
+        root.hidden = false;
+        // Moonbase not installed: no button, the server's fallback note (or ours).
+        if (d.installed === false) {
+            post.hidden = true;
+            status.textContent = typeof d.fallbackNote === 'string' && d.fallbackNote ? d.fallbackNote : t('inbNoMoonfin');
+            note.hidden = true;
+            return;
+        }
+
+        post.hidden = false;
+        const missing = count(d.missingRecipients);
+        const posted = d.posted === true;
+        const when = toMs(d.postedUtc);
+        // Posted and in everyone's inbox: nothing to do. Posted but newer accounts lack it: Post again reaches them (the old message is replaced).
+        post.disabled = posted && missing === 0;
+        // While the post runs the busy label is showing: the label to restore is the one runAction kept.
+        const text = posted && missing > 0 ? t('inbPostAgain') : t('inbPost');
+        if (post.dataset.label !== undefined) {
+            post.dataset.label = text;
+        } else {
+            label.textContent = text;
+        }
+        if (d.error === 'refused' || d.error === 'failed') {
+            status.textContent = t('inbErr_' + d.error);
+        } else if (posted && missing > 0) {
+            status.textContent = t('inbPostedMissing', { n: missing, count: ctx.fmt.num(missing), when: when ? ctx.fmt.relative(when) : t('inbEarlier') });
+        } else if (posted) {
+            status.textContent = when ? t('inbPosted', { when: ctx.fmt.relative(when) }) : t('inbPostedNow');
+        } else {
+            status.textContent = '';
+        }
+
+        note.hidden = !(typeof d.buttonNote === 'string' && d.buttonNote);
+        note.textContent = note.hidden ? '' : d.buttonNote;
+    }
+
+    post.addEventListener('click', () => {
+        if (post.disabled || post.getAttribute('aria-disabled') === 'true') {
+            return;
+        }
+
+        runAction(ctx, post, {
+            busyText: t('inbPosting'),
+            run: () => ctx.api.postInboxExplainer(),
+            onDone: (res) => {
+                const card = res && typeof res === 'object' && res.explainer && typeof res.explainer === 'object' ? res.explainer : null;
+                if (card) {
+                    fill(card);
+                }
+
+                if (res && res.sent === true) {
+                    ctx.announce(t('inbPostedNow'));
+                } else if (card && (card.error === 'refused' || card.error === 'failed')) {
+                    ctx.alertMessage(t('inbErr_' + card.error));
+                } else if (card && card.installed !== false) {
+                    ctx.announce(t('inbNoChange'));
+                }
+            },
+            onError: (err) => ctx.fail(failureMessage(err, 'inbFailed'))
+        });
+    });
+
+    // A missing route (an older backend) leaves the card hidden; it never shows a button that cannot work.
+    ctx.api.inboxExplainer().then((d) => ctx.alive && fill(d), () => {
+        root.hidden = true;
+    });
+    return root;
 }
 
 /* ====================================================================================== */
@@ -6216,7 +8342,7 @@ function settingsScreen(ctx) {
     const versionHost = el('div', { class: 'shoal-version' });
     body.before(versionHost);
     fillVersion(ctx, versionHost);
-    const st = { settings: null, hardening: null, state: null, hasFriends: false, loaded: false, dirty: false, networkRoot: null };
+    const st = { settings: null, hardening: null, state: null, layouts: null, hasFriends: false, loaded: false, dirty: false, networkRoot: null };
     const f = {};
     let saveBtn = null;
     let dirtyNote = null;
@@ -6738,7 +8864,7 @@ ctx.toast(t('settingsSaved'));
         }
 
         protectNode = hardeningPanel();
-        body.append(buildForm(st.settings), protectNode, keyStoragePanel(st.settings), parentalPanel(), statePanel(), dangerPanel());
+        appendKids(body, [layoutLinkPanel(ctx, st.layouts, st.nfoMains, st.notLocked), ctx.features.inboxExplainer ? inboxCard(ctx) : null, buildForm(st.settings), protectNode, keyStoragePanel(st.settings), parentalPanel(), statePanel(), dangerPanel()]);
     }
 
     async function load(initial) {
@@ -6748,7 +8874,10 @@ ctx.toast(t('settingsSaved'));
 
         try {
             const status = ctx.api.status().catch(() => ctx.status);
-            const [settings, state, sts] = await Promise.all([ctx.api.settings(), ctx.api.state().catch(() => ({})), status]);
+            const [settings, state, sts, layouts] = await Promise.all([ctx.api.settings(), ctx.api.state().catch(() => ({})), status, ctx.api.layouts().catch(() => null)]);
+            st.layouts = layouts && typeof layouts === 'object' ? layouts : null;
+            st.nfoMains = nfoSaverNames(sts && sts.mainLibrariesSavingNfo, st.layouts && st.layouts.mainLibrariesSavingNfo);
+            st.notLocked = nfoSaverNames(sts && sts.shoalLibrariesNotLocked, st.layouts && st.layouts.shoalLibrariesNotLocked);
             st.hasFriends = !!(sts && (sts.friends || []).length);
             st.hardening = st.hasFriends ? await ctx.api.hardening().catch(() => null) : null;
             if (!ctx.alive) {
@@ -6819,7 +8948,7 @@ function pairScreen(ctx) {
     const freshWizard = () => ({
         dir: ctx.params.dir === 'share' ? 'share' : ctx.params.dir === 'watch' ? 'watch' : null,
         step: 'direction',
-        form: { method: null, name: '', url: '', network: 'Tailnet', netTouched: false, proxy: '', invite: '', lanAck: true },
+        form: { method: null, name: '', url: '', network: 'Public', netTouched: false, proxy: '', invite: '', lanAck: true },
         inviteLeftMin: null,
         reach: null,
         reachLoaded: false,
@@ -7186,11 +9315,11 @@ function pairScreen(ctx) {
      */
     function addressHelper(o) {
         const vars = { friend: o.friend || t('yourFriend') };
+        // HTTPS is the recommended way, so its two setups come first; Tailscale (node sharing, then a subnet router) is also supported. n is the setup's own number.
         const keys = o.share
-            ? [['pv2ShSetup1Title', 'pv2ShSetup1Body'], ['pv2ShSetup2Title', 'pv2ShSetup2Body'], ['pv2ShSetup3Title', 'pv2ShSetup3Body'], ['pv2ShSetup4Title', 'pv2ShSetup4Body']]
-            : [['pv2Setup1Title', 'pv2Setup1Body'], ['pv2Setup2Title', 'pv2Setup2Body'], ['pv2Setup3Title', 'pv2Setup3Body'], ['pv2Setup4Title', 'pv2Setup4Body']];
-        const cards = keys.map(([title, body], i) => {
-            const n = i + 1;
+            ? [['pv2ShSetup3Title', 'pv2ShSetup3Body', 3], ['pv2ShSetup4Title', 'pv2ShSetup4Body', 4], ['pv2ShSetup1Title', 'pv2ShSetup1Body', 1], ['pv2ShSetup2Title', 'pv2ShSetup2Body', 2]]
+            : [['pv2Setup3Title', 'pv2Setup3Body', 3], ['pv2Setup4Title', 'pv2Setup4Body', 4], ['pv2Setup1Title', 'pv2Setup1Body', 1], ['pv2Setup2Title', 'pv2Setup2Body', 2]];
+        const cards = keys.map(([title, body, n]) => {
             const network = n === 1 ? 'Tailnet' : n === 2 ? 'LAN' : 'Public';
             return el('div', { class: 'shoal-setup' },
                 el('h4', { class: 'shoal-setup__title', text: t(title, vars) }),
@@ -7238,7 +9367,7 @@ function addressHints(reading, onFix) {
         fields.network = selectField({
             id: uid('shoal-pf'),
             label: t('fReach'),
-            options: [{ value: 'Tailnet', label: t('reachTailnet') }, { value: 'LAN', label: t('pv2ReachPrivate') }, { value: 'Public', label: t('reachPublic') }],
+            options: [{ value: 'Public', label: t('pv2ReachPublic') }, { value: 'Tailnet', label: t('pv2ReachTailnet') }, { value: 'LAN', label: t('pv2ReachPrivate') }],
             value: f.network,
             help: networkHelp(f.network)
         });
@@ -8219,8 +10348,8 @@ function addressHints(reading, onFix) {
         });
         address.input.addEventListener('blur', readAddr);
         const reachSet = el('fieldset', { class: 'shoal-choices' },
-            choose('tailnet', 'pv2ShTs', 'pv2ShTsHint'),
             choose('public', 'pv2ShPublic', 'pv2ShPublicHint'),
+            choose('tailnet', 'pv2ShTs', 'pv2ShTsHint'),
             choose('home', 'pv2ShHome', 'pv2ShHomeHint'));
         labelByHeading(wrap, reachSet);
         wrap.append(
@@ -8694,13 +10823,419 @@ function joinAnd(items) {
     return t('namesAnd', { names: items.slice(0, -1).join(', '), last: items[items.length - 1] });
 }
 
+/* ---------- Server detail: priority, quality limit, speed-test suggestion (PLAN v2.9 U-P1, U-P2, U-Q1, U-Q2) ---------- */
+
+const QUALITY_CLASSES = ['Off', '480', '720', '1080', '2160'];
+const QUALITY_LABELS = { Off: 'Off', 480: '480p', 720: '720p', 1080: '1080p', 2160: '4K' };
+
+function qualityLabel(cls) {
+    return cls === 'Off' ? t('qlOff') : QUALITY_LABELS[cls] || '';
+}
+
+/** The limit in words for an announcement: "up to 1080p", "up to 1080p and 20 Mbps", "up to 20 Mbps"; null when off. */
+function limitWords(limit) {
+    const cls = limit && QUALITY_CLASSES.includes(limit.maxClass) ? limit.maxClass : 'Off';
+    const mbps = limit && Number.isInteger(limit.maxMbps) ? limit.maxMbps : null;
+    if (cls === 'Off') {
+        return mbps ? t('qlOnlyMbps', { mbps }) : null;
+    }
+
+    return mbps ? t('qlUpToMbps', { limit: qualityLabel(cls), mbps }) : t('qlUpTo', { limit: qualityLabel(cls) });
+}
+
+/** A typed speed cap: '' = none (null), a whole number 1..1000, anything else = invalid (undefined). */
+function readMbps(text) {
+    const v = String(text === undefined || text === null ? '' : text).trim();
+    if (!v) {
+        return null;
+    }
+
+    if (!/^\d{1,4}$/.test(v)) {
+        return undefined;
+    }
+
+    const n = Number(v);
+    return n >= 1 && n <= 1000 ? n : undefined;
+}
+
+/** A segmented control of aria-pressed buttons with a check on the pressed one (mockup server.html). */
+function choiceSeg(options, value, labelId, onPick) {
+    const root = el('div', { class: 'shoal-seg shoal-seg--choice', role: 'group', 'aria-labelledby': labelId });
+    for (const o of options) {
+        const on = o.value === value;
+        const b = el('button', { type: 'button', 'aria-pressed': String(on), 'data-value': o.value }, on ? icon('check', true) : null, el('span', { text: o.label }));
+        b.addEventListener('click', () => {
+            if (b.getAttribute('aria-pressed') === 'true' || root.getAttribute('aria-busy') === 'true') {
+                return;
+            }
+
+            onPick(o.value, b);
+        });
+        root.append(b);
+    }
+
+    return root;
+}
+
+/**
+ * The three blocks of the server detail page that come from the quality and play-order routes. They stay the same nodes across redraws of the page (like
+ * the speed panel), are hidden when their route is missing (an older server) and only redraw when nothing inside them has focus.
+ */
+function serverQualityBlocks(ctx, handle) {
+    const st = { quality: null, order: null, qualityMissing: false, orderMissing: false, server: null, sigP: '', sigQ: '', sigR: '', busy: false };
+    const prio = el('section', { class: 'shoal-panel shoal-prio-panel', hidden: true });
+    const qual = el('section', { class: 'shoal-panel shoal-quality', hidden: true });
+    const rec = el('aside', { class: 'shoal-rec', hidden: true });
+    const name = () => (st.server ? st.server.displayName : '');
+
+    const focusedIn = (node) => {
+        const a = document.activeElement;
+        return !!a && a !== document.body && node.contains(a);
+    };
+
+    function myRow() {
+        const rows = st.order && Array.isArray(st.order.playOrder) ? st.order.playOrder : [];
+        return rows.find((r) => r && r.peerKey === handle) || null;
+    }
+
+    /* ----- U-P1 / U-P2: priority control and its indicator ----- */
+
+    function indicator(row) {
+        const tier = PRIORITY_TIERS.includes(row.tier) ? row.tier : 'Normal';
+        const set = tier !== 'Normal';
+        const count = Number.isInteger(row.count) ? row.count : 0;
+        const pos = Number.isInteger(row.position) ? row.position : 0;
+        const bold = count >= 2 && pos >= 1 ? t(set ? 'prioPlaceSet' : 'prioPlaceAuto', { place: ordinalPlace(pos), count }) : t(set ? 'prioOnlySet' : 'prioOnlyAuto');
+        let why = count < 2 ? t('prioOnlyOne') : playWhy(tier, row.reason);
+        if (count >= 2 && !row.reason && tier === 'Normal') {
+            why = t('prioNotRanked');
+        }
+
+        why = why ? why.charAt(0).toLowerCase() + why.slice(1) : '';
+        return el('p', { class: 'shoal-indicator', role: 'status' }, icon(set ? 'pin' : 'auto', true),
+            el('span', {}, el('b', { text: bold }), why ? ' (' + why + ')' : ''));
+    }
+
+    async function pickTier(tier, seg) {
+        const row = myRow();
+        seg.setAttribute('aria-busy', 'true');
+        try {
+            await ctx.api.setPriorityTier(handle, { tier, expectedCurrent: row ? row.tier : 'Normal' });
+            ctx.announce(t('prioSaved', { server: name(), tier: t('tier_' + tier) }));
+        } catch (err) {
+            ctx.alertMessage(err && err.kind === 'changed' ? t('prioChanged') : failureMessage(err, 'saveFailed'));
+        }
+
+        st.sigP = '';
+        await loadOrder(true);
+        const pressed = q(prio, '.shoal-seg button[aria-pressed="true"]');
+        if (pressed) {
+            pressed.focus();
+        }
+    }
+
+    function drawPrio(force) {
+        const row = myRow();
+        prio.hidden = !row || !st.server;
+        if (prio.hidden) {
+            return;
+        }
+
+        const sig = JSON.stringify([row, name(), !!ctx.features.priorityTier]);
+        if (!force && (sig === st.sigP || focusedIn(prio))) {
+            return;
+        }
+
+        st.sigP = sig;
+        const titleId = uid('shoal-pr');
+        const labelId = uid('shoal-prl');
+        const tier = PRIORITY_TIERS.includes(row.tier) ? row.tier : 'Normal';
+        prio.setAttribute('aria-labelledby', titleId);
+        const control = ctx.features.priorityTier
+            ? el('div', { class: 'shoal-ctl' },
+                el('span', { class: 'shoal-ctl-label', id: labelId, text: t('prioTurn', { server: name() }) }),
+                (() => {
+                    const seg = choiceSeg(PRIORITY_TIERS.map((x) => ({ value: x, label: t('tier_' + x) })), tier, labelId, (v) => pickTier(v, seg));
+                    return seg;
+                })())
+            : el('p', { class: 'shoal-ctl-label', text: t('prioReadOnly', { server: name(), tier: t('tier_' + tier) }) });
+        replaceKids(prio,
+            el('h2', { class: 'shoal-h2', id: titleId, text: t('prioTitle') }),
+            el('p', { class: 'shoal-meta shoal-panel__lead', text: t('prioLead', { server: name() }) }),
+            control,
+            indicator(row),
+            el('p', { class: 'shoal-desc', text: t('prioDesc', { server: name() }) }));
+    }
+
+    /* ----- U-Q1: quality limit ----- */
+
+    async function saveLimit(next, focusAfter) {
+        const cur = st.quality.limit || { maxClass: 'Off', maxMbps: null };
+        st.busy = true;
+        const seg = q(qual, '.shoal-seg');
+        if (seg) {
+            seg.setAttribute('aria-busy', 'true');
+        }
+
+        let okSaved = false;
+        try {
+            await ctx.api.setQualityLimit(handle, {
+                maxClass: next.maxClass,
+                maxMbps: next.maxMbps,
+                fromRecommendation: !!next.fromRecommendation,
+                expectedCurrent: { maxClass: cur.maxClass, maxMbps: Number.isInteger(cur.maxMbps) ? cur.maxMbps : null }
+            });
+            okSaved = true;
+            const words = limitWords(next);
+            ctx.announce(words ? t('qlSaved', { server: name(), limit: words }) : t('qlSavedOff', { server: name() }));
+        } catch (err) {
+            if (next.throwErrors) {
+                st.busy = false;
+                throw err;
+            }
+
+            ctx.alertMessage(err && err.kind === 'changed' ? t('qlChanged') : t('qlFailed'));
+        } finally {
+            st.busy = false;
+        }
+
+        st.sigQ = '';
+        st.sigR = '';
+        await loadQuality(true);
+        if (focusAfter) {
+            focusAfter();
+        }
+
+        return okSaved;
+    }
+
+    function focusPressedLimit() {
+        const b = q(qual, '.shoal-seg button[aria-pressed="true"]');
+        if (b) {
+            b.focus();
+        }
+    }
+
+    function drawQuality(force) {
+        const d = st.quality;
+        qual.hidden = !d || !st.server;
+        if (qual.hidden) {
+            return;
+        }
+
+        const sig = JSON.stringify([d.limit, d.effective, name()]);
+        if (!force && (sig === st.sigQ || focusedIn(qual))) {
+            return;
+        }
+
+        st.sigQ = sig;
+        const limit = d.limit || {};
+        const cls = QUALITY_CLASSES.includes(limit.maxClass) ? limit.maxClass : 'Off';
+        const mbps = Number.isInteger(limit.maxMbps) ? limit.maxMbps : null;
+        const titleId = uid('shoal-ql');
+        const labelId = uid('shoal-qll');
+        const inputId = uid('shoal-qlm');
+        const helpId = uid('shoal-qlh');
+        const errId = uid('shoal-qle');
+        qual.setAttribute('aria-labelledby', titleId);
+        const seg = choiceSeg(QUALITY_CLASSES.map((c) => ({ value: c, label: qualityLabel(c) })), cls, labelId, (v) => saveLimit({ maxClass: v, maxMbps: mbps }, focusPressedLimit));
+        const input = el('input', { class: 'emby-input shoal-input', id: inputId, type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: t('qlMbpsPlaceholder'), maxlength: '4', 'aria-describedby': helpId + ' ' + errId });
+        input.value = mbps === null ? '' : String(mbps);
+        const errText = el('span', { class: 'shoal-fieldError__text' });
+        const err = el('p', { class: 'shoal-fieldError', id: errId, hidden: true }, icon('x', true), errText);
+        input.addEventListener('change', () => {
+            const v = readMbps(input.value);
+            if (v === undefined) {
+                err.hidden = false;
+                errText.textContent = t('qlMbpsError');
+                input.setAttribute('aria-invalid', 'true');
+                return;
+            }
+
+            err.hidden = true;
+            errText.textContent = '';
+            input.removeAttribute('aria-invalid');
+            if (v === mbps) {
+                return;
+            }
+
+            saveLimit({ maxClass: cls, maxMbps: v }, () => {
+                const again = q(qual, 'input');
+                if (again) {
+                    again.focus();
+                }
+            });
+        });
+        const limited = !!(d.effective && d.effective.limited);
+        const setWhen = toMs(limit.setUtc);
+        replaceKids(qual,
+            el('h2', { class: 'shoal-h2', id: titleId, tabindex: '-1', text: t('qlTitle') }),
+            el('p', { class: 'shoal-meta shoal-panel__lead', text: t('qlLead', { server: name() }) }),
+            el('div', { class: 'shoal-ctl' }, el('span', { class: 'shoal-ctl-label', id: labelId, text: t('qlLimit') }), seg),
+            el('div', { class: 'shoal-mbps' },
+                el('div', { class: 'shoal-field' },
+                    el('label', { class: 'shoal-label', for: inputId, text: t('qlMbps') }),
+                    el('div', { class: 'shoal-unit' }, input, el('span', { text: t('qlMbpsUnit') }))),
+                el('div', { class: 'shoal-help', id: helpId, text: t('qlMbpsHelp') })),
+            err,
+            limited ? el('div', { class: 'shoal-cost', role: 'note' }, icon('cpu', true), el('span', { text: t('qlCost', { server: name() }) })) : null,
+            limit.origin === 'Recommendation' && setWhen ? el('p', { class: 'shoal-desc', text: t('qlFromRec', { when: ctx.fmt.relative(setWhen) }) }) : null);
+    }
+
+    /* ----- U-Q2: the speed-test suggestion ----- */
+
+    function focusQualityTitle() {
+        const h = q(qual, 'h2');
+        if (h && !qual.hidden) {
+            h.focus();
+        }
+    }
+
+    async function applyRec(r) {
+        const suggested = qualityLabel(r.suggestedClass);
+        const cur = st.quality.limit || {};
+        const res = await confirmDialog(ctx, {
+            title: t('recConfirmTitle', { server: name(), suggested }),
+            intro: t('recConfirmBody', { server: name(), suggested }),
+            confirmLabel: t('recConfirmButton', { suggested }),
+            run: () => saveLimit({ maxClass: r.suggestedClass, maxMbps: Number.isInteger(cur.maxMbps) ? cur.maxMbps : null, fromRecommendation: true, throwErrors: true }),
+            errorText: (err) => (err && err.kind === 'changed' ? t('qlChanged') : t('qlFailed'))
+        });
+        if (res.confirmed) {
+            focusQualityTitle();
+        } else {
+            loadQuality(true);
+        }
+    }
+
+    async function dismissRec(r, btn) {
+        btn.disabled = true;
+        try {
+            await ctx.api.dismissRecommendation(handle, r.suggestedClass);
+            ctx.announce(t('recDismissed'));
+        } catch (err) {
+            ctx.alertMessage(err && err.kind === 'stale' ? t('recStale') : failureMessage(err, 'saveFailed'));
+        }
+
+        st.sigR = '';
+        await loadQuality(true);
+        focusQualityTitle();
+    }
+
+    function drawRec(force) {
+        const d = st.quality;
+        const r = d && d.recommendation;
+        const valid = !!(r && QUALITY_CLASSES.includes(r.suggestedClass) && r.suggestedClass !== 'Off' && QUALITY_CLASSES.includes(r.slowForClass) && st.server);
+        rec.hidden = !valid;
+        if (!valid) {
+            st.sigR = '';
+            return;
+        }
+
+        const sig = JSON.stringify([r, name()]);
+        if (!force && (sig === st.sigR || focusedIn(rec))) {
+            return;
+        }
+
+        st.sigR = sig;
+        const textId = uid('shoal-rec');
+        rec.setAttribute('aria-labelledby', textId);
+        const suggested = qualityLabel(r.suggestedClass);
+        const above = Number.isInteger(r.titlesAbove) ? r.titlesAbove : 0;
+        const known = Number.isInteger(r.titlesKnown) ? r.titlesKnown : 0;
+        const mbps = typeof r.throughputMbps === 'number' && Number.isFinite(r.throughputMbps) ? r.throughputMbps : null;
+        const apply = button({ label: t('recApply'), variant: 'primary', onClick: () => applyRec(r) });
+        const dismiss = button({ label: t('recDismiss'), onClick: (ev, b) => dismissRec(r, b) });
+        replaceKids(rec,
+            el('div', { class: 'shoal-rec__top' }, icon('bulb', true), el('span', { text: t('recTop') })),
+            el('p', { class: 'shoal-rec__text', id: textId, text: t('recText', { slow: qualityLabel(r.slowForClass), server: name(), suggested }) }),
+            mbps !== null && known > 0 ? el('small', { class: 'shoal-rec__detail', text: t('recDetail', { mbps: ctx.fmt.mbpsValue(mbps), n: above, count: ctx.fmt.num(above), known: ctx.fmt.num(known), suggested }) }) : null,
+            el('div', { class: 'shoal-btnrow' }, apply, dismiss));
+    }
+
+    /* ----- loading ----- */
+
+    async function loadQuality(force) {
+        if (st.qualityMissing || st.busy) {
+            return;
+        }
+
+        try {
+            const d = await ctx.api.quality(handle);
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.quality = d && typeof d === 'object' && d.limit ? d : null;
+        } catch (err) {
+            if (!ctx.alive) {
+                return;
+            }
+
+            // A server without the route (older Shoal) answers a bare 404: the blocks stay hidden for this visit.
+            if (err && err.status === 404) {
+                st.qualityMissing = true;
+            }
+
+            st.quality = null;
+        }
+
+        drawQuality(force);
+        drawRec(force);
+    }
+
+    async function loadOrder(force) {
+        if (st.orderMissing) {
+            return;
+        }
+
+        try {
+            const d = await ctx.api.playOrder();
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.order = d && typeof d === 'object' ? d : null;
+        } catch (err) {
+            if (!ctx.alive) {
+                return;
+            }
+
+            if (err && err.status === 404) {
+                st.orderMissing = true;
+            }
+
+            st.order = null;
+        }
+
+        drawPrio(force);
+    }
+
+    return {
+        prio, qual, rec,
+        /** The server as the detail page has it (name and state); a pairing server shows none of the blocks. */
+        setServer(s) {
+            const pairing = !s || s.status === 'Pairing' || s.status === 'PairingAborted';
+            st.server = pairing ? null : s;
+            drawPrio(false);
+            drawQuality(false);
+            drawRec(false);
+        },
+        load() {
+            loadOrder(false);
+            loadQuality(false);
+        },
+        state: () => st
+    };
+}
+
 function serverDetailScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="server"]');
     const body = slot(view, 'body');
     const handle = ctx.params.id;
     const h1Id = uid('shoal-h1');
     view.setAttribute('aria-labelledby', h1Id);
-    const st = { data: null, loaded: false, speed: null, alertsNode: null, certTitle: null, focused: false, sig: '', rendered: false, rotationNode: null };
+    const st = { data: null, loaded: false, speed: null, alertsNode: null, certTitle: null, focused: false, sig: '', rendered: false, rotationNode: null, blocks: serverQualityBlocks(ctx, handle) };
     const poller = createPoller(ctx, () => load(false), STATUS_POLL_MS);
 
     async function act(btn, o) {
@@ -9094,7 +11629,9 @@ function serverDetailScreen(ctx) {
         }
 
         const allSmooth = (data.ladder || []).length > 0 && (data.ladder || []).every((r) => r.verdict === 'smooth');
-        const hints = (data.hints || []).map((h) => (allSmooth && h.severity !== 'bad' ? hint('info', 'info', t('speedHint_' + h.kind, { server: s.displayName, n: h.n })) : hint(h.severity === 'bad' ? 'bad' : 'warn', 'warn', t('speedHint_' + h.kind, { server: s.displayName, n: h.n }))));
+        // The speed panel already says what the bottleneck is; the same sentence as a hint would say it twice (Pilot 14).
+        const said = data.bottleneck && data.bottleneck.kind ? data.bottleneck.kind : null;
+        const hints = (data.hints || []).filter((h) => !(said && h.kind === said)).map((h) => (allSmooth && h.severity !== 'bad' ? hint('info', 'info', t('speedHint_' + h.kind, { server: s.displayName, n: h.n })) : hint(h.severity === 'bad' ? 'bad' : 'warn', 'warn', t('speedHint_' + h.kind, { server: s.displayName, n: h.n }))));
         if (hints.length) {
             host.append(el('div', { class: 'shoal-hintlist' }, hints));
         }
@@ -9298,6 +11835,10 @@ ctx.toast(t('announceLibraryAdded'));
         ctx.api.overlap(s.handle).then((ov) => {
             if (ctx.alive) {
                 fillOverlap(ctx, ovPanel, s.displayName, ov, { view: 'overlap', query: { id: s.handle, from: 'server' } });
+                const backups = backupSentence(ctx, ov, s, null);
+                if (backups) {
+                    ovPanel.append(el('p', { class: 'shoal-backupline' }, icon('layers'), el('span', {}, backups)));
+                }
             }
         }).catch(() => fillOverlap(ctx, ovPanel, s.displayName, null, null));
         const u = st.data.usage;
@@ -9507,7 +12048,11 @@ ctx.toast(t('saved'));
             body.append(linked);
         }
 
-        body.append(st.speed.root);
+        // Mockup server.html: priority and quality limit on the left, the speed-test suggestion and Link speed on the right (one column below L).
+        st.blocks.setServer(s);
+        body.append(el('div', { class: 'shoal-detail-grid' },
+            el('div', { class: 'shoal-detail-grid__col' }, st.blocks.prio, st.blocks.qual),
+            el('div', { class: 'shoal-detail-grid__col' }, st.blocks.rec, st.speed.root)));
         body.append(librariesSection(s), holdsSection(s), storageSection(s), playingSection(s));
         const rotation = rotationSection(s);
         if (rotation) {
@@ -9571,6 +12116,8 @@ ctx.toast(t('saved'));
             } else {
                 patch(force);
             }
+
+            st.blocks.load();
         } catch (err) {
             if (!ctx.alive) {
                 return;
@@ -10379,16 +12926,21 @@ const SCREEN_FACTORIES = {
     pair: pairScreen,
     server: serverDetailScreen,
     overlap: overlapReportScreen,
-    friend: friendDetailScreen
+    friend: friendDetailScreen,
+    layouts: layoutsScreen
 };
 
 /** The h1 shown in recovery mode, where the real screen is replaced by the banner (ui-spec 8.8). */
-const RECOVERY_TITLES = { overview: 'appName', libraries: 'navLibraries', settings: 'navSettings', pair: 'pairServer', server: 'appName', overlap: 'overlapReport', friend: 'appName' };
+const RECOVERY_TITLES = { overview: 'appName', libraries: 'navLibraries', settings: 'navSettings', pair: 'pairServer', server: 'appName', overlap: 'overlapReport', friend: 'appName', layouts: 'layTitle' };
 
 /** Where the back link of each sub-screen goes (ui-spec 2.2, section 8). */
 function backTarget(view, params) {
     if (view === 'overlap' && params.from === 'server' && params.id) {
         return { view: 'server', query: { id: params.id }, label: 'backServer' };
+    }
+
+    if (view === 'layouts') {
+        return { view: 'libraries', query: {}, label: 'navLibraries' };
     }
 
     return { view: 'overview', query: {}, label: 'backOverview' };
@@ -10587,13 +13139,79 @@ function mount(page, params, deps) {
                 return;
             }
 
+            // A page Jellyfin restores from its cache (going back, or a hash it already visited) is built again from fresh data, for the view the
+            // address names now: its old screen would show what was true when it was left (Pilot 14: stale layouts until a reload).
+            if (restored) {
+                followAddress(true);
+                return;
+            }
+
             if (screen) {
-                screen.show(restored);
+                screen.show(false);
             }
 
             ctx.focusHeading();
         });
     };
+
+    /** The Shoal view and query in the address bar now, or null when the address is not this plugin page. */
+    function addressParams() {
+        const hash = String(window.location.hash || '');
+        const i = hash.indexOf('?');
+        if (i < 0 || !/configurationpage$/i.test(hash.slice(0, i))) {
+            return null;
+        }
+
+        const query = new URLSearchParams(hash.slice(i + 1));
+        if (query.get('name') !== PLUGIN_PAGE) {
+            return null;
+        }
+
+        const out = {};
+        for (const [k, v] of query) {
+            if (k !== 'name') {
+                out[k] = v;
+            }
+        }
+
+        return out;
+    }
+
+    let addressSig = JSON.stringify(params || {});
+    /** Rebuilds the screen when the address names another view or query (or always, for a restored page), so no screen keeps data from before. */
+    function followAddress(always) {
+        if (!ctx.alive || !ctx.shown || recovery) {
+            return;
+        }
+
+        const next = addressParams();
+        const sig = next ? JSON.stringify(next) : addressSig;
+        if (sig === addressSig && (!always || view === 'pair')) {
+            // The pairing wizard keeps what the admin typed when its page comes back; it reads the live pairing itself.
+            if (always && screen) {
+                screen.show(true);
+                ctx.focusHeading();
+            }
+
+            return;
+        }
+
+        addressSig = sig;
+        if (next) {
+            ctx.params = next;
+        }
+
+        switchTo(next && VIEWS.includes(next.view) ? next.view : view, false);
+    }
+
+    // A hash change inside this page instance (Jellyfin may keep the page and only change the address). Deferred so the page Jellyfin hides first
+    // has had its viewhide; a hidden page does nothing.
+    const onHashChange = () => ctx.later(() => {
+        if (!page.classList.contains('hide')) {
+            followAddress(false);
+        }
+    }, 0);
+    window.addEventListener('hashchange', onHashChange);
     const onHide = () => {
         ctx.shown = false;
         if (screen) {
@@ -10633,6 +13251,7 @@ function mount(page, params, deps) {
     window.addEventListener('error', onWindowError);
     window.addEventListener('unhandledrejection', onRejection);
     page.addEventListener('viewdestroy', () => {
+        window.removeEventListener('hashchange', onHashChange);
         window.removeEventListener('error', onWindowError);
         window.removeEventListener('unhandledrejection', onRejection);
         if (activeReporter) {
@@ -10661,5 +13280,6 @@ export default function ShoalController(view, params) {
 export {
     mount, createApi, createContext, makeFormat, chartModel, chartSummary, niceCeil, describeServer, describeFriend,
     summarizeServers, pickSelection, sortServers, verdictLine, serverStateKey, luminanceOf, uniquify, t, STRINGS, QUALITY_LINES,
-    admittedUsers, bottleneckText, ladderRows, nameList, toApiError, bannerModel, MISSING_STRINGS, overlapSentences, currentUserId, readAddress, classifyCode, inFours, fingerprintGroups, outcomeInfo, normalizeCode, validCode, looksLikeInvite, describeLinkStatus
+    admittedUsers, bottleneckText, ladderRows, nameList, toApiError, bannerModel, MISSING_STRINGS, overlapSentences, currentUserId, readAddress, classifyCode, inFours, fingerprintGroups, outcomeInfo, normalizeCode, validCode, looksLikeInvite, describeLinkStatus, playOrderRows, placeWithinType, previewRows, layoutLibraries, layoutSummary,
+    backupVia, ordinalPlace, readMbps, limitWords
 };

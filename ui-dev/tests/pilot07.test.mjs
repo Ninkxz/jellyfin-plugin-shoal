@@ -12,13 +12,13 @@ async function page(params, extra) {
     return p;
 }
 
-test('Lumen 04: what counts as a title is visible text under the status line, not a tooltip', async () => {
+test('Lumen 04: what counts as a title is visible text in the Watching lane, not a tooltip', async () => {
     const p = await page({ view: 'overview' });
     try {
-        const note = p.page.querySelector('.shoal-status__note');
+        const note = p.page.querySelector('.shoal-lane--in .shoal-lane__note');
         assert.ok(note && !note.hidden);
         assert.match(note.textContent, /Titles are movies and series. Seasons and episodes belong to their series/);
-        assert.equal(p.page.querySelector('.shoal-status [title]'), null);
+        assert.equal(p.page.querySelector('.shoal-lane--in [title]'), null);
     } finally {
         p.close();
     }
@@ -42,11 +42,12 @@ test('D4: the current user id is matched to the users as they are written, so th
     assert.equal(mod.currentUserId({ client: { getCurrentUserId: () => 'nobody' } }, data), 'nobody');
 });
 
-test('D5: an offline server does not turn the headline into "0 titles shared with you"', async () => {
+test('D5: an offline server does not turn the count into 0 titles; its titles stay listed (U-A1 lane count)', async () => {
     const p = await page({ view: 'overview' });
     try {
-        assert.match(p.text(), /1,590 titles shared with you, 612 more on servers that are offline/);
-        assert.doesNotMatch(p.text(), /\b0 titles shared/);
+        assert.match(p.text(), /2,202 titles from 3 servers/);
+        assert.match(p.text(), /612 titles stay listed/);
+        assert.doesNotMatch(p.text(), /\b0 titles/);
     } finally {
         p.close();
     }
@@ -466,11 +467,11 @@ test('Settings: the video chunks to load ahead is a whole number from 2 to 20, d
     }
 });
 
-test('repairBlockedByHttp: the card and the detail page say to switch to Tailscale or https, Remove is the primary, no Re-pair button', async () => {
-    const sentence = /Switch this server to Tailscale or https, then pair it again, or remove it/;
+test('repairBlockedByHttp: the card and the detail page say to give it an https address (Tailscale also works), Remove is the primary, no Re-pair button', async () => {
+    const sentence = /Give this server an https address \(Tailscale also works\), then pair it again, or remove it/;
     const p = await page({ view: 'overview' }, { legacyHttp: true });
     try {
-        const card = [...p.page.querySelectorAll('.shoal-card')].find((c) => c.textContent.includes('Plain Friend'));
+        const card = [...p.page.querySelectorAll('.shoal-lanerow')].find((c) => c.textContent.includes('Plain Friend'));
         assert.match(card.textContent, sentence);
         assert.ok(!card.textContent.includes('Re-pair with an invite'));
         assert.ok(buttonIn(card, 'Remove or change the address'));

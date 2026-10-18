@@ -24,6 +24,8 @@ namespace Jellyfin.Plugin.Shoal.Tests;
 /// </summary>
 public sealed class CallerContextTests
 {
+    private const string SharedKey = "5ab1e0c0ffee1234";
+
     public static IReadOnlyList<MatrixCase> Rows { get; } = BuildRows();
 
     public static TheoryData<string> RowIds => new(Rows.Select(r => r.Id));
@@ -106,6 +108,39 @@ public sealed class CallerContextTests
             {
                 await h.State.UpdateAsync(s => s.Home.Peers.First(p => p.PeerKey == h.World.PeerKey).Enabled = false);
                 return await As(h, MatrixWorld.Admin);
+            }),
+            new("R19", "K45: a shared library that does not admit the user, though the mapping's own access would", 404, 0, async h =>
+            {
+                await SharedLibraryAsync(h, feeds: true, MatrixWorld.Admin);
+                return await As(h, MatrixWorld.Selected);
+            }),
+            new("R20", "K45: an item in a shared library its connection no longer feeds", 404, 0, async h =>
+            {
+                await SharedLibraryAsync(h, feeds: false, MatrixWorld.Admin, MatrixWorld.Selected);
+                return await As(h, MatrixWorld.Selected);
+            }),
+            new("R21", "K44: a title folder in a shared library whose owner is not known (fail closed)", 404, 0, async h =>
+            {
+                await SharedLibraryAsync(h, feeds: true, MatrixWorld.Admin);
+                h.World.Federated[MatrixWorld.Item] = new FederatedItem(string.Empty, string.Empty, SharedKey);
+                return await As(h, MatrixWorld.Admin);
+            }),
+            new("R22", "K45: a user who hides friends' titles", 404, 0, async h =>
+            {
+                await h.State.UpdateAsync(s => s.Home.Visibility.HiddenFriendTitles.Add(MatrixWorld.Selected));
+                return await As(h, MatrixWorld.Selected);
+            }),
+            new("R23", "K45: a Shoal share user admitted by a shared library in Everyone mode", 404, 0, async h =>
+            {
+                await SharedLibraryAsync(h, feeds: true, MatrixWorld.Admin);
+                await h.State.UpdateAsync(s => s.Home.Libraries.First(l => l.LibKey == SharedKey).Access = new LibraryAccess { Mode = AccessMode.Everyone, IncludeRestricted = true });
+                return await As(h, MatrixWorld.ShareUser);
+            }),
+            new("P6", "K45: a shared library admits the user (the mapping's own access does not)", 200, 1, async h =>
+            {
+                await h.SetAccessAsync(AccessMode.Selected, false, MatrixWorld.Admin);
+                await SharedLibraryAsync(h, feeds: true, MatrixWorld.Admin, MatrixWorld.Other);
+                return await As(h, MatrixWorld.Other);
             }),
             new("P1", "the pairing admin in Selected mode", 200, 1, h => As(h, MatrixWorld.Admin)),
             new("P2", "a selected user", 200, 1, h => As(h, MatrixWorld.Selected)),
@@ -399,6 +434,21 @@ public sealed class CallerContextTests
         Assert.Contains("ILibraryManager.GetItemById``1(System.Guid,Jellyfin.Database.Implementations.Entities.User)", text, StringComparison.Ordinal);
         Assert.Contains("ILibraryManager.GetItemById``1(System.Guid,System.Guid)", text, StringComparison.Ordinal);
         Assert.Contains("ILibraryManager.GetItemById(System.Guid)", text, StringComparison.Ordinal);
+    }
+
+    // A shared library of v2.9 (K44) with the matrix item in its folder; with feeds=false the item's connection does not feed it.
+    private static async Task SharedLibraryAsync(MatrixHarness h, bool feeds, params Guid[] selected)
+    {
+        await h.State.UpdateAsync(s => s.Home.Libraries.Add(new ShoalLibrary
+        {
+            LibKey = SharedKey,
+            Name = "Friends' movies",
+            Type = "movies",
+            PathRel = ShoalLibrary.LibsFolder + "/" + SharedKey,
+            Feeds = feeds ? [h.World.PeerKey] : [],
+            Access = new LibraryAccess { Mode = AccessMode.Selected, SelectedUserIds = [.. selected] },
+        }));
+        h.World.Federated[MatrixWorld.Item] = new FederatedItem(h.World.PeerKey, h.World.MappingKey, SharedKey);
     }
 
     private static CallerDecision Allowed()

@@ -45,7 +45,9 @@ public sealed record CallerUser(
 /// </summary>
 /// <param name="PeerKey">The peer key.</param>
 /// <param name="MappingKey">The mapping key of the library.</param>
-public sealed record FederatedItem(string PeerKey, string MappingKey);
+/// <param name="LibKey">The library of v2.9 or later whose folder holds the item, or empty for a legacy per-friend folder (K44).</param>
+/// <param name="IsCopy">Whether the item is an extra copy of a grouped title in the library <paramref name="LibKey"/> (K44/K45); the peer and mapping then name the owner.</param>
+public sealed record FederatedItem(string PeerKey, string MappingKey, string LibKey = "", bool IsCopy = false);
 
 /// <summary>
 /// Who a federated request is made by, after every check (DESIGN 8.5 step 8). The token is the caller's own, used only to echo it into the

@@ -53,6 +53,16 @@ public interface IOfflineNotice
     /// <param name="peerKey">The peer.</param>
     /// <param name="peerName">The peer's display name.</param>
     void PeerOffline(Guid userId, string peerKey, string peerName);
+
+    /// <summary>
+    /// A play request was refused because the title is over the connection's quality limit and the Peer offered no conversion (PLAN v2.9 K51): the
+    /// user reads <see cref="QualityCap.RefusalText"/>. The default shows nothing.
+    /// </summary>
+    /// <param name="userId">The user who asked.</param>
+    /// <param name="peerKey">The peer.</param>
+    void QualityRefused(Guid userId, string peerKey)
+    {
+    }
 }
 
 /// <summary>

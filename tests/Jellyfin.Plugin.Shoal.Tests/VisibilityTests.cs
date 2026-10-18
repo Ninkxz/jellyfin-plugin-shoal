@@ -17,6 +17,25 @@ internal sealed class FakeLibraries : ILibrarySource
 {
     private readonly List<LibraryInfo> _libraries = [];
 
+    public List<string> Locked { get; } = [];
+
+    public HashSet<string> Unlocked { get; } = [];
+
+    /// <summary>Gets or sets a value indicating whether Jellyfin never keeps the locked options (every lock changes something, Warden 12 L1).</summary>
+    public bool NeverKeeps { get; set; }
+
+    public bool LockOptions(string name)
+    {
+        Locked.Add(name);
+        return Unlocked.Remove(name) || NeverKeeps;
+    }
+
+    public void SetSavesNfo(Guid id, bool on)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        _libraries[index] = _libraries[index] with { SavesNfo = on };
+    }
+
     public int CreateCalls { get; private set; }
 
     public string? LastCollectionType { get; private set; }
@@ -29,7 +48,32 @@ internal sealed class FakeLibraries : ILibrarySource
 
     public bool FailCreate { get; set; }
 
-    public IReadOnlyList<LibraryInfo> List() => _libraries.ToList();
+    public IReadOnlyList<LibraryInfo> List() => _libraries.Where(l => !Hidden.Contains(l.Name)).ToList();
+
+    /// <summary>Gets the libraries Jellyfin lists with ItemId undefined (Pilot 15: just created or renamed, top folders not validated yet): not listed.</summary>
+    public HashSet<string> Hidden { get; } = [];
+
+    /// <summary>Gets or sets a value indicating whether a renamed library is hidden until a refresh (Pilot 15 RENAME).</summary>
+    public bool HideRenamed { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a refresh shows the hidden libraries.</summary>
+    public bool RefreshShows { get; set; } = true;
+
+    public int Refreshes { get; private set; }
+
+    /// <summary>Gets every library, hidden ones too (what is on disk).</summary>
+    public IReadOnlyList<LibraryInfo> All => _libraries.ToList();
+
+    public Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        Refreshes++;
+        if (RefreshShows)
+        {
+            Hidden.Clear();
+        }
+
+        return Task.CompletedTask;
+    }
 
     public LibraryInfo AddLocal(string name)
     {
@@ -46,7 +90,7 @@ internal sealed class FakeLibraries : ILibrarySource
             throw new InvalidOperationException("refused");
         }
 
-        _libraries.Add(new LibraryInfo(Guid.NewGuid(), name, [path]));
+        _libraries.Add(new LibraryInfo(Guid.NewGuid(), name, [path], LastCollectionType ?? string.Empty));
         return Task.CompletedTask;
     }
 
@@ -56,6 +100,80 @@ internal sealed class FakeLibraries : ILibrarySource
     {
         Operations.Add("purge:" + _libraries.FirstOrDefault(l => l.Id == libraryId)?.Name);
         return Task.CompletedTask;
+    }
+
+    public Action<string>? OnAddPath { get; set; }
+
+    public Task AddPathAsync(string libraryName, string path, CancellationToken cancellationToken)
+    {
+        OnAddPath?.Invoke(libraryName);
+        Operations.Add("addpath:" + libraryName);
+        var index = _libraries.FindIndex(l => l.Name == libraryName);
+        _libraries[index] = _libraries[index] with { Locations = [.. _libraries[index].Locations, path] };
+        if (FailAfterAddPath)
+        {
+            throw new System.IO.IOException("half done"); // Warden 13 L4: the path went in, then the call failed
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Gets or sets a value indicating whether AddPathAsync adds the path and then fails.</summary>
+    public bool FailAfterAddPath { get; set; }
+
+    public void Change(Guid id, Func<LibraryInfo, LibraryInfo> change)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        _libraries[index] = change(_libraries[index]);
+    }
+
+    public Task RemovePathAsync(string libraryName, string path, CancellationToken cancellationToken)
+    {
+        Operations.Add("removepath:" + libraryName);
+        var index = _libraries.FindIndex(l => l.Name == libraryName);
+        _libraries[index] = _libraries[index] with { Locations = [.. _libraries[index].Locations.Where(l => l != path)] };
+        return Task.CompletedTask;
+    }
+
+    public Task PurgeItemsBelowAsync(Guid libraryId, string path, CancellationToken cancellationToken)
+    {
+        Operations.Add("purgebelow:" + _libraries.FirstOrDefault(l => l.Id == libraryId)?.Name);
+        return Task.CompletedTask;
+    }
+
+    public bool FailRename { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a rename answers but Jellyfin keeps showing the old name (Pilot 14).</summary>
+    public bool SilentRename { get; set; }
+
+    public Task RenameAsync(string name, string newName, CancellationToken cancellationToken)
+    {
+        if (FailRename)
+        {
+            throw new InvalidOperationException("refused");
+        }
+
+        Operations.Add("rename:" + name + ">" + newName);
+        if (SilentRename)
+        {
+            return Task.CompletedTask;
+        }
+
+        var index = _libraries.FindIndex(l => l.Name == name);
+        _libraries[index] = _libraries[index] with { Id = Guid.NewGuid(), Name = newName }; // core gives the renamed folder a new id
+        if (Hidden.Remove(name) || HideRenamed)
+        {
+            Hidden.Add(newName);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public LibraryInfo AddMain(string name, string type)
+    {
+        var library = new LibraryInfo(Guid.NewGuid(), name, [Path.Combine(Path.GetTempPath(), "media-" + name)], type);
+        _libraries.Add(library);
+        return library;
     }
 
     public Task RemoveAsync(string name, CancellationToken cancellationToken)
@@ -81,7 +199,7 @@ internal sealed class FakeAccounts : IAccountSource
 
     public AccountInfo Add(string name, bool all = true, IEnumerable<Guid>? folders = null, bool admin = false, bool restricted = false, bool disabled = false)
     {
-        var account = new AccountInfo(Guid.NewGuid(), name, disabled, admin, restricted, all, [.. folders ?? []]);
+        var account = new AccountInfo(Guid.NewGuid(), name, disabled, admin, restricted, all, [.. folders ?? []], []);
         _accounts.Add(account);
         return account;
     }
@@ -99,6 +217,33 @@ internal sealed class FakeAccounts : IAccountSource
         ListCalls++;
         OnList?.Invoke(ListCalls);
         return _accounts.ToList();
+    }
+
+    public List<(Guid UserId, string[] Tags)> TagWrites { get; } = [];
+
+    /// <summary>Gets or sets a value indicating whether tag writes are recorded but do not change the account (a write that does not hold).</summary>
+    public bool DropTagWrites { get; set; }
+
+    public void SetTags(Guid id, params string[] tags)
+    {
+        var index = _accounts.FindIndex(a => a.Id == id);
+        _accounts[index] = _accounts[index] with { BlockedTags = tags };
+    }
+
+    public Task SetBlockedTagsAsync(Guid userId, IReadOnlyList<string> blockedTags, CancellationToken cancellationToken)
+    {
+        if (FailFor == userId)
+        {
+            throw new InvalidOperationException("refused");
+        }
+
+        TagWrites.Add((userId, [.. blockedTags]));
+        if (!DropTagWrites)
+        {
+            SetTags(userId, [.. blockedTags]);
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task SetFoldersAsync(Guid userId, bool enableAllFolders, IReadOnlyList<Guid> enabledFolders, CancellationToken cancellationToken)
@@ -439,6 +584,7 @@ public sealed class VisibilityTests
         await UntilAsync(() => rig.Accounts.Get(created.Id).EnabledFolders.Contains(rig.ShoalId));
         Assert.Contains(rig.ShoalId, rig.Accounts.Get(created.Id).EnabledFolders);
 
+        await Task.Delay(300); // the at-creation pass (Warden 10 M4) runs on its own task: let it finish before counting
         var calls = rig.Accounts.ListCalls;
         watch.UserUpdated(created.Id);
         watch.UserUpdated(created.Id);

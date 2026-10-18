@@ -20,52 +20,39 @@ async function page(params, extra) {
     return p;
 }
 
-test('T-TWO-1: a linked friend is one card with both rows and the rolled-up chip; unlinked friends stay as they were', async () => {
+// U-A1 (owner decision 7): the two lanes replace the two-way card. A linked friend is named in each lane, each half with its own chip.
+const serverRow = (p, name) => [...p.page.querySelectorAll('[data-slot="cards"] > .shoal-lanerow')].find((r) => r.querySelector('.shoal-row__nametext').textContent === name);
+const friendRow = (p, name) => [...p.page.querySelectorAll('[data-slot="friends"] > .shoal-lanerow')].find((r) => r.querySelector('.shoal-row__nametext').textContent === name);
+
+test('T-TWO-1 (v2): a linked friend shows in both lanes and each row says the other half exists; unlinked friends stay as they were', async () => {
     const p = await page({ view: 'overview' });
     try {
-        const cards = [...p.page.querySelectorAll('.shoal-twoway__card')];
-        assert.equal(cards.length, 1);
-        const text = cards[0].textContent.replace(/\s+/g, ' ');
-        assert.match(text, /Hops/);
-        assert.match(text, /You watch Hops/);
-        assert.match(text, /Hops watches you/);
-        assert.match(text, /1,204 titles/);
-        assert.doesNotMatch(text, /0 streams now/); // a zero count is left out
-        assert.match(text, /1 library/);
-        assert.match(text, /2 playing now/);
-        assert.match(text, /Open server/);
-        assert.match(text, /Open friend/);
-        // The other servers and Jo are not in a two-way card.
-        assert.doesNotMatch(p.page.querySelector('.shoal-twoway').textContent, /Fernwood|Granite|Jo\b/);
-        // The "friends watching from you" list still has every share, and marks the linked one.
-        const rows = [...p.page.querySelectorAll('[data-slot="friends"] > *')];
-        assert.ok(rows.length >= 2);
-        assert.ok(rows.some((r) => /Also your server: Hops/.test(r.textContent)));
-        assert.ok(rows.some((r) => /Jo/.test(r.textContent) && !/Also your server/.test(r.textContent)));
+        assert.equal(p.page.querySelectorAll('.shoal-twoway, .shoal-twoway__card').length, 0, 'no separate two-way card');
+        assert.match(serverRow(p, 'Hops').textContent, /Also watches your server/);
+        assert.match(serverRow(p, 'Hops').textContent, /1,204 titles/);
+        assert.doesNotMatch(serverRow(p, 'Fernwood').textContent, /Also watches your server/);
+        assert.match(friendRow(p, 'Sam').textContent, /Also your server: Hops/);
+        assert.doesNotMatch(friendRow(p, 'Jo').textContent, /Also your server/);
     } finally {
         p.close();
     }
 });
 
-test('T-TWO-2: the card shows the state of each half, and no extra chip that only repeats one of them', async () => {
-    const rows = async (extra) => {
+test('T-TWO-2 (v2): each half keeps its own state in its own lane', async () => {
+    const chips = async (extra) => {
         const p = await page({ view: 'overview' }, extra);
         try {
-            const card = p.page.querySelector('.shoal-twoway__card');
-            return {
-                head: card.querySelector('.shoal-twoway__head').querySelectorAll('.shoal-chip').length,
-                chips: [...card.querySelectorAll('.shoal-twoway__row .shoal-chip')].map((c) => c.textContent.trim())
-            };
+            return [serverRow(p, 'Hops').querySelector('.shoal-chip').textContent.trim(), friendRow(p, 'Sam').querySelector('.shoal-chip').textContent.trim()];
         } finally {
             p.close();
         }
     };
 
-    assert.deepEqual(await rows({}), { head: 0, chips: ['Online', 'Online'] });
-    assert.deepEqual(await rows({ twoWayShare: 'Paused' }), { head: 0, chips: ['Online', 'Paused'] });
-    assert.deepEqual(await rows({ twoWayShare: 'AccessRemoved' }), { head: 0, chips: ['Online', 'Access removed'] });
-    assert.deepEqual(await rows({ twoWayServer: 'Offline', twoWayShare: 'Paused' }), { head: 0, chips: ['Offline', 'Paused'] });
-    assert.deepEqual(await rows({ twoWayServer: 'Degraded' }), { head: 0, chips: ['Online, unstable', 'Online'] });
+    assert.deepEqual(await chips({}), ['Online', 'Active']);
+    assert.deepEqual(await chips({ twoWayShare: 'Paused' }), ['Online', 'Paused']);
+    assert.deepEqual(await chips({ twoWayShare: 'AccessRemoved' }), ['Online', 'Access removed']);
+    assert.deepEqual(await chips({ twoWayServer: 'Offline', twoWayShare: 'Paused' }), ['Offline', 'Paused']);
+    assert.deepEqual(await chips({ twoWayServer: 'Degraded' }), ['Online, unstable', 'Active']);
 });
 
 test('T-TWO-2: the roll-up order, worst first', async () => {
@@ -89,11 +76,10 @@ test('T-TWO-2: the roll-up order, worst first', async () => {
     }
 });
 
-test('with no link there is no two-way section and no "also your server" note', async () => {
+test('with no link there is no "also" note in either lane', async () => {
     const p = await page({ view: 'overview' }, { twoWay: false });
     try {
-        assert.equal(p.page.querySelectorAll('.shoal-twoway__card').length, 0);
-        assert.doesNotMatch(p.text(), /Friends who share both ways|Also your server/);
+        assert.doesNotMatch(p.text(), /Also your server|Also watches your server/);
     } finally {
         p.close();
     }
@@ -203,13 +189,14 @@ test('the watch wizard says when the friend already watches you', async () => {
     }
 });
 
-test('a hostile friend or server name is only ever text on the two-way card', async () => {
+test('a hostile friend or server name is only ever text in both lanes', async () => {
     const p = await page({ view: 'overview' }, { scenario: 'hostile' });
     try {
-        const card = p.page.querySelector('.shoal-twoway__card');
-        assert.ok(card);
-        assert.equal(card.querySelectorAll('img, script, [onerror], [onload]').length, 0);
-        assert.ok(card.textContent.includes('<'));
+        for (const sel of ['[data-slot="cards"]', '[data-slot="friends"]']) {
+            const host = p.page.querySelector(sel);
+            assert.equal(host.querySelectorAll('script, [onerror], [onload]').length, 0);
+            assert.ok(host.textContent.includes('<'));
+        }
     } finally {
         p.close();
     }
