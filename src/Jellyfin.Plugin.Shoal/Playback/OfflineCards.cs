@@ -628,7 +628,7 @@ public sealed class OfflineCards : IDisposable
     }
 
     // The cleaned display name, short enough for one line of the card.
-    private static string Clean(string friend) => MetadataSanitizer.DisplayName(friend) is { Length: > 0 } name ? (name.Length > 40 ? name[..40].TrimEnd() : name) : string.Empty;
+    private static string Clean(string friend) => MetadataSanitizer.FriendName(friend) is { Length: > 0 } name ? (name.Length > 40 ? name[..40].TrimEnd() : name) : string.Empty;
 
     private static string KeyOf(string name, string service) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(OfflineCardCopy.Version + "|" + name + "|" + service)))[..24];

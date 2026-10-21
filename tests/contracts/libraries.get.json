@@ -1,0 +1,145 @@
+{
+  "mappings": [
+    {
+      "mappingKey": "4b0c1d2e3f405162738495a6b7c8d9e0.movies-1",
+      "localLibraryName": "Hops Movies",
+      "remoteName": "Movies",
+      "serverHandle": "<id>",
+      "serverName": "Hops",
+      "count": 0,
+      "lastSync": null,
+      "heldRemovals": 0,
+      "heldAdditions": 0,
+      "access": {
+        "mode": "Selected",
+        "selectedUserIds": [],
+        "includeRestricted": false
+      },
+      "drift": [],
+      "remoteCount": 0,
+      "localCount": 0,
+      "hiddenByDedup": 0,
+      "dedupWinner": null,
+      "type": "movies",
+      "effectiveAccess": {
+        "mode": "Everyone",
+        "selectedUserIds": [],
+        "includeRestricted": false
+      },
+      "libKey": "<hex>",
+      "libraryName": "Friends' movies",
+      "placement": "Shoal",
+      "mainLibraryName": null
+    },
+    {
+      "mappingKey": "4b0c1d2e3f405162738495a6b7c8d9e0.tv-1",
+      "localLibraryName": "Hops TV",
+      "remoteName": "TV",
+      "serverHandle": "<id>",
+      "serverName": "Hops",
+      "count": 0,
+      "lastSync": null,
+      "heldRemovals": 0,
+      "heldAdditions": 0,
+      "access": {
+        "mode": "Selected",
+        "selectedUserIds": [],
+        "includeRestricted": false
+      },
+      "drift": [],
+      "remoteCount": 0,
+      "localCount": 0,
+      "hiddenByDedup": 0,
+      "dedupWinner": null,
+      "type": "tvshows",
+      "effectiveAccess": {
+        "mode": "Selected",
+        "selectedUserIds": [
+          "<id>"
+        ],
+        "includeRestricted": false
+      },
+      "libKey": "<hex>",
+      "libraryName": "Friends' TV",
+      "placement": "Main",
+      "mainLibraryName": "Main Shows"
+    },
+    {
+      "mappingKey": "4b0c1d2e3f405162738495a6b7c8d9e0.tv-2",
+      "localLibraryName": "Hops Anime",
+      "remoteName": "Anime",
+      "serverHandle": "<id>",
+      "serverName": "Hops",
+      "count": 0,
+      "lastSync": null,
+      "heldRemovals": 0,
+      "heldAdditions": 0,
+      "access": {
+        "mode": "Selected",
+        "selectedUserIds": [],
+        "includeRestricted": false
+      },
+      "drift": [],
+      "remoteCount": 0,
+      "localCount": 0,
+      "hiddenByDedup": 0,
+      "dedupWinner": null,
+      "type": "tvshows",
+      "effectiveAccess": {
+        "mode": "Selected",
+        "selectedUserIds": [
+          "<id>"
+        ],
+        "includeRestricted": false
+      },
+      "libKey": "<hex>",
+      "libraryName": "Friends' TV",
+      "placement": "Main",
+      "mainLibraryName": "Main Shows"
+    },
+    {
+      "mappingKey": "5c1d2e3f405162738495a6b7c8d9e0f1.movies-1",
+      "localLibraryName": "Reef Movies",
+      "remoteName": "Movies",
+      "serverHandle": "<id>",
+      "serverName": "Reef",
+      "count": 0,
+      "lastSync": null,
+      "heldRemovals": 0,
+      "heldAdditions": 0,
+      "access": {
+        "mode": "Selected",
+        "selectedUserIds": [],
+        "includeRestricted": false
+      },
+      "drift": [],
+      "remoteCount": 0,
+      "localCount": 0,
+      "hiddenByDedup": 0,
+      "dedupWinner": null,
+      "type": "movies",
+      "effectiveAccess": {
+        "mode": "Selected",
+        "selectedUserIds": [],
+        "includeRestricted": false
+      },
+      "libKey": null,
+      "libraryName": "Reef Movies",
+      "placement": "Legacy",
+      "mainLibraryName": null
+    }
+  ],
+  "users": [
+    {
+      "id": "<id>",
+      "name": "admin",
+      "imageTag": null,
+      "isAdmin": true,
+      "isDisabled": false,
+      "allLibraries": true,
+      "managedByShoal": false,
+      "restricted": false
+    }
+  ],
+  "currentUserId": null
+}

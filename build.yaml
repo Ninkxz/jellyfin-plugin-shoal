@@ -1,6 +1,6 @@
 ﻿name: "Shoal"
 guid: "b3d48170-08c3-4272-8042-efb38df9bb24"
-version: "2.9.2.0"
+version: "2.9.3.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Share libraries between friends' Jellyfin servers. Nothing copied, nothing exposed."
@@ -14,4 +14,4 @@ owner: "Ninkxz"
 artifacts:
 - "Jellyfin.Plugin.Shoal.dll"
 changelog: >
-  Shoal 2.9.2 (includes 2.9.1): friend titles now say which friend hosts them and carry a Shared by entry in the Studios filter. A friend server only lists libraries it shares with you, and a picked library can no longer be swapped for another with the same name. TV shows from friends are always on (servers that had TV off start syncing their mapped TV libraries on the next sync). Held titles show real examples, a stopped play frees its stream slot at once, a refused play says why, and removing a server or library clears its empty library. Fixes Remove library. The first sync after upgrading rewrites friend titles once. Back up the shoal data folder first.
+  Shoal 2.9.3: fixes a bug where a series shared by more than one friend got a new duplicate folder on every sync; Shoal now cleans up the old copies on the second sync after you upgrade. The Overview no longer repeats the server list after you open a friend and go back. A friend is one entry with its libraries added together, library rows show who can really see them, and a friend name can no longer carry a link into descriptions.

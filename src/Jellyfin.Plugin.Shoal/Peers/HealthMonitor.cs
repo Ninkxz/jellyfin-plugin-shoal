@@ -430,7 +430,7 @@ public sealed class ClientOfflineNotice : IOfflineNotice
         }
 
         var service = _requestService?.Invoke() ?? (string.Empty, string.Empty);
-        var text = Jellyfin.Plugin.Shoal.Playback.OfflineCardCopy.Toast(MetadataSanitizer.DisplayName(peerName), service.Service, service.Url);
+        var text = Jellyfin.Plugin.Shoal.Playback.OfflineCardCopy.Toast(MetadataSanitizer.FriendName(peerName), service.Service, service.Url);
         _ = SendAsync(userId, text);
     }
 
@@ -469,7 +469,7 @@ public sealed class ClientOfflineNotice : IOfflineNotice
         // 2.9.2 K11: not behind the offline setting, like QualityRefused; without it the user reads only "rate limits". The same 30-second rule per user and peer.
         if (Due(userId, "busy|" + peerKey))
         {
-            _ = SendAsync(userId, Jellyfin.Plugin.Shoal.Playback.BusyNotice.Text(reason, MetadataSanitizer.DisplayName(peerName), playing));
+            _ = SendAsync(userId, Jellyfin.Plugin.Shoal.Playback.BusyNotice.Text(reason, MetadataSanitizer.FriendName(peerName), playing));
         }
     }
 

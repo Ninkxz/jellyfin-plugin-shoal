@@ -282,13 +282,13 @@ test('Which server plays first: GET PlayOrder fills it, names from the server li
         assert.match(visibleText(items[2]), /Backup only, and offline right now Set by you/);
         assert.ok(items[2].querySelector('.shoal-mode--set use').getAttribute('href').endsWith('i-pin'));
         assert.ok(items[0].querySelector('.shoal-mode--auto use').getAttribute('href').endsWith('i-auto'));
-        assert.ok(items[2].querySelector('.shoal-row__art.is-dim'));
+        assert.ok(items[2].classList.contains('is-dim'), 'an offline server is dimmed; the list has no art (2.9.3 U6)');
         assert.equal(items[1].querySelector('a').getAttribute('aria-label'), 'Fernwood server details');
         // The route sends no "changed" fields yet: the foot carries only how to change it.
         assert.equal(visibleText(section.querySelector('.shoal-prio-foot') || section).includes('Order last changed'), false);
         assert.match(visibleText(section), /To change it, open a server\./);
         const heads = [...p.page.querySelectorAll('[data-shoal-view="overview"] h2')].filter((h) => !h.closest('[hidden]')).map((h) => visibleText(h));
-        assert.deepEqual(heads.slice(2, 4), ["New from friends' servers Watching", 'Which server plays first Watching']);
+        assert.deepEqual(heads.slice(2, 4), ["New from friends' servers Watching", 'Which server plays first (3) Watching']);
         // The name in the route's answer is never what the page prints: it comes from Status.
         assert.ok(p.mock.calls.some((c) => c.method === 'GET' && c.path === 'PlayOrder'));
     } finally {

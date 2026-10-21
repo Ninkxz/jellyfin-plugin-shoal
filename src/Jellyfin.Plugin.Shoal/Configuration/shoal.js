@@ -360,7 +360,7 @@ const STRINGS = {
     protect_LogOnly: "Shared videos don't need sign-in yet. Shoal only counts what it would block.",
     protect_Off: "Protection for shared videos is off",
     newFromFriends: "New from friends' servers",
-    playOrderTitle: "Which server plays first",
+    playOrderTitle: "Which server plays first ({n})",
     playOrderLead: "When several friends have the same title, people see it once. It plays from the first server in this list that's online.",
     playOrderHowTo: "To change it, open a server.",
     playRank: "Number {n}: ",
@@ -890,8 +890,8 @@ const STRINGS = {
     titlesN: ["{n} title", "{n} titles"],
     streamsNowN: ["{n} stream now", "{n} streams now"],
     openServerLink: "Open server",
-    alsoYourServer: "Also your server: {name}",
-    alsoWatchesYou: "Also watches your server",
+    alsoYourServer: "You watch their server too: {name}",
+    alsoWatchesYou: "Watches your server too",
     alsoWatchesTitle: "{name} also watches your libraries",
     alsoWatchesMeta: "{libs} · {devs} · last seen {when}",
     alsoWatchesNote: "Pausing or removing {name} here only changes what you watch. {name} keeps watching your libraries.",
@@ -1272,6 +1272,13 @@ const STRINGS = {
     methodTranscode: "Transcode",
     librariesFrom: "Libraries from {server}",
     noLibrariesFrom: "No libraries from {server} yet.",
+    libTotalsLine: ["Connected to {server}: {count} title in {libs}", "Connected to {server}: {count} titles in {libs}"],
+    libTotalsDedup: ["{count} more is also on another server.", "{count} more are also on another server."],
+    libGroup_movies: "Movies",
+    libGroup_tvshows: "TV shows",
+    libGroupTotal: ["{count} title in {libs}", "{count} titles in {libs}"],
+    accessInLibrary: "{access}, in {library}",
+    accessInsideMain: "{access}, in {library}, inside {main}",
     libraryFromMeta: ["From {remote} · {count} title · last sync {when} ({result})", "From {remote} · {count} titles · last sync {when} ({result})"],
     syncResult_ok: "OK",
     syncResult_partial: "partly",
@@ -5002,6 +5009,11 @@ function reducedMotion() {
     return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+/** The element with this id under root, without building a selector from the id (CSS.escape is missing in some engines). */
+function cardById(root, id) {
+    return Array.from(root.querySelectorAll('[id]')).find((n) => n.id === id) || null;
+}
+
 function scrollToNode(node) {
     if (node && typeof node.scrollIntoView === 'function') {
         node.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
@@ -5147,6 +5159,7 @@ function overviewScreen(ctx) {
     const playOrderSection = q(view, '[data-section="playorder"]');
     const playOrderList = slot(view, 'playorder');
     const playOrderChanged = slot(view, 'playorderchanged');
+    const playOrderTitle = slot(view, 'playordertitle');
     const flowIn = slot(view, 'flowin');
     const flowOut = slot(view, 'flowout');
     const rows = new Map();
@@ -5735,19 +5748,16 @@ function overviewScreen(ctx) {
         }
 
         st.playOrderSig = sig;
+        // 2.9.3 U6: the list sits in a closed disclosure under the rows and has no art, so the Overview shows each friend's server once.
+        playOrderTitle.textContent = t('playOrderTitle', { n: list.length });
         clear(playOrderList);
         list.forEach((r, i) => {
             const s = r.server;
             const model = describeServer(s, ctx.fmt);
-            const img = el('img', { class: 'shoal-row__img', alt: '', width: '104', height: '52', loading: 'lazy', decoding: 'async', hidden: true });
-            const ph = el('span', { class: 'shoal-row__ph' }, icon('server'));
-            const art = el('span', { class: 'shoal-row__art' + (model.dim ? ' is-dim' : '') }, img, ph);
-            fillArt(img, ph, s);
             const details = ctx.linkEl('server', { id: s.handle }, 'shoal-iconbtn shoal-row__go', icon('right'));
             details.setAttribute('aria-label', t('serverDetailsAria', { server: s.displayName }));
-            playOrderList.append(el('li', {},
+            playOrderList.append(el('li', { class: model.dim ? 'is-dim' : null },
                 el('span', { class: 'shoal-rank', 'aria-hidden': 'true', text: String(i + 1) }),
-                art,
                 ' ',
                 el('span', { class: 'shoal-prio__text' },
                     el('span', { class: 'shoal-prio__name' }, el('span', { class: 'shoal-sr', text: t('playRank', { n: i + 1 }) }), el('span', { text: s.displayName })),
@@ -6090,14 +6100,14 @@ function overviewScreen(ctx) {
 
         try {
             const data = await ctx.api.status();
-            if (!ctx.alive) {
+            if (!ctx.alive || st.destroyed) {
                 return;
             }
 
             st.loaded = true;
             apply(data);
         } catch {
-            if (!ctx.alive) {
+            if (!ctx.alive || st.destroyed) {
                 return;
             }
 
@@ -6117,6 +6127,8 @@ function overviewScreen(ctx) {
             poller.stop();
         },
         destroy() {
+            // A Status answer still on its way belongs to this build; it never fills or announces into the next one.
+            st.destroyed = true;
             poller.stop();
             for (const [node, type, fn] of wiring.splice(0)) {
                 node.removeEventListener(type, fn);
@@ -6738,9 +6750,20 @@ function librariesScreen(ctx) {
         st.focusKey = null;
         if (!st.scrolled && ctx.params.focus && ctx.params.focus.startsWith('lib-')) {
             st.scrolled = true;
-            const node = body.querySelector('#' + CSS.escape(ctx.params.focus));
+            const node = cardById(body, ctx.params.focus);
             if (node) {
-                ctx.later(() => scrollToNode(node), 50);
+                // 2.9.3 U5: a friend's library row links here; focus lands on that shared library's "Change who can see this".
+                const id = ctx.params.focus;
+                const key = 'who:' + id.slice(4);
+                ctx.later(() => {
+                    // A redraw in the meantime replaces the card: look it up again.
+                    const card = cardById(body, id) || node;
+                    scrollToNode(card);
+                    const who = Array.from(card.querySelectorAll('[data-fkey]')).find((b) => b.dataset.fkey === key);
+                    if (who && document.contains(who)) {
+                        who.focus();
+                    }
+                }, 50);
             }
         }
     }
@@ -11804,32 +11827,78 @@ function serverDetailScreen(ctx) {
         if (!libs.length) {
             sec.body.append(el('p', { class: 'shoal-meta shoal-emptyline', text: t('noLibrariesFrom', { server: s.displayName }) }));
         } else {
-            sec.body.append(el('ul', { class: 'shoal-list' }, libs.map((m) => {
-                const summary = accessSummary(m.access, st.data.users || [], currentUserId(ctx, st.data));
-                const holds = [];
-                if (m.heldRemovals > 0) {
-                    holds.push(el('span', { class: 'shoal-tone--warn shoal-holdline' }, icon('warn', true), t('removalsOnHold', { n: m.heldRemovals, count: ctx.fmt.num(m.heldRemovals) })));
-                }
+            // 2.9.3 U6: one header adds the friend's libraries together; below it one group per type (anime is a TV library, 4K a movie library).
+            const titlesOf = (list) => list.reduce((n, m) => n + libTitles(m), 0);
+            const total = titlesOf(libs);
+            sec.body.append(el('p', { class: 'shoal-libtotals', text: t('libTotalsLine', { server: s.displayName, n: total, count: ctx.fmt.num(total), libs: t('nLibraries', { n: libs.length }) }) }));
+            const hidden = libs.reduce((n, m) => n + (m.hiddenByDedup > 0 ? m.hiddenByDedup : 0), 0);
+            if (hidden > 0 && !dedup) {
+                sec.body.append(el('p', { class: 'shoal-meta', text: t('libTotalsDedup', { n: hidden, count: ctx.fmt.num(hidden) }) }));
+            }
 
-                if (m.heldAdditions > 0) {
-                    holds.push(el('span', { class: 'shoal-tone--warn shoal-holdline' }, icon('warn', true), t('additionsOnHold', { n: m.heldAdditions, count: ctx.fmt.num(m.heldAdditions) })));
-                }
-
-                const rm = button({ label: t('removeEllipsis'), small: true, onClick: () => removeLibrary(s, m) });
-                return el('li', { class: 'shoal-row shoal-row--library' },
-                    el('div', { class: 'shoal-row__main' },
-                        el('span', { class: 'shoal-row__title', text: m.localLibraryName }),
-                        el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(m)
-                            ? t('libraryFromMetaSplit', { name: m.remoteName || '', remote: ctx.fmt.num(m.remoteCount), local: ctx.fmt.num(m.localCount), when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' })
-                            : t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' }) }),
-                        skipLine(m.lastSync, ctx.fmt, false),
-                        holds),
-                    el('div', { class: 'shoal-row__controls shoal-row__controls--inline' }, summary, ctx.linkEl('libraries', { focus: 'lib-' + m.mappingKey }, 'shoal-link', t('changeWhoCanSee')), rm));
-            })));
+            const typed = libs.every((m) => m.type === 'movies' || m.type === 'tvshows');
+            const groups = typed ? ['movies', 'tvshows'].map((type) => [type, libs.filter((m) => m.type === type)]).filter((g) => g[1].length) : [[null, libs]];
+            for (const [type, list] of groups) {
+                const sub = titlesOf(list);
+                sec.body.append(el('div', { class: 'shoal-libgroup', 'data-type': type || null },
+                    type ? el('div', { class: 'shoal-libgroup__head' },
+                        el('h3', { class: 'shoal-h3', text: t(type === 'movies' ? 'libGroup_movies' : 'libGroup_tvshows') }),
+                        el('span', { class: 'shoal-meta', text: t('libGroupTotal', { n: sub, count: ctx.fmt.num(sub), libs: t('nLibraries', { n: list.length }) }) })) : null,
+                    libraryList(s, list)));
+            }
         }
 
         sec.body.append(button({ label: t(libs.length ? 'addAnotherLibrary' : 'addALibrary'), onClick: () => addLibraryDialog(s) }));
         return sec.root;
+    }
+
+    /** Titles of one library row for the totals: the stubs here (localCount), as the Overview counts them; an older server sends only count. */
+    function libTitles(m) {
+        const n = typeof m.localCount === 'number' ? m.localCount : m.count;
+        return typeof n === 'number' && n > 0 ? n : 0;
+    }
+
+    function libraryList(s, libs) {
+        return el('ul', { class: 'shoal-list' }, libs.map((m) => {
+            const summary = rowAccess(m);
+            const holds = [];
+            if (m.heldRemovals > 0) {
+                holds.push(el('span', { class: 'shoal-tone--warn shoal-holdline' }, icon('warn', true), t('removalsOnHold', { n: m.heldRemovals, count: ctx.fmt.num(m.heldRemovals) })));
+            }
+
+            if (m.heldAdditions > 0) {
+                holds.push(el('span', { class: 'shoal-tone--warn shoal-holdline' }, icon('warn', true), t('additionsOnHold', { n: m.heldAdditions, count: ctx.fmt.num(m.heldAdditions) })));
+            }
+
+            const rm = button({ label: t('removeEllipsis'), small: true, onClick: () => removeLibrary(s, m) });
+            return el('li', { class: 'shoal-row shoal-row--library' },
+                el('div', { class: 'shoal-row__main' },
+                    el('span', { class: 'shoal-row__title', text: m.localLibraryName }),
+                    el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(m)
+                        ? t('libraryFromMetaSplit', { name: m.remoteName || '', remote: ctx.fmt.num(m.remoteCount), local: ctx.fmt.num(m.localCount), when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' })
+                        : t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' }) }),
+                    skipLine(m.lastSync, ctx.fmt, false),
+                    holds),
+                el('div', { class: 'shoal-row__controls shoal-row__controls--inline' }, summary, ctx.linkEl('libraries', { focus: 'lib-' + (m.libKey || m.mappingKey) }, 'shoal-link', t('changeWhoCanSee')), rm));
+        }));
+    }
+
+    /**
+     * Who can see a library row (2.9.3 U5). A row that feeds a shared library (placement Shoal or Main) shows that library's access, named after it:
+     * the mapping's own access no longer decides anything there. A legacy row, or a row from an older server without these fields, shows its own access.
+     */
+    function rowAccess(m) {
+        const fed = (m.placement === 'Shoal' || m.placement === 'Main') && typeof m.libraryName === 'string' && m.libraryName !== '';
+        const a = fed && m.effectiveAccess && typeof m.effectiveAccess === 'object' ? m.effectiveAccess : m.access || {};
+        const access = { mode: a.mode === 'Everyone' ? 'Everyone' : 'Selected', selectedUserIds: Array.isArray(a.selectedUserIds) ? a.selectedUserIds : [], includeRestricted: !!a.includeRestricted };
+        const node = accessSummary(access, st.data.users || [], currentUserId(ctx, st.data));
+        if (fed) {
+            const text = node.lastElementChild;
+            const main = m.placement === 'Main' && typeof m.mainLibraryName === 'string' && m.mainLibraryName !== '' ? m.mainLibraryName : null;
+            text.textContent = main ? t('accessInsideMain', { access: text.textContent, library: m.libraryName, main }) : t('accessInLibrary', { access: text.textContent, library: m.libraryName });
+        }
+
+        return node;
     }
 
     async function removeLibrary(s, m) {
@@ -13106,6 +13175,24 @@ function mount(page, params, deps) {
     const backbar = slot(root, 'backbar');
     const bannerHost = slot(root, 'banner');
     const recoveryView = q(root, '[data-shoal-view="recovery"]');
+    // The markup of every screen's section as the page ships it (ids made unique, copy applied). jellyfin-web keeps this page element
+    // and restores it, so a screen is built again on the same host: each build starts from a fresh copy of this markup, and nothing an
+    // earlier build added (rows, notes, panels, listeners on its nodes) survives into the next one (Pilot 27, NOTES-2.9.3 item 4).
+    const pristine = new Map();
+    for (const section of qa(root, '[data-shoal-view]')) {
+        const name = section.getAttribute('data-shoal-view');
+        if (name !== 'recovery') {
+            pristine.set(name, section.cloneNode(true));
+        }
+    }
+
+    function freshSection(name) {
+        const live = q(root, '[data-shoal-view="' + name + '"]');
+        if (live && pristine.has(name)) {
+            live.replaceWith(pristine.get(name).cloneNode(true));
+        }
+    }
+
     let screen = null;
     let recovery = false;
     let started = false;
@@ -13164,6 +13251,7 @@ function mount(page, params, deps) {
             }
         }
 
+        freshSection(next);
         view = next;
         ctx.view = next;
         root.dataset.view = next;
@@ -13218,7 +13306,10 @@ function mount(page, params, deps) {
 
     cssReady(page).then(() => {
         root.dataset.state = 'ready';
-        if (started && ctx.alive) {
+        // A late stylesheet never takes focus from a control the page already focused (2.9.3 U5: a link that opens a library's access button).
+        const active = document.activeElement;
+        const onControl = !!active && active !== document.body && root.contains(active) && active.getAttribute('tabindex') !== '-1';
+        if (started && ctx.alive && !onControl) {
             ctx.focusHeading();
         }
     });

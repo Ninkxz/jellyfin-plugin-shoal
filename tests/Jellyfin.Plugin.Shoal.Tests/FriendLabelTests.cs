@@ -32,6 +32,54 @@ public sealed class FriendLabelTests
         Assert.DoesNotContain('’', FriendLabel.Generic);
     }
 
+    // 2.9.3 K6 (Warden 17/18 L2): a friend's server name never carries a link into a plot or a studio.
+    [Theory]
+    [InlineData("Get free movies at evil.example", "Get free movies at")]
+    [InlineData("Get free movies at https://evil.example/x?y=1", "Get free movies at")]
+    [InlineData("Bth www.evil.example now", "Bth now")]
+    [InlineData("Visit (evil.example), friends", "Visit friends")]
+    [InlineData("Movies on sub.evil.co.uk:8096/path", "Movies on")]
+    [InlineData("Wide evil．example dot", "Wide dot")]
+    [InlineData("hxxp://evil", "")]
+    public void NameWithUrl_LinkRemoved(string name, string cleaned)
+    {
+        Assert.Equal(cleaned, MetadataSanitizer.FriendName(name));
+        if (cleaned.Length > 0)
+        {
+            Assert.Equal("From " + cleaned + "'s server. " + FriendLabel.Tail, FriendLabel.Text([name]));
+            Assert.Equal(["Shared by " + cleaned], FriendLabel.Studios([name]));
+        }
+    }
+
+    [Theory]
+    [InlineData("evil.example")]
+    [InlineData("https://evil.example")]
+    [InlineData("www.evil.example http://x.y")]
+    public void NameOnlyUrl_FallsBackToGeneric(string name)
+    {
+        Assert.Equal(string.Empty, MetadataSanitizer.FriendName(name));
+        Assert.Equal(FriendLabel.Generic, FriendLabel.Text([name]));
+        Assert.Empty(FriendLabel.Studios([name]));
+        Assert.Equal("From Hops's server. " + FriendLabel.Tail, FriendLabel.Text([name, "Hops"])); // the other friend is still named
+    }
+
+    // Names that must survive. A TLD needs a dot with no space before it and 2 to 24 ASCII letters, so an abbreviation followed by a space stays, and a
+    // non-ASCII "TLD" is left alone. Known false positives (dropped although not links): "Dr.Who", "St.Louis", "Movies.Night", "fans.club".
+    [Theory]
+    [InlineData("Berry's Server")]
+    [InlineData("Dr. Who Fans")]
+    [InlineData("St. Louis")]
+    [InlineData("Mr. & Mrs. Smith's")]
+    [InlineData("Jellyfin 10.9")]
+    [InlineData("v2.1")]
+    [InlineData("Fans.фильм")]
+    [InlineData("Hops")]
+    [InlineData("A.B")]
+    public void NormalName_Unchanged(string name)
+    {
+        Assert.Equal(MetadataSanitizer.DisplayName(name), MetadataSanitizer.FriendName(name));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

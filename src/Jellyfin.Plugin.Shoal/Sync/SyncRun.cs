@@ -66,7 +66,7 @@ internal sealed class SyncRun
     public async Task<SyncReport> RunAsync(CancellationToken userToken, CancellationToken budgetToken)
     {
         var started = _now;
-        StampLabelName(_doc, _peer.ShownName());
+        StampLabelName(_doc, MetadataSanitizer.FriendName(_peer.ShownName())); // K6: the cleaned name, so only a name the cleaning changes rewrites its NFOs (once)
         try
         {
             var failure = await PhaseAAndBAsync(budgetToken).ConfigureAwait(false);

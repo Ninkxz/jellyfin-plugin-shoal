@@ -515,6 +515,13 @@ public sealed class CatalogDocument
     /// <summary>Gets or sets the peer key this file belongs to.</summary>
     public string PeerKey { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether this copy came back from disk with a loss (Warden 19 M1): read from the <c>.bak</c>, or entries were dropped by
+    /// validation. Never written. Nothing is deleted on its say-so (the leftover-copy sweep skips) until a load without loss.
+    /// </summary>
+    [JsonIgnore]
+    public bool LoadedWithLoss { get; set; }
+
     /// <summary>Gets or sets a value indicating whether a sync has completed once (the first sync is exempt from the new-items guard).</summary>
     public bool CompletedOnce { get; set; }
 

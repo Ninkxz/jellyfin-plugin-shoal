@@ -101,7 +101,7 @@ public static partial class FriendLabel
 
     private static string Clean(string? name)
     {
-        var clean = MetadataSanitizer.DisplayName(name);
+        var clean = MetadataSanitizer.FriendName(name); // 2.9.3 K6: no link reaches a plot or a studio
         return clean.Length > NameMax ? clean[..NameMax].TrimEnd() : clean;
     }
 

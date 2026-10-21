@@ -179,6 +179,41 @@ public sealed class SyncRunTests
         Assert.All(nfos, f => Assert.Equal(written[f], System.IO.File.GetLastWriteTimeUtc(f))); // once
     }
 
+    /// <summary>
+    /// 2.9.3 K6: the stamp holds the cleaned name. A catalog stamped by 2.9.2 with a name that held a link ("Hops evil.example") is rewritten once: the NFOs
+    /// name "Hops" with no link, the stamp becomes "Hops", and the next sync writes nothing.
+    /// </summary>
+    [Fact]
+    public async Task NameCleaned_RewritesOnce()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Peer.Add("The Matrix", 1999, tmdb: 603);
+        await rig.State.UpdateAsync(static s => s.Home.Peers[0].Alias = "Brew");
+        await rig.SyncAsync();
+        var nfo = rig.AllStubFiles().Single(static f => f.EndsWith(".nfo", StringComparison.Ordinal));
+        Assert.Contains("From Brew's server.", System.IO.File.ReadAllText(nfo), StringComparison.Ordinal);
+
+        // What 2.9.2 left behind after the alias became "Hops evil.example": the raw name in the stamp.
+        await rig.State.UpdateAsync(static s => s.Home.Peers[0].Alias = "Hops evil.example");
+        var doc = rig.Catalog();
+        doc.LabelName = "Hops evil.example";
+        rig.Catalogs.Save(doc);
+        rig.Time.Advance(TimeSpan.FromHours(1));
+        await rig.SyncAsync();
+
+        var text = System.IO.File.ReadAllText(nfo);
+        Assert.Contains("From Hops's server.", text, StringComparison.Ordinal);
+        Assert.Contains("<studio>Shared by Hops</studio>", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("evil.example", text, StringComparison.Ordinal);
+        Assert.Equal("Hops", rig.Catalog().LabelName);
+
+        var written = System.IO.File.GetLastWriteTimeUtc(nfo);
+        rig.Time.Advance(TimeSpan.FromHours(1));
+        await rig.SyncAsync();
+        Assert.Equal(written, System.IO.File.GetLastWriteTimeUtc(nfo)); // once
+        Assert.Equal("Hops", rig.Catalog().LabelName);
+    }
+
     /// <summary>2.9.2 K7: a catalog from before the stamp (no LabelName) is only stamped; its up-to-date NFOs are not rewritten for it.</summary>
     [Fact]
     public async Task NoStampYet_IsStamped_WithoutARewrite()

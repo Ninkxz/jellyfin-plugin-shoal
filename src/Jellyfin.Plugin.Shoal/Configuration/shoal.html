@@ -202,18 +202,23 @@
               </section>
 
               <section class="shoal-under" data-section="playorder" aria-labelledby="shoal-h-playorder" aria-describedby="shoal-playorder-d" hidden>
-                <div class="shoal-under__head">
-                  <h2 class="shoal-h2 shoal-under__title" id="shoal-h-playorder">
-                    <span data-t="playOrderTitle"></span>
-                    <span class="shoal-tag shoal-tag--in"><svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-in"/></svg><span data-t="laneWatching"></span></span>
-                  </h2>
-                </div>
-                <p class="shoal-under__lead" id="shoal-playorder-d" data-t="playOrderLead"></p>
-                <ol class="shoal-prio" data-slot="playorder"></ol>
-                <div class="shoal-prio-foot">
-                  <span data-slot="playorderchanged"></span>
-                  <span data-t="playOrderHowTo"></span>
-                </div>
+                <details class="shoal-collapse shoal-playorder" data-slot="playorderbox">
+                  <summary>
+                    <h2 class="shoal-h2 shoal-under__title" id="shoal-h-playorder">
+                      <span data-slot="playordertitle"></span>
+                      <span class="shoal-tag shoal-tag--in"><svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-in"/></svg><span data-t="laneWatching"></span></span>
+                    </h2>
+                    <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-down"/></svg>
+                  </summary>
+                  <div class="shoal-collapse__body">
+                    <p class="shoal-under__lead" id="shoal-playorder-d" data-t="playOrderLead"></p>
+                    <ol class="shoal-prio" data-slot="playorder"></ol>
+                    <div class="shoal-prio-foot">
+                      <span data-slot="playorderchanged"></span>
+                      <span data-t="playOrderHowTo"></span>
+                    </div>
+                  </div>
+                </details>
               </section>
 
               <section class="shoal-under shoal-panel shoal-overlap" data-section="overlap" aria-labelledby="shoal-h-overlap" hidden>

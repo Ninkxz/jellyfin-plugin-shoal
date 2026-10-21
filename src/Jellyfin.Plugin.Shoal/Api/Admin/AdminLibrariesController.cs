@@ -58,7 +58,26 @@ internal sealed record DriftDto(Guid UserId, string Kind);
 /// <param name="LocalCount">Titles of this library that have a stub on this server. Same number as Count.</param>
 /// <param name="HiddenByDedup">Titles with no stub because this server, or a better-ranked friend, carries them already.</param>
 /// <param name="DedupWinner">The friend that carries most of the hidden titles, or null (this server itself, or none hidden).</param>
-internal sealed record LibraryDto(string MappingKey, string LocalLibraryName, string RemoteName, string ServerHandle, string ServerName, int Count, SyncInfoDto? LastSync, int HeldRemovals, int HeldAdditions, LibraryAccessDto Access, IReadOnlyList<DriftDto> Drift, int RemoteCount = 0, int LocalCount = 0, int HiddenByDedup = 0, string? DedupWinner = null);
+internal sealed record LibraryDto(string MappingKey, string LocalLibraryName, string RemoteName, string ServerHandle, string ServerName, int Count, SyncInfoDto? LastSync, int HeldRemovals, int HeldAdditions, LibraryAccessDto Access, IReadOnlyList<DriftDto> Drift, int RemoteCount = 0, int LocalCount = 0, int HiddenByDedup = 0, string? DedupWinner = null)
+{
+    /// <summary>Gets the mapping's type: <c>movies</c> or <c>tvshows</c> (2.9.3 K3).</summary>
+    public string Type { get; init; } = "movies";
+
+    /// <summary>Gets who really can see the titles: the shared library's access when the connection feeds one of the type, else the mapping's own (share users left out).</summary>
+    public LibraryAccessDto? EffectiveAccess { get; init; }
+
+    /// <summary>Gets the key (16 lower hex) of the library that governs the titles: the fed library, else the mapping's legacy library, else null.</summary>
+    public string? LibKey { get; init; }
+
+    /// <summary>Gets the name of that library (text only), else the mapping's local library name.</summary>
+    public string LibraryName { get; init; } = string.Empty;
+
+    /// <summary>Gets where the titles are: <c>Shoal</c> (a shared library of its own), <c>Main</c> (inside a main library) or <c>Legacy</c> (the mapping's own folder).</summary>
+    public string Placement { get; init; } = "Legacy";
+
+    /// <summary>Gets the name of the main library the titles are inside (placement Main only, text only), else null.</summary>
+    public string? MainLibraryName { get; init; }
+}
 
 /// <summary>A local account the picker may list. Sharing accounts Shoal made for friends are never in the list.</summary>
 /// <param name="Id">The local user id.</param>
@@ -170,7 +189,9 @@ public sealed class AdminLibraryView : ILibraryView
         var accounts = _accounts.List().Where(a => !shareUsers.Contains(a.Id)).ToList();
         var managed = state.Home.Visibility.ManagedUsers.Keys.ToHashSet();
         var drift = _visibility.Drift();
-        var shoal = VisibilityService.ShoalLibraries(state, _libraries.List());
+        var jellyfin = _libraries.List();
+        var shoal = VisibilityService.ShoalLibraries(state, jellyfin);
+        LibraryAccessDto Visible(LibraryAccess access) => new(access.Mode, [.. access.SelectedUserIds.Where(id => !shareUsers.Contains(id))], access.IncludeRestricted);
         var result = new List<LibraryDto>();
         foreach (var peer in state.Home.Peers.Where(p => onlyPeer is null || string.Equals(p.PeerKey, onlyPeer, StringComparison.Ordinal)))
         {
@@ -195,6 +216,15 @@ public sealed class AdminLibraryView : ILibraryView
                     }
                 }
 
+                // 2.9.3 K3: the library that governs the titles. A fed library's access decides (LibraryFolders.AccessOfMapping); the mapping's own is dead then.
+                var fed = LibraryFolders.FedBy(state, peer.PeerKey, mapping.CollectionType);
+                var governing = fed ?? LibraryFolders.LegacyOf(state, peer.PeerKey, mapping);
+                string? mainName = null;
+                if (fed is { Placement: LibraryPlacement.Main } && MainAccess.MainIdOf(state, fed, jellyfin) is { } mainId && mainId != Guid.Empty)
+                {
+                    mainName = jellyfin.FirstOrDefault(l => l.Id == mainId)?.Name;
+                }
+
                 result.Add(new LibraryDto(
                     Compose(peer.PeerKey, mapping.MappingKey),
                     mapping.LocalLibraryName,
@@ -205,12 +235,20 @@ public sealed class AdminLibraryView : ILibraryView
                     last,
                     entries.Count(e => e.State == EntryState.HeldRemoval),
                     HeldAdditionsOf(document, mapping.MappingKey),
-                    new LibraryAccessDto(mapping.Access.Mode, [.. mapping.Access.SelectedUserIds.Where(id => !shareUsers.Contains(id))], mapping.Access.IncludeRestricted),
+                    Visible(mapping.Access),
                     differences,
                     counts.Remote,
                     counts.Local,
                     counts.Hidden,
-                    counts.Hidden == 0 ? null : TitleCounts.Winner(_state, _catalogs, peer.PeerKey, entries)));
+                    counts.Hidden == 0 ? null : TitleCounts.Winner(_state, _catalogs, peer.PeerKey, entries))
+                {
+                    Type = mapping.CollectionType,
+                    EffectiveAccess = Visible(LibraryFolders.AccessOfMapping(state, peer.PeerKey, mapping)),
+                    LibKey = string.IsNullOrEmpty(governing?.LibKey) ? null : governing.LibKey,
+                    LibraryName = governing?.Name is { Length: > 0 } name ? name : mapping.LocalLibraryName,
+                    Placement = fed is null ? "Legacy" : fed.Placement.ToString(),
+                    MainLibraryName = mainName,
+                });
             }
         }
 

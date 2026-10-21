@@ -200,7 +200,7 @@ public sealed class LayoutPresetService
                 }
 
                 // Warden 10 M3: the friend-chosen server name never reaches a path as it is.
-                var name = MetadataSanitizer.DisplayName(LibraryNames.FromFriend(MetadataSanitizer.DisplayName(peer.ShownName()), "Friend") + (type == "tvshows" ? " TV shows" : " movies"));
+                var name = MetadataSanitizer.DisplayName(LibraryNames.FromFriend(MetadataSanitizer.FriendName(peer.ShownName()), "Friend") + (type == "tvshows" ? " TV shows" : " movies"));
                 moves.Add(new MoveRequest(peer.PeerKey, type, null, new LibraryCreateRequest(name, type, LibraryPlacement.Shoal)));
             }
         }
