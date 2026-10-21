@@ -161,7 +161,7 @@ public sealed class Warden12Pilot16Tests
         StubCheck.NoteHealed(SyncRig.PeerKey, entry, StubDamage.LabelMissing);
         Assert.Equal(StubDamage.None, StubCheck.Full(SyncRig.PeerKey, dir.Path, entry)); // no third heal: no loop every sync
 
-        System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "Odd.nfo"), "<movie><plot>" + System.Security.SecurityElement.Escape(FriendLabel.Text) + "</plot></movie>");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "Odd.nfo"), "<movie><plot>" + System.Security.SecurityElement.Escape(FriendLabel.Generic) + "</plot></movie>");
         Assert.Equal(StubDamage.None, StubCheck.Full(SyncRig.PeerKey, dir.Path, entry));
         System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "Odd.nfo"), "<movie></movie>");
         Assert.Equal(StubDamage.LabelMissing, StubCheck.Full(SyncRig.PeerKey, dir.Path, entry)); // whole once: the memory was cleared

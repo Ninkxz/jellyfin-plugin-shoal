@@ -135,7 +135,8 @@ public interface ITvNfoWriter
     /// <param name="series">The series.</param>
     /// <param name="tags">The tags (<c>Shoal</c>, <c>Shoal: &lt;Peer&gt;</c>).</param>
     /// <returns>The XML.</returns>
-    string Series(SanitizedSeries series, IReadOnlyList<string> tags);
+    /// <param name="friendName">The friend the plot label names (2.9.2 K4), or null for the generic label.</param>
+    string Series(SanitizedSeries series, IReadOnlyList<string> tags, string? friendName = null);
 
     /// <summary>Writes <c>season.nfo</c>.</summary>
     /// <param name="season">The season.</param>
@@ -147,7 +148,8 @@ public interface ITvNfoWriter
     /// <param name="episode">The episode.</param>
     /// <param name="tags">The tags.</param>
     /// <returns>The XML.</returns>
-    string Episode(SanitizedEpisode episode, IReadOnlyList<string> tags);
+    /// <param name="friendName">The friend the plot label names (2.9.2 K4), or null for the generic label.</param>
+    string Episode(SanitizedEpisode episode, IReadOnlyList<string> tags, string? friendName = null);
 }
 
 /// <summary>

@@ -149,6 +149,9 @@ public sealed class LibraryLayoutService
     /// <summary>Gets or sets what locks the options of Shoal's libraries again right after a library is made (Pilot 15 R6), or null.</summary>
     internal LibraryOptionsGuard? Options { get; set; }
 
+    /// <summary>Gets Jellyfin's libraries (the move job finds a main library by folder, Warden 14).</summary>
+    internal ILibrarySource Libraries => _libraries;
+
     /// <summary>Gets or sets what scans a library Shoal renamed (Pilot 16), or null.</summary>
     internal Jellyfin.Plugin.Shoal.Sync.ILibraryRefresh? Scans { get; set; }
 

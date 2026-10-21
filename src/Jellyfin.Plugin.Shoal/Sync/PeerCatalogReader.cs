@@ -24,6 +24,33 @@ namespace Jellyfin.Plugin.Shoal.Sync;
 public sealed record PeerView(Guid Id, string Name, string CollectionType);
 
 /// <summary>
+/// 2.9.2 K2: which libraries the friend's share includes, read from the share user's own <c>/Users/Me</c> (<c>Policy.EnabledFolders</c>).
+/// Fails closed: an unreadable policy and <c>EnableAllFolders</c> both give <see cref="Known"/> false, and then no view is in scope.
+/// </summary>
+/// <param name="Known">True only for a readable policy with <c>EnableAllFolders</c> false and an <c>EnabledFolders</c> list.</param>
+/// <param name="AllFolders">True when the policy says every library (fails closed: nothing is in scope).</param>
+/// <param name="Ids">The enabled library ids; ids that match no view (a deleted library, Pilot 21 G1) are simply never matched.</param>
+public sealed record ShareScope(bool Known, bool AllFolders, IReadOnlySet<Guid> Ids)
+{
+    /// <summary>Gets the scope of a policy that could not be read.</summary>
+    public static ShareScope Unknown { get; } = new(false, false, new HashSet<Guid>());
+
+    /// <summary>
+    /// Keeps the views the share includes. Views outside it (core always lists a Playlists view, Pilot 21 G1) are dropped.
+    /// </summary>
+    /// <param name="views">The share user's views.</param>
+    /// <returns>The views in scope; none when the scope is not known.</returns>
+    public IReadOnlyList<PeerView> Filter(IReadOnlyList<PeerView> views) => Known ? views.Where(v => Ids.Contains(v.Id)).ToList() : [];
+}
+
+/// <summary>
+/// The share user's views, already cut to the share's scope (2.9.2 K2).
+/// </summary>
+/// <param name="Views">The views in scope (none when the scope is not known).</param>
+/// <param name="ScopeKnown">False when the scope could not be read or the account may open every library.</param>
+public sealed record SharedViews(IReadOnlyList<PeerView> Views, bool ScopeKnown);
+
+/// <summary>
 /// One line of the cheap listing: enough to diff and to dedup.
 /// </summary>
 /// <param name="Id">The peer's item id.</param>
@@ -55,6 +82,8 @@ public sealed class PeerCatalogReader
 
     /// <summary>The number of ids in one details request.</summary>
     public const int DetailsBatchSize = 50;
+
+    private const int MaxScopeIds = 1000; // more enabled libraries than any server has: an unusable policy, so the scope is unknown
 
     private const string ListFields = "ProviderIds,Etag";
 
@@ -124,6 +153,79 @@ public sealed class PeerCatalogReader
         }
 
         return views;
+    }
+
+    /// <summary>
+    /// 2.9.2 K2: the share user's views that the share includes. Every caller that lists, adds or syncs goes through this, never through
+    /// <see cref="ViewsAsync"/> alone.
+    /// </summary>
+    /// <param name="peer">The peer.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The views in scope, and whether the scope was known.</returns>
+    /// <exception cref="PeerCallException">The peer could not be reached (an answer the peer did give but that is unusable is an unknown scope instead).</exception>
+    public async Task<SharedViews> SharedViewsAsync(PeerEndpoint peer, CancellationToken cancellationToken)
+    {
+        var views = await ViewsAsync(peer, cancellationToken).ConfigureAwait(false);
+        var scope = await ShareScopeAsync(peer, cancellationToken).ConfigureAwait(false);
+        return new SharedViews(scope.Filter(views), scope.Known);
+    }
+
+    /// <summary>
+    /// 2.9.2 K2: reads the share's scope from <c>/Users/Me</c>, with the share token (the account's own policy; no new peer route).
+    /// </summary>
+    /// <param name="peer">The peer.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The scope; <see cref="ShareScope.Unknown"/> (or <see cref="ShareScope.AllFolders"/>, also not known) when it cannot be used.</returns>
+    /// <exception cref="PeerCallException">The peer could not be reached or the trust window could not be renewed.</exception>
+    public async Task<ShareScope> ShareScopeAsync(PeerEndpoint peer, CancellationToken cancellationToken)
+    {
+        await EnsureTrustAsync(peer, cancellationToken).ConfigureAwait(false);
+        using var response = await _client.SendAsync(peer, PeerRequest.Get("/Users/Me"), PeerCallProfile.Info, cancellationToken).ConfigureAwait(false);
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new PeerCallException(PeerFailureKind.BadResponse, response.StatusCode); // the peer is down or busy, not unclear about the share
+        }
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            _logger.LogInformation("Peer {Peer} did not say which libraries it shares ({Status}); none are listed or synced", Security.Redact.Id(peer.PeerKey), (int)response.StatusCode);
+            return ShareScope.Unknown;
+        }
+
+        Pairing.UserWire user;
+        try
+        {
+            user = await response.ReadJsonAsync<Pairing.UserWire>(cancellationToken).ConfigureAwait(false);
+        }
+        catch (PeerCallException ex) when (ex.Kind == PeerFailureKind.BadResponse)
+        {
+            _logger.LogInformation("Peer {Peer} sent an unreadable account policy; no library is listed or synced", Security.Redact.Id(peer.PeerKey));
+            return ShareScope.Unknown;
+        }
+
+        var policy = user.Policy;
+        if (policy?.EnableAllFolders == true)
+        {
+            _logger.LogInformation("The share account on peer {Peer} may open every library; no library is listed or synced until the share is fixed", Security.Redact.Id(peer.PeerKey));
+            return ShareScope.Unknown with { AllFolders = true };
+        }
+
+        if (policy is null || policy.EnableAllFolders is null || policy.EnabledFolders is not { } folders || folders.Count > MaxScopeIds)
+        {
+            _logger.LogInformation("Peer {Peer} did not say which libraries it shares; none are listed or synced", Security.Redact.Id(peer.PeerKey));
+            return ShareScope.Unknown;
+        }
+
+        var ids = new HashSet<Guid>();
+        foreach (var value in folders)
+        {
+            if (MetadataSanitizer.TryParseId(value, out var id) && id != Guid.Empty)
+            {
+                ids.Add(id); // an id that does not parse is left out, so its library is out of scope
+            }
+        }
+
+        return new ShareScope(true, false, ids);
     }
 
     /// <summary>
@@ -459,15 +561,19 @@ public sealed class PeerCatalogReader
         return new ListedMovie(dto.Id, etag, MetadataSanitizer.CanonicalProviderIds(dto.ProviderIds), PeerText.Clean(dto.Name, MetadataSanitizer.TitleMax), year);
     }
 
-    private async Task<ItemPage> ReadPageAsync(PeerEndpoint peer, string pathAndQuery, int maxItems, CancellationToken cancellationToken)
+    // The trust window is 120 s and a sync lasts minutes, so it is renewed before every call (at most every 10 s, DESIGN 4.4).
+    private async Task EnsureTrustAsync(PeerEndpoint peer, CancellationToken cancellationToken)
     {
-        // The trust window is 120 s and a sync lasts minutes, so it is renewed before every call (at most every 10 s, DESIGN 4.4).
         if (_registry.Check(peer.PeerKey, carriesToken: true, TrustRequirement.PinFresh) != TrustDenial.None
             && !await _trust.EnsureAsync(peer, TrustRequirement.PinFresh, cancellationToken).ConfigureAwait(false))
         {
             throw new PeerCallException(PeerFailureKind.TrustLapsed);
         }
+    }
 
+    private async Task<ItemPage> ReadPageAsync(PeerEndpoint peer, string pathAndQuery, int maxItems, CancellationToken cancellationToken)
+    {
+        await EnsureTrustAsync(peer, cancellationToken).ConfigureAwait(false);
         using var response = await _client.SendAsync(peer, PeerRequest.Get(pathAndQuery), PeerCallProfile.Items, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode != HttpStatusCode.OK || !response.HasBody || !string.Equals(response.MediaType, "application/json", StringComparison.Ordinal))
         {

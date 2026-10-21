@@ -102,19 +102,123 @@ public sealed class BingeSlotTests
     }
 
     [Fact]
-    public void ADifferentDevice_ASeries_OrAMovie_IsNeverMovedOn_EvenWhenNothingIsSending()
+    public void OtherDevice_StillLimited()
     {
-        var slots = new StreamSlots(new ManualTimeProvider(), () => 1);
+        var time = new ManualTimeProvider();
+        var slots = new StreamSlots(time, () => 1);
         var user = Guid.NewGuid();
-        slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 2, out _, Origin)!.Dispose();
+        slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 2, out _, Origin)!.Dispose(); // device-a has nothing flowing
 
         Assert.Null(slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 2, out var otherDevice, new SlotOrigin(Series, "device-b")));
         Assert.Equal(SlotDenial.User, otherDevice);
-        Assert.Null(slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 2, out var otherSeries, new SlotOrigin("99999999999999999999999999999999", Device)));
-        Assert.Equal(SlotDenial.User, otherSeries);
-        Assert.Null(slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 2, out var movie, default));
-        Assert.Equal(SlotDenial.User, movie);
+        Assert.Null(slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 2, out var noDevice, new SlotOrigin(Series, string.Empty)));
+        Assert.Equal(SlotDenial.User, noDevice);
+        Assert.False(slots.CanStart(user, Guid.NewGuid(), Peer, 2, new SlotOrigin(string.Empty, "device-b")));
+
+        // A quiet HLS stream of device-a is not device-b's to replace either, for the stream limits or for the conversions.
+        var hlsSlots = new StreamSlots(time, () => 1);
+        var item = Guid.NewGuid();
+        Assert.True(hlsSlots.TryTakeHls(HlsGrant("a", user, item, "device-a"), 2, 1, out _));
+        time.Advance(StreamSlots.HlsSupersedeAfter + TimeSpan.FromSeconds(1));
+        Assert.True(hlsSlots.ConversionsFull(Peer, 1, user, item, new SlotOrigin(string.Empty, "device-b")));
+        Assert.False(hlsSlots.TryTakeHls(HlsGrant("b", user, item, "device-b"), 2, 1, out var hlsDenial));
+        Assert.Equal(SlotDenial.User, hlsDenial);
     }
+
+    [Fact]
+    public void FailedPlayThenOtherTitle_SameDevice_Allowed()
+    {
+        // A user report: two failed plays of different movies held 2 of the 2 places a user gets on a peer of 4, so a third title was refused for 2 minutes.
+        var slots = new StreamSlots(new ManualTimeProvider(), () => 4);
+        var user = Guid.NewGuid();
+        var movie = new SlotOrigin(string.Empty, Device);
+        slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 4, out _, movie)!.Dispose();
+        slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 4, out _, movie)!.Dispose();
+
+        var third = Guid.NewGuid();
+        Assert.True(slots.CanStart(user, third, Peer, 4, movie));
+        using var lease = slots.TryOpenStatic(user, third, Peer, 4, out var denial, movie);
+        Assert.NotNull(lease);
+        Assert.Equal(SlotDenial.None, denial);
+        Assert.Equal(1, slots.ActiveSlots(user)); // the two failed plays are gone
+
+        // An episode after a movie on the same device moves on as well; the binge +1 of the half rule stays for episodes of one series only.
+        lease.Dispose();
+        using var episode = slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 4, out _, Origin);
+        Assert.NotNull(episode);
+        Assert.Equal(1, slots.ActiveSlots(user));
+    }
+
+    [Fact]
+    public void RetrySameItem_StaleHls_Superseded()
+    {
+        var time = new ManualTimeProvider();
+        var slots = new StreamSlots(time, () => 1);
+        var user = Guid.NewGuid();
+        var item = Guid.NewGuid();
+        var killed = new List<string>();
+        slots.HlsSuperseded += ids => killed.AddRange(ids);
+        var failed = HlsGrant("failed", user, item, Device);
+        var retry = HlsGrant("retry", user, item, Device);
+        var movie = new SlotOrigin(string.Empty, Device);
+
+        Assert.True(slots.TryTakeHls(failed, 2, 1, out _));
+        time.Advance(StreamSlots.HlsSupersedeAfter + TimeSpan.FromSeconds(1)); // the player quit: no segment request since
+
+        Assert.True(slots.ConversionsFull(Peer, 1)); // the old pre-check refused the retry
+        Assert.False(slots.ConversionsFull(Peer, 1, user, item, movie));
+        Assert.True(slots.CanStart(user, item, Peer, 2, movie));
+        Assert.True(slots.TryTakeHls(retry, 2, 1, out var denial), "refused: " + denial);
+        Assert.Equal(["grant-failed"], killed); // the peer's job of the failed play gets the scoped kill
+        Assert.True(slots.HoldsOwnSlot(retry));
+        Assert.False(slots.HoldsOwnSlot(failed));
+        Assert.Equal(1, slots.ActiveSlots(user));
+    }
+
+    [Fact]
+    public void StreamingSlot_NeverSuperseded()
+    {
+        // Warden 16 M1: one device id cannot run more streams than the limits by starting new ones while the old ones still send.
+        var time = new ManualTimeProvider();
+        var slots = new StreamSlots(time, () => 1);
+        var user = Guid.NewGuid();
+        var movie = new SlotOrigin(string.Empty, Device);
+        using var sending = slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 4, out _, movie); // an open connection: bytes flow
+        Assert.NotNull(sending);
+        time.Advance(StreamSlots.Grace - TimeSpan.FromSeconds(1));
+
+        Assert.Null(slots.TryOpenStatic(user, Guid.NewGuid(), Peer, 4, out var denial, movie));
+        Assert.Equal(SlotDenial.User, denial);
+        Assert.False(slots.CanStart(user, Guid.NewGuid(), Peer, 4, Origin));
+
+        // An HLS stream that still requests segments is not replaced, the same title under another grant included.
+        var hls = new StreamSlots(time, () => 1);
+        var item = Guid.NewGuid();
+        var killed = new List<string>();
+        hls.HlsSuperseded += ids => killed.AddRange(ids);
+        var playing = HlsGrant("playing", user, item, Device);
+        Assert.True(hls.TryTakeHls(playing, 2, 1, out _));
+        time.Advance(StreamSlots.HlsSupersedeAfter - TimeSpan.FromSeconds(1));
+        Assert.True(hls.ConversionsFull(Peer, 1, user, item, movie));
+        Assert.False(hls.TryTakeHls(HlsGrant("second", user, item, Device), 2, 1, out var hlsDenial));
+        Assert.Equal(SlotDenial.User, hlsDenial);
+        Assert.False(hls.TryTakeHls(HlsGrant("third", user, Guid.NewGuid(), Device), 2, 1, out _));
+        Assert.Empty(killed);
+        Assert.True(hls.HoldsOwnSlot(playing));
+    }
+
+    private static Grant HlsGrant(string id, Guid user, Guid item, string device) => new()
+    {
+        GrantId = "grant-" + id,
+        LocalUserId = user,
+        LocalItemId = item,
+        PeerKey = Peer,
+        CallerDeviceId = device,
+        Method = PlayMethod.Transcode,
+        LocalPlaySessionId = "play-" + id,
+        PeerItemId = Guid.NewGuid(),
+        PeerMediaSourceId = Guid.NewGuid(),
+    };
 
     [Fact]
     public void AnotherUsersStreams_AreNeverMovedOn()

@@ -277,6 +277,18 @@ public sealed class StaticStreamHandler : IStaticStreamHandler
                 return new ShoalResult(StatusCodes.Status404NotFound); // K45: an extra copy never falls back to the owner's server
             }
 
+            // 2.9.2 K9 (Pilot 25): the slot goes under the key the grant's books use (Grant.SlotItem), or a stop releases a slot nobody holds and Status
+            // counts the stream for the 2 min Grace. A picked member plays its primary version, so PlaybackInfo made that grant with no version set (the
+            // item itself), not the resolver's set key.
+            if (grant is not null)
+            {
+                slotItem = grant.SlotItem;
+            }
+            else if (member is not null)
+            {
+                slotItem = request.ItemId;
+            }
+
             if (member is not null)
             {
                 peerKey = member.PeerKey;

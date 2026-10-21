@@ -98,8 +98,17 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether images are re-encoded in a child process when it is available (DESIGN v2.6.7; default on).</summary>
     public bool ReencodeImages { get; set; } = true;
 
-    /// <summary>Gets or sets a value indicating whether TV libraries of a friend can be added (DESIGN v2.7; default off until the lab gate T-TV-0 has passed). Off keeps v1 behavior: the picker lists tvshows as coming later.</summary>
-    public bool TvShowsEnabled { get; set; }
+    /// <summary>
+    /// Gets or sets a value indicating whether TV shows from friends are on: always true (owner decision, v2.9.1). Kept only so a config XML that still has the
+    /// element loads; a value set (also false from an old file) is ignored, and it is written as true. No code reads it.
+    /// </summary>
+#pragma warning disable CA1822 // An instance property on purpose: the XML serializer reads and writes it.
+    public bool TvShowsEnabled
+    {
+        get => true;
+        set => _ = value; // ignored: an old file with false must not turn TV off
+    }
+#pragma warning restore CA1822
 
     /// <summary>Gets or sets a value indicating whether episode thumbnails are fetched and stored (DESIGN v2.7.3; default on). Off writes none.</summary>
     public bool TvEpisodeThumbs { get; set; } = true;

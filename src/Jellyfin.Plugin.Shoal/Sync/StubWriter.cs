@@ -85,6 +85,9 @@ public sealed record StubTarget(string StubRoot, string LibraryFolder, PeerEndpo
 {
     /// <summary>Gets a value indicating whether the NFOs leave out genres and studios (Warden 11 L3: a library not visible to everyone).</summary>
     public bool OmitFacets { get; init; }
+
+    /// <summary>Gets the friend the NFO plot label names (2.9.2 K4: <see cref="State.PeerState.ShownName"/>), or null for the generic label.</summary>
+    public string? FriendName { get; init; }
 }
 
 /// <summary>
@@ -167,7 +170,7 @@ public sealed class StubWriter
                 return StubWriteResult.Exists; // the name was free in the catalog, but something is on disk: the caller picks another
             }
 
-            var nfo = NfoWriter.Write(target.OmitFacets ? movie with { Genres = [], Studios = [] } : movie, target.Peer.DisplayName, target.ExtraTags);
+            var nfo = NfoWriter.Write(target.OmitFacets ? movie with { Genres = [], Studios = [] } : movie, target.Peer.DisplayName, target.ExtraTags, target.FriendName);
             var strm = Encoding.UTF8.GetBytes(StubSentinel.Content(stubKey));
             if (!quota.TryReserve(nfo.Length + strm.Length))
             {
@@ -249,7 +252,7 @@ public sealed class StubWriter
 
             var name = stubRelPath.Split('/')[0];
             var nfoPath = Path.Combine(folder, name + ".nfo");
-            var nfo = NfoWriter.Write(target.OmitFacets ? movie with { Genres = [], Studios = [] } : movie, target.Peer.DisplayName, target.ExtraTags);
+            var nfo = NfoWriter.Write(target.OmitFacets ? movie with { Genres = [], Studios = [] } : movie, target.Peer.DisplayName, target.ExtraTags, target.FriendName);
             var existing = File.Exists(nfoPath) ? await File.ReadAllBytesAsync(nfoPath, cancellationToken).ConfigureAwait(false) : null;
             var changed = false;
 

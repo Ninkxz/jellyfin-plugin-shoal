@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,6 +10,7 @@ using Jellyfin.Plugin.Shoal.Pairing;
 using Jellyfin.Plugin.Shoal.Peers;
 using Jellyfin.Plugin.Shoal.Security;
 using Jellyfin.Plugin.Shoal.State;
+using Jellyfin.Plugin.Shoal.Sync;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -396,6 +398,65 @@ public sealed class AdminPeerUpdateTests : IClassFixture<TlsPeerFixture>
             AdminTestSupport.Body(await PutAsync(controller, """{"tlsPinned":false}"""));
             Assert.Null(rig.State.Current.Home.Peers[0].TlsSpkiPin);
             Assert.Equal(PeerStatus.Offline, rig.Registry.StatusOf(StateSamples.PeerKeyA));
+        }
+    }
+
+    /// <summary>
+    /// 2.9.2 K7: renaming a friend (alias) relabels the database items at once: the overview label and the "Shared by" studio name the new alias,
+    /// clearing the alias goes back to the friend's own name, and a save that does not change the shown name starts no relabel.
+    /// </summary>
+    [Fact]
+    public async Task AliasChange_RelabelsItems()
+    {
+        var (rig, _, index, items, enricher) = await FriendLabelTests.EnricherRigAsync();
+        await using (rig)
+        {
+            using (index)
+            {
+                var stub = Guid.NewGuid();
+                items.Items[stub] = (Path.Combine(rig.LibraryFolder, "M (2000)", "M (2000).strm"), "A film.", ["Shoal"]);
+                Assert.Equal(1, await enricher.ApplyLabelsAsync());
+                Assert.StartsWith("From Hops's server. ", items.Items[stub].Overview, StringComparison.Ordinal);
+                Assert.Equal(["Shared by Hops"], items.Studios[stub]);
+
+                await rig.State.UpdateAsync(static s => s.Home.Peers[0].BaseUrl = "http://hops.tail1234.ts.net:8096"); // the rig's loopback URL is not a valid Tailnet address
+                var secrets = new MemorySecretStore();
+                var gate = new Gate(false);
+                var libraries = new FakeLibraries();
+                AdminPeerSettingsController Controller() => new(
+                    rig.State,
+                    new PeerDirectory(rig.State, secrets),
+                    rig.Client,
+                    rig.Registry,
+                    new PeerAddressService(rig.State, secrets, rig.Registry, gate),
+                    secrets,
+                    new Jellyfin.Plugin.Shoal.Visibility.ShoalLibraryService(rig.State, libraries, new Jellyfin.Plugin.Shoal.Visibility.VisibilityService(rig.State, libraries, new FakeAccounts(), rig.Time, NullLogger<Jellyfin.Plugin.Shoal.Visibility.VisibilityService>.Instance), rig.Time, NullLogger<Jellyfin.Plugin.Shoal.Visibility.ShoalLibraryService>.Instance),
+                    rig.Paths,
+                    NullLogger<AdminPeerSettingsController>.Instance,
+                    gate,
+                    enricher: enricher)
+                {
+                    ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+                };
+
+                var renamed = Controller();
+                AdminTestSupport.Body(await PutAsync(renamed, """{"alias":"Brew"}""", SyncRig.PeerKey));
+                await renamed.Relabelling!;
+                Assert.Equal("From Brew's server. May buffer or be unavailable sometimes. If it won't play, try again later.\n\nA film.", items.Items[stub].Overview);
+                Assert.Equal(["Shared by Brew"], items.Studios[stub]);
+                Assert.Equal(2, items.Saves);
+
+                var unchanged = Controller();
+                AdminTestSupport.Body(await PutAsync(unchanged, """{"alias":"Brew","priority":5}""", SyncRig.PeerKey));
+                Assert.Null(unchanged.Relabelling); // same shown name: nothing to relabel
+                Assert.Equal(2, items.Saves);
+
+                var cleared = Controller();
+                AdminTestSupport.Body(await PutAsync(cleared, """{"alias":""}""", SyncRig.PeerKey));
+                await cleared.Relabelling!;
+                Assert.StartsWith("From Hops's server. ", items.Items[stub].Overview, StringComparison.Ordinal);
+                Assert.Equal(["Shared by Hops"], items.Studios[stub]);
+            }
         }
     }
 }

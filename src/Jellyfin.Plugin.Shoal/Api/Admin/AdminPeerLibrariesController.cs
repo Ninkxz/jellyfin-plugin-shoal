@@ -54,7 +54,7 @@ public class AdminPeerLibrariesController : ControllerBase
     /// <param name="live">The live status (starts the first sync).</param>
     /// <param name="logger">The logger.</param>
     /// <param name="stubRoots">Sets the default stub root when none is set, so a fresh install can add a library; none means the 409 stands.</param>
-    /// <param name="settings">The plugin toggles (<c>TvShowsEnabled</c> decides whether a TV library can be picked), or null for off.</param>
+    /// <param name="settings">The plugin toggles (other toggles; TV libraries are always pickable since v2.9.1), or null.</param>
     public AdminPeerLibrariesController(IStateStore state, IPeerEndpoints peers, PeerCatalogReader reader, ShoalLibraryService libraries, AccessService access, CatalogStore catalogs, IPeerLiveStatus live, ILogger<AdminPeerLibrariesController> logger, StubRootInitializer? stubRoots = null, ISettingsAccessor? settings = null)
     {
         _stubRoots = stubRoots;
@@ -74,7 +74,7 @@ public class AdminPeerLibrariesController : ControllerBase
     /// </summary>
     /// <param name="remoteId">The library's id on the friend's server.</param>
     /// <returns>The key (letters and digits).</returns>
-    public static string KeyOf(Guid remoteId) => "r" + remoteId.ToString("N")[..16];
+    public static string KeyOf(Guid remoteId) => SyncRun.MappingKeyOf(remoteId);
 
     /// <summary>
     /// Lists the libraries the share user can see on a friend's server.
@@ -100,9 +100,15 @@ public class AdminPeerLibrariesController : ControllerBase
 
         try
         {
-            var views = await _reader.ViewsAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            // 2.9.2 K2: only what the share includes; an unknown scope (or a share account that may open everything) lists nothing.
+            var shared = await _reader.SharedViewsAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            if (!shared.ScopeKnown)
+            {
+                return AdminReply.Error(StatusCodes.Status409Conflict, "shareScopeUnknown");
+            }
+
             var result = new List<RemoteLibraryDto>();
-            foreach (var view in views.Take(MaxViews))
+            foreach (var view in shared.Views.Take(MaxViews))
             {
                 var key = KeyOf(view.Id);
                 var selectable = CanPick(view);
@@ -171,7 +177,13 @@ public class AdminPeerLibrariesController : ControllerBase
         IReadOnlyList<PeerView> views;
         try
         {
-            views = await _reader.ViewsAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            var shared = await _reader.SharedViewsAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            if (!shared.ScopeKnown)
+            {
+                return AdminReply.Error(StatusCodes.Status409Conflict, "shareScopeUnknown"); // 2.9.2 K2: fails closed, nothing is added
+            }
+
+            views = shared.Views; // a key outside the share is an unknownLibrary below
         }
         catch (PeerCallException ex)
         {
@@ -229,6 +241,7 @@ public class AdminPeerLibrariesController : ControllerBase
                     added);
             }
 
+            RememberLibraryId(handle, key, view.Id);
             if (created.SharedLibKey is { } sharedKey)
             {
                 // K44: the titles went into a shared library; who sees it is that library's setting (Layouts screen), never changed from one friend's wizard.
@@ -252,6 +265,7 @@ public class AdminPeerLibrariesController : ControllerBase
                 {
                     await _libraries.RemoveAsync(handle, key, cancellationToken).ConfigureAwait(false);
                     await ForgetMappingAsync(handle, key, cancellationToken).ConfigureAwait(false);
+                    ForgetCatalog(handle, key);
                     return Partial(StatusCodes.Status400BadRequest, set.Error == AccessError.AcknowledgementRequired ? "acknowledgementRequired" : "unknownUser", added);
                 }
             }
@@ -277,6 +291,12 @@ public class AdminPeerLibrariesController : ControllerBase
         if (_state.Status != StateStatus.Ready)
         {
             return AdminReply.Error(StatusCodes.Status409Conflict, "recovery");
+        }
+
+        // Pilot 19 D1: the page lists libraries by the composite id (AdminLibraryView.Compose, "<handle>.<mappingKey>"); accept it for this server only.
+        if (mappingKey.StartsWith(handle + ".", StringComparison.Ordinal))
+        {
+            mappingKey = mappingKey[(handle.Length + 1)..];
         }
 
         var peer = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == handle);
@@ -333,8 +353,8 @@ public class AdminPeerLibrariesController : ControllerBase
 
     private static bool IsTv(PeerView view) => string.Equals(view.CollectionType, "tvshows", StringComparison.Ordinal);
 
-    // A movie library always; a TV library only while TvShowsEnabled is on (DESIGN v2.7.6). Mixed or untyped views are never pickable.
-    private bool CanPick(PeerView view) => IsMovies(view) || (IsTv(view) && _settings?.Current.TvShowsEnabled == true);
+    // A movie or TV library (TV always on since v2.9.1). Mixed or untyped views are never pickable.
+    private static bool CanPick(PeerView view) => IsMovies(view) || IsTv(view);
 
     private static string TypeWord(string collectionType) => collectionType switch
     {
@@ -377,6 +397,36 @@ public class AdminPeerLibrariesController : ControllerBase
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning("The catalog of a removed library could not be cleaned ({Error})", ex.GetType().Name);
+        }
+    }
+
+    // 2.9.2 K1: the picked library's id is stored at Add, so the first sync follows exactly what the admin ticked (the key also encodes it).
+    private void RememberLibraryId(string handle, string mappingKey, Guid peerLibraryId)
+    {
+        try
+        {
+            var load = _catalogs.Load(handle);
+            if (load.Unreadable)
+            {
+                return;
+            }
+
+            var id = peerLibraryId.ToString("N");
+            var known = load.Document.Libraries.FirstOrDefault(l => l.MappingKey == mappingKey);
+            if (known is null)
+            {
+                load.Document.Libraries.Add(new CatalogLibrary { MappingKey = mappingKey, PeerLibraryId = id });
+            }
+            else
+            {
+                known.PeerLibraryId = id;
+            }
+
+            _catalogs.Save(load.Document);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning("The id of an added library could not be stored ({Error})", ex.GetType().Name);
         }
     }
 

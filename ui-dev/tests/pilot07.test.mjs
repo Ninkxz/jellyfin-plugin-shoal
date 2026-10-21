@@ -187,7 +187,7 @@ test('Pilot 08 N5: a pairing whose server is gone says so and offers Start over,
 });
 
 test('Pilot 08 D14 and N2: a TV library is counted as series and episodes, the same way in the picker', async () => {
-    const p = await page({ view: 'server', id: 'h-hops' }, { tvShows: true });
+    const p = await page({ view: 'server', id: 'h-hops' });
     try {
         buttonIn(p.page, 'Add another library').click();
         await p.wait(250);
@@ -210,10 +210,11 @@ test('Pilot 08 D12: saving Settings shows a message you can see', async () => {
     }
 });
 
-test('Pilot 08 N10 and N8: the TV help says it controls syncing, and the offline hours say what the number means', async () => {
+// N10's TV switch is gone (owner, v2.9.1: TV shows from friends are always on); its help line went with it.
+test('Pilot 08 N8: the offline hours say what the number means; the old TV switch help is gone', async () => {
     const p = await page({ view: 'settings' });
     try {
-        assert.match(p.text(), /It controls what Shoal syncs, not what Jellyfin already shows./);
+        assert.doesNotMatch(p.text(), /It controls what Shoal syncs, not what Jellyfin already shows./);
         assert.match(p.text(), /For example 72 for three days. Use 0.5 for half an hour./);
         assert.doesNotMatch(p.text(), /(0.5 is half an hour)/);
     } finally {

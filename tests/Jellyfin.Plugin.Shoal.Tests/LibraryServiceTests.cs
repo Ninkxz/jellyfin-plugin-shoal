@@ -547,6 +547,26 @@ public sealed class LibraryServiceTests
     }
 
     [Fact]
+    public async Task Warden14_ANewFriendJoiningAMainLibrary_NamesOnlyAccountsThatCanOpenTheMainLibrary()
+    {
+        using var rig = new LayoutRig(LayoutPreset.CombineIntoMine);
+        var main = await rig.Layout.CreateAsync(new LibraryCreateRequest("Friends in Movies", "movies", LibraryPlacement.Main, rig.Main.Id), rig.Admin.Id);
+        Assert.True(main.Ok);
+        await rig.State.UpdateAsync(s =>
+        {
+            s.Home.Libraries.First(l => l.LibKey == main.LibKey).Access = new LibraryAccess { Mode = AccessMode.Everyone };
+            s.Home.Layout.DefaultTargets["movies"] = main.LibKey!;
+        });
+        rig.Accounts.Edit(rig.Bob.Id, all: false, folders: []); // Everyone admits Bob, but Movies is not on his list
+
+        var added = await rig.Libs.CreateAsync(LayoutRig.PeerA, "movies-1", rig.Admin.Id);
+
+        Assert.Equal(main.LibKey, added.SharedLibKey);
+        Assert.Contains(rig.Alice.Id, added.Gained!.Users); // "all libraries"
+        Assert.DoesNotContain(rig.Bob.Id, added.Gained.Users);
+    }
+
+    [Fact]
     public async Task W10M1_ANewFriendJoiningAnEveryoneLibrary_IsNotBlocked_AndTheAnswerNamesWhoSeesItsTitles()
     {
         using var rig = new LayoutRig(LayoutPreset.AllMixed);

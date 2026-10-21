@@ -66,6 +66,7 @@ public sealed class PlaybackInfoTests : IClassFixture<PlaybackFixture>, IAsyncLi
         P.Registry.RecordPinVerified(H.World.PeerKey);
         P.Devices.Profiles.Clear();
         P.Notice.Notices.Clear();
+        P.Notice.Busies.Clear();
         P.Admins.Messages.Clear();
         P.HlsSubtitles = true;
         P.Limits = new BitrateLimits(0, null);
@@ -693,6 +694,43 @@ public sealed class PlaybackInfoTests : IClassFixture<PlaybackFixture>, IAsyncLi
         Assert.Equal("NotAllowed", (string?)(await ReadAsync(response))["ErrorCode"]);
     }
 
+    [Fact]
+    public async Task StaleAuth_StreamRightAfterPlaybackInfo_IsServed()
+    {
+        // 2.9.2 K8 (H1): the pin and the token window both lapsed. PlaybackInfo refreshes the pin, which uses up PeerTrust's one on-demand
+        // refresh per 10 s; the stream a moment later needs PinAndAuthFresh. The PlaybackInfo 200 must count as the auth check, or that stream is a 503.
+        P.Registry.Invalidate(H.World.PeerKey);
+        H.Peer.PublicInfo = new Reply(0);
+        H.Peer.StreamFileSize = 1_000;
+        H.Peer.StreamContentType = "video/x-matroska";
+        H.Peer.StreamOverride = null;
+        var calls = PeerPlaybackCalls();
+
+        using var info = await PostAsync("{}");
+        Assert.Equal(HttpStatusCode.OK, info.StatusCode);
+        Assert.Equal(calls + 1, PeerPlaybackCalls()); // the peer answered, not the offline card
+        Assert.NotNull(P.Registry.AuthVerifiedUtc(H.World.PeerKey));
+
+        using var stream = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, $"/Videos/{LocalItem}/stream?Static=true&MediaSourceId={LocalItem}", r => r.Headers.TryAddWithoutValidation("Range", "bytes=0-9"));
+
+        Assert.Equal(HttpStatusCode.PartialContent, stream.StatusCode);
+        Assert.Empty(P.Notice.Notices);
+    }
+
+    [Fact]
+    public async Task ARefusedPlaybackInfo_RecordsNoAuthCheck()
+    {
+        // The pin stays fresh, so no on-demand refresh is spent (PeerTrust's 10 s limit is shared by every test of this class).
+        P.Registry.Invalidate(H.World.PeerKey);
+        P.Registry.RecordPinVerified(H.World.PeerKey);
+        H.Peer.PlaybackInfoReply = (_, _) => new Reply(500, "no");
+
+        using var response = await PostAsync("{}");
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Null(P.Registry.AuthVerifiedUtc(H.World.PeerKey));
+    }
+
     [Theory]
     [InlineData("not json at all")]
     [InlineData("[]")]
@@ -905,6 +943,121 @@ public sealed class PlaybackInfoTests : IClassFixture<PlaybackFixture>, IAsyncLi
 
         Assert.Single(P.Grants.ForUser(MatrixWorld.Admin)); // the Smart-TV storm: five calls replace each other
         Assert.Empty(P.Slots.Holding);
+    }
+
+    [Fact]
+    public async Task SlotRefusal_SendsBusyNotice_WithReason()
+    {
+        var peerKey = H.World.PeerKey;
+        var shown = H.State.Current.Home.Peers.Single(p => p.PeerKey == peerKey).ShownName();
+        var maxStreams = P.MaxStreams;
+        try
+        {
+            // a play that is served sends nothing
+            using (var served = await PostAsync("{}"))
+            {
+                Assert.Null((string?)(await ReadAsync(served))["ErrorCode"]);
+            }
+
+            Assert.Empty(P.Notice.Busies);
+
+            // the user's own limit: two titles playing, MaxStreamsPerUser 2
+            P.MaxStreams = 2;
+            using (P.StreamSlots.TryOpenStatic(MatrixWorld.Admin, Guid.NewGuid(), peerKey, 8, out _)!)
+            using (P.StreamSlots.TryOpenStatic(MatrixWorld.Admin, Guid.NewGuid(), peerKey, 8, out _)!)
+            {
+                using var mine = await PostAsync("{}");
+                Assert.Equal("RateLimitExceeded", (string?)(await ReadAsync(mine))["ErrorCode"]);
+            }
+
+            var user = Assert.Single(P.Notice.Busies);
+            Assert.Equal((MatrixWorld.Admin, peerKey, shown, BusyReason.UserStreams, 2), user);
+            Assert.Equal("You're already playing 2 titles. Stop one, then try again.", BusyNotice.Text(user.Reason, shown, user.Playing));
+            P.Notice.Busies.Clear();
+            P.Time.Advance(StreamSlots.Grace + TimeSpan.FromSeconds(1)); // a closed stream keeps its slot for the grace time
+
+            // the friend's server is full: two other users hold its four streams, the caller plays nothing
+            P.MaxStreams = 4;
+            var a = Guid.NewGuid();
+            var b = Guid.NewGuid();
+            using (P.StreamSlots.TryOpenStatic(a, Guid.NewGuid(), peerKey, 4, out _)!)
+            using (P.StreamSlots.TryOpenStatic(a, Guid.NewGuid(), peerKey, 4, out _)!)
+            using (P.StreamSlots.TryOpenStatic(b, Guid.NewGuid(), peerKey, 4, out _)!)
+            using (P.StreamSlots.TryOpenStatic(b, Guid.NewGuid(), peerKey, 4, out _)!)
+            {
+                using var full = await PostAsync("{}");
+                Assert.Equal("RateLimitExceeded", (string?)(await ReadAsync(full))["ErrorCode"]);
+            }
+
+            var peer = Assert.Single(P.Notice.Busies);
+            Assert.Equal((MatrixWorld.Admin, peerKey, shown, BusyReason.PeerStreams, 0), peer);
+            Assert.Equal(shown + "'s server is sending as much as it can right now. Try again in a minute.", BusyNotice.Text(peer.Reason, shown, 0));
+            P.Notice.Busies.Clear();
+            P.Time.Advance(StreamSlots.Grace + TimeSpan.FromSeconds(1)); // a closed stream keeps its slot for the grace time
+
+            // too many tries in a row: the bucket of 15 runs dry
+            for (var i = 0; i < 16; i++)
+            {
+                using var tried = await PostAsync("{}");
+            }
+
+            Assert.Contains(P.Notice.Busies, n => n.Reason == BusyReason.TooFast && n.User == MatrixWorld.Admin);
+        }
+        finally
+        {
+            P.MaxStreams = maxStreams;
+            P.Notice.Busies.Clear();
+        }
+    }
+
+    [Fact]
+    public async Task RetrySameItem_StaleHls_NotRefusedAtPlaybackInfo()
+    {
+        await H.State.UpdateAsync(s => s.Home.Peers[0].MaxConcurrentTranscodes = 1);
+        var url = $"/videos/{PeerItemN}/master.m3u8?DeviceId=abc&MediaSourceId={PeerSourceN}&VideoCodec=h264&ApiKey={PeerToken}";
+        H.Peer.PlaybackInfoReply = (_, _) => Reply.Json(TranscodeAnswer(url));
+        using (var first = await PostAsync("{}"))
+        {
+            Assert.Null((string?)(await ReadAsync(first))["ErrorCode"]);
+        }
+
+        var grant = P.Grants.ForUser(MatrixWorld.Admin).Single();
+        Assert.Equal(PlayMethod.Transcode, grant.Method);
+        Assert.False(string.IsNullOrEmpty(grant.CallerDeviceId));
+        Assert.True(P.StreamSlots.TryTakeHls(grant, 4, 1, out _)); // the peer's one conversion
+
+        // still sending: the retry is refused, and the user reads why
+        using (var busy = await PostAsync("{}"))
+        {
+            Assert.Equal("RateLimitExceeded", (string?)(await ReadAsync(busy))["ErrorCode"]);
+        }
+
+        Assert.Equal(BusyReason.Conversions, Assert.Single(P.Notice.Busies).Reason);
+
+        // quiet for 10 s: the same device moved on, so the pre-check lets the retry through (K10's rule, as at the first segment)
+        P.Time.Advance(StreamSlots.HlsSupersedeAfter + TimeSpan.FromSeconds(1));
+        using (var retry = await PostAsync("{}"))
+        {
+            Assert.Null((string?)(await ReadAsync(retry))["ErrorCode"]);
+        }
+
+        Assert.Single(P.Notice.Busies);
+        P.StreamSlots.ReleaseHls(grant.GrantId);
+    }
+
+    [Fact]
+    public void BusyNotice_Texts_HaveNoDashes()
+    {
+        foreach (var reason in Enum.GetValues<BusyReason>())
+        {
+            var text = BusyNotice.Text(reason, "Hops", 3);
+            Assert.DoesNotContain('-', text);
+            Assert.DoesNotContain((char)0x2013, text); // en dash
+            Assert.DoesNotContain((char)0x2014, text); // em dash
+        }
+
+        Assert.Equal("Too many tries in a row. Wait a minute, then try again.", BusyNotice.Text(BusyReason.TooFast, "Hops", 0));
+        Assert.Equal("Hops's server is converting as many videos as it can right now. Try again in a minute.", BusyNotice.Text(BusyReason.Conversions, "Hops", 0));
     }
 
     [Fact]

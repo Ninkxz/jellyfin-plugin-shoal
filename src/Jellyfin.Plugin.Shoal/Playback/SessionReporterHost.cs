@@ -4,6 +4,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.Shoal.Authorization;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using Microsoft.Extensions.Hosting;
@@ -63,8 +64,11 @@ public sealed class SessionReporterHost : IHostedService, IAsyncDisposable
         _stop.Dispose();
     }
 
-    private static PlaybackNote? Note(PlaybackProgressEventArgs e) =>
-        e.Users is { Count: > 0 } users ? new PlaybackNote(users[0].Id, e.PlaySessionId, e.PlaybackPositionTicks, e.IsPaused) : null;
+    // 2.9.2 K9: the item and device go along, because jellyfin-web reports a direct play with PlaySessionId "" (PeerSessionReporter.FindMine).
+    internal static PlaybackNote? Note(PlaybackProgressEventArgs e) =>
+        e.Users is { Count: > 0 } users
+            ? new PlaybackNote(users[0].Id, e.PlaySessionId, e.PlaybackPositionTicks, e.IsPaused, e.Item?.Id ?? e.MediaInfo?.Id ?? Guid.Empty, string.IsNullOrEmpty(e.DeviceId) ? null : DeviceKey.Cap(e.DeviceId))
+            : null;
 
     private void OnStart(object? sender, PlaybackProgressEventArgs e)
     {

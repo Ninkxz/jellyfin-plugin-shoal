@@ -107,7 +107,7 @@ public static class StubInspector
         }
     }
 
-    // The label as the NFO writer wrote it, its apostrophe plain or escaped.
+    // The label as the NFO writer wrote it, its apostrophe plain or escaped. 2.9.2 K4: any friend's name, so the shared tail is what is looked for.
     private static bool HasLabel(string nfo) =>
-        nfo.Contains(FriendLabel.Text, StringComparison.Ordinal) || nfo.Contains(FriendLabel.Text.Replace("'", "&apos;", StringComparison.Ordinal), StringComparison.Ordinal) || nfo.Contains(FriendLabel.Text.Replace("'", "&#39;", StringComparison.Ordinal), StringComparison.Ordinal);
+        nfo.Contains(FriendLabel.Tail, StringComparison.Ordinal) || nfo.Contains(FriendLabel.Tail.Replace("'", "&apos;", StringComparison.Ordinal), StringComparison.Ordinal) || nfo.Contains(FriendLabel.Tail.Replace("'", "&#39;", StringComparison.Ordinal), StringComparison.Ordinal);
 }

@@ -25,6 +25,9 @@ internal sealed class PolicyWire
 
     public bool? EnableAllFolders { get; set; }
 
+    /// <summary>Gets or sets the library ids the account may open (Pilot 21 G1: the <c>/UserViews</c> ids in N form; may hold ids of deleted libraries).</summary>
+    public List<string>? EnabledFolders { get; set; }
+
     public bool? EnableContentDeletion { get; set; }
 
     public bool? EnableContentDownloading { get; set; }

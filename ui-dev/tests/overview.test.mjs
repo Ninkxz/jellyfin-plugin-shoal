@@ -408,6 +408,38 @@ test('Sync now posts once, announces, and a repeat is answered with a cooldown (
     }
 });
 
+test('SKIPPED-INVISIBLE: a skipped Sync now is announced as skipped, never "Sync finished" with the old counts, and the Overview shows it next to the last real sync', async () => {
+    const p = await overview('default', { syncSkipReason: 'tooSoon' });
+    try {
+        p.page.querySelector('[data-action="sync-all"]').click();
+        await p.wait(4200);
+        document.dispatchEvent(new Event('visibilitychange'));
+        await p.wait(300);
+        const live = p.page.querySelector('[data-slot="live"]').textContent;
+        assert.doesNotMatch(live, /Sync finished/);
+        assert.match(live, /Sync now skipped this time for/);
+        const line = p.page.querySelector('[data-slot="lastsync"]').textContent;
+        assert.match(line, /Last sync \d+ min ago/, 'the real time stays: ' + line);
+        assert.match(line, /Sync now skipped this time just now\. Shoal synced this server a few minutes ago\. Last real sync: OK\./);
+    } finally {
+        p.close();
+    }
+});
+
+test('SKIPPED-INVISIBLE: a Sync now that ran still says "Sync finished" and shows no skip', async () => {
+    const p = await overview('default');
+    try {
+        p.page.querySelector('[data-action="sync-all"]').click();
+        await p.wait(4200);
+        document.dispatchEvent(new Event('visibilitychange'));
+        await p.wait(300);
+        assert.match(p.page.querySelector('[data-slot="live"]').textContent, /Sync finished/);
+        assert.equal(p.page.querySelector('[data-slot="lastsync"] [data-slot="skipped"]'), null);
+    } finally {
+        p.close();
+    }
+});
+
 test('a failed load shows one generic sentence and never a server message', async () => {
     const p = await overview('error');
     try {

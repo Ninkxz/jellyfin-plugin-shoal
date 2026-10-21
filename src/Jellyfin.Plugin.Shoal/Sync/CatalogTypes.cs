@@ -167,6 +167,30 @@ public sealed class CatalogUsage
 }
 
 /// <summary>
+/// A movie the new-items guard holds back (2.9.2 K3): what the "N new titles on hold" alert names and the libraries list counts.
+/// </summary>
+public sealed class HeldAddition
+{
+    /// <summary>The longest title kept.</summary>
+    public const int TitleMax = 200;
+
+    /// <summary>Gets or sets the peer's item id (32 hex characters).</summary>
+    public string PeerItemId { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the mapping key of the library.</summary>
+    public string MappingKey { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the sanitized title, or empty.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the year, or null.</summary>
+    public int? Year { get; set; }
+
+    /// <summary>Gets or sets what the title is.</summary>
+    public EntryKind Kind { get; set; } = EntryKind.Movie;
+}
+
+/// <summary>
 /// A series whose new episodes are held by the new-items guard. The key is random and Home's own: the admin page names the group by it, never by a peer id.
 /// </summary>
 public sealed class HeldSeries
@@ -500,6 +524,13 @@ public sealed class CatalogDocument
     /// </summary>
     public bool AlternateVersionsApplied { get; set; }
 
+    /// <summary>
+    /// Gets or sets the friend name (<see cref="Jellyfin.Plugin.Shoal.State.PeerState.ShownName"/>) the labels of this catalog were last stamped with (2.9.2 K7), or null in an older
+    /// file. When the shown name differs at the start of a sync (an alias rename, or the friend renamed their server), every entry's
+    /// <see cref="CatalogEntry.LabelVersion"/> is cleared, so each NFO is rewritten once with the new name, inside the sync budget.
+    /// </summary>
+    public string? LabelName { get; set; }
+
     /// <summary>Gets or sets the mapped libraries.</summary>
     public List<CatalogLibrary> Libraries { get; set; } = [];
 
@@ -511,6 +542,9 @@ public sealed class CatalogDocument
 
     /// <summary>Gets or sets the peer item ids whose addition is held back.</summary>
     public List<string> HeldAdditions { get; set; } = [];
+
+    /// <summary>Gets or sets what each held movie addition is (2.9.2 K3): its title for the alert examples and its mapping for the per-library count. Only ids still in <see cref="HeldAdditions"/> are kept; TV uses <see cref="HeldSeries"/>.</summary>
+    public List<HeldAddition> HeldAdditionInfo { get; set; } = [];
 
     /// <summary>Gets or sets the peer item ids (series and episodes of TV libraries) whose addition is held back. Apart from <see cref="HeldAdditions"/>, which the movie sync prunes against its own listing.</summary>
     public List<string> TvHeldAdditions { get; set; } = [];

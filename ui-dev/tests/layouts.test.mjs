@@ -980,3 +980,44 @@ test('Combine: no TV library of their own says friends\' shows stay where they a
         p.close();
     }
 });
+
+// Warden 13 L5/L6 (docs/kiro-v2.9-13.md): a Main record whose main library no longer holds its folder, and Combine targets that can rewrite friends' titles.
+test('L5: a missing main library is named on its Main row (by the Shoal library name), and above the list when no row matches', async () => {
+    const p = await layouts({ mainTarget: true, mainsMissing: ['Friends in Movies', 'Gone Library'] });
+    try {
+        const onRow = [...row(p, 'Friends in Movies').querySelectorAll('.shoal-warnbox--missing')].map((n) => n.textContent);
+        assert.deepEqual(onRow, ["Friends in Movies was added into one of your libraries, but that library no longer holds it, so its titles show nowhere. The library may have been removed or renamed in Jellyfin (Dashboard, Libraries). Delete Friends in Movies here, or pick another layout."]);
+        const above = [...p.page.querySelectorAll('.shoal-warnbox--missing')].filter((n) => !n.closest('.shoal-lib'));
+        assert.equal(above.length, 1);
+        assert.match(above[0].textContent, /^Gone Library was added into one of your libraries/);
+        assert.equal(row(p, 'Shoal Movies').querySelector('.shoal-warnbox--missing'), null);
+    } finally {
+        p.close();
+    }
+
+    const q = await layouts();
+    try {
+        assert.equal(q.page.querySelectorAll('.shoal-warnbox--missing').length, 0);
+    } finally {
+        q.close();
+    }
+});
+
+test('L6: the Combine preview names each chosen library that can rewrite friends\' titles, once, next to the NFO line', async () => {
+    const p = await layouts({ combine: 'many' });
+    try {
+        buttonIn(MIX(p), 'Preview').click();
+        await p.wait(80);
+        assert.equal(p.page.querySelectorAll('.shoal-warnbox--rewrites').length, 0, 'nothing chosen yet');
+        const select = p.page.querySelector('.shoal-preview select');
+        select.value = '0';
+        select.dispatchEvent(new window.Event('change', { bubbles: true }));
+        await p.wait(100);
+        const notes = [...p.page.querySelectorAll('.shoal-preview .shoal-warnbox--rewrites')].map((n) => n.textContent);
+        assert.deepEqual(notes, ["Friends' titles in Movies can be rewritten by that library's metadata downloaders and NFO saver. They stay hidden from people you have not picked only through Shoal's hidden tag, which Shoal puts back after each sync. Turn off internet metadata and the NFO saver for Movies in Jellyfin (Dashboard, Libraries) to keep friends' titles as they are."]);
+        assert.equal(p.page.querySelectorAll('.shoal-preview .shoal-warnbox--nfo').length, 1, 'the NFO line stays');
+        assert.match(p.page.querySelector('.shoal-preview').textContent, /Everyone who can open that library will see these titles/, 'the placement warning stays');
+    } finally {
+        p.close();
+    }
+});

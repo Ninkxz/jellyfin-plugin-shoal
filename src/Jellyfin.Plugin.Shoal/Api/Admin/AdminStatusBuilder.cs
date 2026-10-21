@@ -85,7 +85,7 @@ internal static class AdminStatusBuilder
             OfflineSinceUtc = info.OfflineSinceUtc,
             NextCheckUtc = info.NextCheckUtc,
             Syncing = info.Syncing,
-            LastSync = info.LastSync is { } sync ? new SyncInfoDto(sync.AtUtc, sync.Result, sync.Added, sync.Removed) : null,
+            LastSync = SyncInfoDto.From(info.LastSync),
             TitleCount = info.TitleCount,
             HiddenByDedup = info.HiddenByDedup,
             DedupWinner = info.DedupWinner,

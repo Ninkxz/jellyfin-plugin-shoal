@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.Shoal.Registrations;
 
 /// <summary>
 /// The TV sync engine (DESIGN v2.7.2, K36): the peer reader and the planner replace the do-nothing defaults of <see cref="Tv"/>, and the engine that
-/// <see cref="CatalogSyncService"/> calls for TV libraries is built. With <c>TvShowsEnabled</c> off nothing calls it. The sanitizer, layout and NFO writer stay
+/// <see cref="CatalogSyncService"/> calls for TV libraries is built. TV is always on since v2.9.1. The sanitizer, layout and NFO writer stay
 /// whatever K35 registers (the defaults until it lands).
 /// </summary>
 public static class TvSync

@@ -28,7 +28,7 @@ public sealed class TvNfoWriter : ITvNfoWriter
     };
 
     /// <inheritdoc />
-    public string Series(SanitizedSeries series, IReadOnlyList<string> tags)
+    public string Series(SanitizedSeries series, IReadOnlyList<string> tags, string? friendName = null)
     {
         ArgumentNullException.ThrowIfNull(series);
         return Write("tvshow", xml =>
@@ -40,7 +40,7 @@ public sealed class TvNfoWriter : ITvNfoWriter
             Text(xml, "premiered", Date(series.Premiered));
             Text(xml, "enddate", Date(series.EndDate));
             Text(xml, "status", series.Status);
-            Text(xml, "plot", FriendLabel.Apply(series.Overview));
+            Text(xml, "plot", FriendLabel.Apply(series.Overview, friendName is null ? null : [friendName]));
             Text(xml, "mpaa", series.OfficialRating);
             Text(xml, "rating", series.CommunityRating?.ToString("0.0##", CultureInfo.InvariantCulture));
             foreach (var genre in series.Genres)
@@ -48,11 +48,7 @@ public sealed class TvNfoWriter : ITvNfoWriter
                 Text(xml, "genre", genre);
             }
 
-            foreach (var studio in series.Studios)
-            {
-                Text(xml, "studio", studio);
-            }
-
+            Studios(xml, friendName);
             UniqueIds(xml, series.ProviderIds);
             foreach (var actor in series.Actors)
             {
@@ -80,7 +76,7 @@ public sealed class TvNfoWriter : ITvNfoWriter
     }
 
     /// <inheritdoc />
-    public string Episode(SanitizedEpisode episode, IReadOnlyList<string> tags)
+    public string Episode(SanitizedEpisode episode, IReadOnlyList<string> tags, string? friendName = null)
     {
         ArgumentNullException.ThrowIfNull(episode);
         return Write("episodedetails", xml =>
@@ -90,8 +86,9 @@ public sealed class TvNfoWriter : ITvNfoWriter
             xml.WriteElementString("episode", episode.Number.ToString(CultureInfo.InvariantCulture));
             Text(xml, "episodenumberend", episode.NumberEnd?.ToString(CultureInfo.InvariantCulture));
             Text(xml, "aired", Date(episode.Aired));
-            Text(xml, "plot", FriendLabel.Apply(episode.Overview));
+            Text(xml, "plot", FriendLabel.Apply(episode.Overview, friendName is null ? null : [friendName]));
             Text(xml, "rating", episode.CommunityRating?.ToString("0.0##", CultureInfo.InvariantCulture));
+            Studios(xml, friendName);
             Tags(xml, tags);
         });
     }
@@ -118,6 +115,15 @@ public sealed class TvNfoWriter : ITvNfoWriter
         if (!string.IsNullOrEmpty(value))
         {
             xml.WriteElementString(element, value);
+        }
+    }
+
+    // 2.9.2 K5: the friend is the only studio of a series or episode; the peer's studios (networks) are dropped. W1: written whatever OmitFacets says.
+    private static void Studios(XmlWriter xml, string? friendName)
+    {
+        foreach (var studio in FriendLabel.Studios(friendName is null ? null : [friendName]))
+        {
+            Text(xml, "studio", studio);
         }
     }
 

@@ -151,6 +151,93 @@ public sealed class CombineIntoMineTests
     }
 
     [Fact]
+    public async Task Warden13L3_AUserWhoCannotOpenTheMainLibrary_IsReportedAsLosingAccess()
+    {
+        await using var rig = await JobRig.CreateAsync(Seed);
+        var movies = rig.Libraries.AddMain("Movies", "movies");
+        var shoal = rig.Libraries.List().Single(l => l.Name != "Movies"); // the per-friend library Alice opens today
+
+        // Alice is admitted to the friend's titles and has the per-friend library on her list, but not the admin's Movies.
+        rig.Accounts.Edit(rig.Alice.Id, all: false, folders: [shoal.Id]);
+
+        var preview = Presets(rig).Preview(LayoutPreset.CombineIntoMine)!;
+
+        Assert.Equal(movies.Id, preview.Targets.Single().Chosen);
+        Assert.Contains(rig.Alice.Id, preview.UsersLosingAccess);
+        Assert.DoesNotContain(rig.Admin.Id, preview.UsersLosingAccess); // "all libraries" opens Movies
+
+        // Once Movies is on her list she keeps access.
+        rig.Accounts.Edit(rig.Alice.Id, all: false, folders: [shoal.Id, movies.Id]);
+        Assert.DoesNotContain(rig.Alice.Id, Presets(rig).Preview(LayoutPreset.CombineIntoMine)!.UsersLosingAccess);
+    }
+
+    // Warden 14: the friend sits in Friends' movies (All mixed); a placement-Main library in Movies already exists (Everyone) but its stored id is lost.
+    // Alice opens Friends' movies but not Movies; Bob opens nothing. Combine moves the friend into the existing Main library.
+    private static async Task<(LibraryInfo Movies, LayoutPresetService Presets)> ExistingMainWithNoStoredId(JobRig rig)
+    {
+        var movies = rig.Libraries.AddMain("Movies", "movies");
+        Assert.Equal(LayoutJobError.None, await Presets(rig).ApplyAsync(LayoutPreset.AllMixed, rig.Admin.Id, Presets(rig).Preview(LayoutPreset.AllMixed)!.PlanHash));
+        await rig.Job.Running;
+        var mixed = rig.Libraries.List().Single(l => l.Name == LayoutPresetService.MixedMovies);
+        var main = await rig.Layout.CreateAsync(new LibraryCreateRequest("Friends in Movies", "movies", LibraryPlacement.Main, movies.Id), rig.Admin.Id);
+        Assert.True(main.Ok);
+        await rig.State.UpdateAsync(s =>
+        {
+            var library = s.Home.Libraries.First(l => l.LibKey == main.LibKey);
+            library.JellyfinLibraryId = null; // null or stale (Warden 13 L1)
+            library.Access = new LibraryAccess { Mode = AccessMode.Everyone };
+        });
+        rig.Accounts.Edit(rig.Alice.Id, all: false, folders: [mixed.Id]);
+        rig.Accounts.Edit(rig.Bob.Id, all: false, folders: []);
+        return (movies, Presets(rig));
+    }
+
+    [Fact]
+    public async Task Warden14_AnExistingMainTargetWithoutAStoredId_StillChecksWhoCanOpenTheMainLibrary()
+    {
+        await using var rig = await JobRig.CreateAsync(Seed);
+        var (_, presets) = await ExistingMainWithNoStoredId(rig);
+
+        var preview = presets.Preview(LayoutPreset.CombineIntoMine)!;
+
+        Assert.Equal("Friends in Movies", Assert.Single(preview.Moves).To);
+        Assert.Contains(rig.Alice.Id, preview.UsersLosingAccess);
+        Assert.DoesNotContain(rig.Bob.Id, preview.UsersGainingAccess); // Everyone admits Bob, but he cannot open Movies
+    }
+
+    [Fact]
+    public async Task Warden14_TheJobsLostAndGainedAccess_AgreeWithThePreview()
+    {
+        await using var rig = await JobRig.CreateAsync(Seed);
+        var (_, presets) = await ExistingMainWithNoStoredId(rig);
+        var preview = presets.Preview(LayoutPreset.CombineIntoMine)!;
+
+        Assert.Equal(LayoutJobError.None, await presets.ApplyAsync(LayoutPreset.CombineIntoMine, rig.Admin.Id, preview.PlanHash));
+        await rig.Job.Running;
+        var status = rig.Job.Status();
+
+        Assert.Contains(rig.Alice.Id, status.LostAccess);
+        Assert.Equal(preview.UsersLosingAccess.Order(), status.LostAccess.Order());
+        Assert.Equal(preview.UsersGainingAccess.Order(), (status.GainedAccess ?? []).Order());
+    }
+
+    [Fact]
+    public async Task Warden14_UndoFromAMainLibrary_ReportsAUserWhoCouldNotOpenItAsGaining()
+    {
+        await using var rig = await JobRig.CreateAsync(Seed);
+        rig.Libraries.AddMain("Movies", "movies");
+        Assert.Equal(LayoutJobError.None, await Presets(rig).ApplyAsync(LayoutPreset.CombineIntoMine, rig.Admin.Id, Presets(rig).Preview(LayoutPreset.CombineIntoMine)!.PlanHash));
+        await rig.Job.Running;
+        await rig.State.UpdateAsync(s => s.Home.Libraries.Single(l => !l.IsLegacy).JellyfinLibraryId = null);
+        rig.Accounts.Edit(rig.Alice.Id, all: false, folders: []); // admitted by Shoal, but Movies is not on her list: she sees no friend titles today
+
+        var back = Presets(rig).Preview(LayoutPreset.AllMixed)!;
+
+        Assert.Contains(rig.Alice.Id, back.UsersGainingAccess); // Friends' movies is Shoal's own library: she will see it
+        Assert.DoesNotContain(rig.Alice.Id, back.UsersLosingAccess);
+    }
+
+    [Fact]
     public void ANewInstall_StartsWithAllMixed()
     {
         Assert.Equal(LayoutPreset.AllMixed, new ShoalState().Home.Layout.Default);

@@ -24,12 +24,12 @@ public sealed class FriendLabelTests
     [Fact]
     public void TheLabel_IsByteExact_WithTheAsciiApostrophe()
     {
-        Assert.Equal(Label, FriendLabel.Text);
-        var bytes = Encoding.UTF8.GetBytes(FriendLabel.Text);
+        Assert.Equal(Label, FriendLabel.Generic);
+        var bytes = Encoding.UTF8.GetBytes(FriendLabel.Generic);
         Assert.Equal(Encoding.ASCII.GetBytes(Label), bytes); // pure ASCII: no curly quote
         Assert.Equal(2, bytes.Count(static b => b == 0x27));
-        Assert.DoesNotContain(FriendLabel.Text, static c => c > 0x7F);
-        Assert.DoesNotContain('’', FriendLabel.Text);
+        Assert.DoesNotContain(FriendLabel.Generic, static c => c > 0x7F);
+        Assert.DoesNotContain('’', FriendLabel.Generic);
     }
 
     [Theory]
@@ -130,15 +130,15 @@ public sealed class FriendLabelTests
         // An install from before the label: NFO without it, entry at version 0, same etag.
         var nfo = Path.Combine(rig.LibraryFolder, entry.StubRelPath!.Split('/')[0], entry.StubRelPath.Split('/')[0] + ".nfo");
         var labelled = await File.ReadAllTextAsync(nfo);
-        Assert.Contains(Label, labelled, StringComparison.Ordinal);
-        await File.WriteAllTextAsync(nfo, labelled.Replace(Label + "\n\n", string.Empty, StringComparison.Ordinal));
+        Assert.Contains(HopsLabel, labelled, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(nfo, labelled.Replace(HopsLabel + "\n\n", string.Empty, StringComparison.Ordinal));
         var doc = rig.Catalog();
         doc.Entries.Single().LabelVersion = 0;
         rig.Catalogs.Save(doc);
 
         await rig.SyncAsync();
 
-        Assert.Contains(Label, await File.ReadAllTextAsync(nfo), StringComparison.Ordinal);
+        Assert.Contains(HopsLabel, await File.ReadAllTextAsync(nfo), StringComparison.Ordinal);
         Assert.Equal(FriendLabel.Version, rig.Entries.Single().LabelVersion);
 
         var before = File.GetLastWriteTimeUtc(nfo);
@@ -146,11 +146,114 @@ public sealed class FriendLabelTests
         Assert.Equal(before, File.GetLastWriteTimeUtc(nfo)); // once: an up-to-date entry is not rewritten
     }
 
+    // --- 2.9.2 K4: the label names the friend
+
+    private const string Tail = "May buffer or be unavailable sometimes. If it won't play, try again later.";
+
+    private const string HopsLabel = "From Hops's server. " + Tail;
+
+    [Fact]
+    public void OneName()
+    {
+        Assert.Equal("From Hops's server. " + Tail, FriendLabel.Text(["Hops"]));
+        Assert.Equal(HopsLabel + "\n\nA film.", FriendLabel.Apply("A film.", ["Hops"]));
+        Assert.Equal(Label, FriendLabel.Text([]));
+        Assert.Equal(Label, FriendLabel.Text(null));
+        Assert.Equal(Label, FriendLabel.Text(["  ", "<>"])); // names that clean to nothing are no names
+    }
+
+    [Fact]
+    public void TwoNames()
+    {
+        Assert.Equal("From Hops's and Reef's servers. " + Tail, FriendLabel.Text(["Hops", "Reef"]));
+        Assert.Equal("From Hops's server. " + Tail, FriendLabel.Text(["Hops", "Hops"])); // one friend twice is one friend
+    }
+
+    [Fact]
+    public void FourNames_SaysMore()
+    {
+        Assert.Equal("From Hops's, Reef's and 1 more servers. " + Tail, FriendLabel.Text(["Hops", "Reef", "Kelp"]));
+        Assert.Equal("From Hops's, Reef's and 2 more servers. " + Tail, FriendLabel.Text(["Hops", "Reef", "Kelp", "Tide"]));
+    }
+
+    [Fact]
+    public void Names_AreCleanedAndCappedAt40()
+    {
+        Assert.Equal("From Hopsb's server. " + Tail, FriendLabel.Text([" H" + (char)0x202E + "ops<b>\n "]));
+        var label = FriendLabel.Text([new string('n', 100)]);
+        Assert.Equal("From " + new string('n', 40) + "'s server. " + Tail, label);
+    }
+
+    [Theory]
+    [InlineData(Label + "\n\nA film.")]
+    [InlineData(HopsLabel + "\n\nA film.")]
+    [InlineData("From Hops's and Reef's servers. " + Tail + "\n\nA film.")]
+    [InlineData("From Hops's, Reef's and 2 more servers. " + Tail + " A film.")]
+    [InlineData(Label + "\n\n" + HopsLabel + "\n\nA film.")]
+    [InlineData("  " + HopsLabel + HopsLabel + "\n\nA film.")]
+    public void Strip_V1AndV2_Idempotent(string overview)
+    {
+        Assert.Equal("A film.", FriendLabel.Strip(overview));
+        Assert.Equal("A film.", FriendLabel.Strip(FriendLabel.Strip(overview)));
+        var once = FriendLabel.Apply(overview, ["Reef"]);
+        Assert.Equal("From Reef's server. " + Tail + "\n\nA film.", once); // a v1 or an old friend's label is replaced, never doubled
+        Assert.Equal(once, FriendLabel.Apply(once, ["Reef"]));
+    }
+
+    [Fact]
+    public void Strip_LeavesAPlotThatOnlyLooksLikeALabel()
+    {
+        Assert.Equal("From the director of Alien. A film.", FriendLabel.Strip("From the director of Alien. A film."));
+        Assert.Equal("Intro. " + HopsLabel, FriendLabel.Strip("Intro. " + HopsLabel));
+    }
+
+    [Theory]
+    [InlineData("Bob's server. " + Tail + " From Eve")]
+    [InlineData("x servers. May buffer or be unavailable sometimes. If it won't play, try again later.")]
+    [InlineData("Hops\n\nFrom Eve's server. " + Tail)]
+    public void NameContainingLabelTail_StaysOneLabel(string hostile)
+    {
+        var once = FriendLabel.Apply("A film.", [hostile]);
+        Assert.EndsWith("\n\nA film.", once, StringComparison.Ordinal);
+        Assert.Equal("A film.", FriendLabel.Strip(once));
+        Assert.Equal(once, FriendLabel.Apply(once, [hostile]));
+        Assert.Equal("From Reef's server. " + Tail + "\n\nA film.", FriendLabel.Apply(once, ["Reef"]));
+        Assert.DoesNotContain('\n', FriendLabel.Text([hostile]));
+    }
+
+    [Fact]
+    public void TheTvNfos_NameTheFriend()
+    {
+        var writer = new TvNfoWriter();
+        IReadOnlyList<string> tags = ["Shoal"];
+        var series = XDocument.Parse(writer.Series(new SanitizedSeries { Title = "Show", Overview = "A show." }, tags, "Hops")).Root!;
+        var episode = XDocument.Parse(writer.Episode(new SanitizedEpisode { Title = "Pilot", Season = 1, Number = 1 }, tags, "Hops")).Root!;
+        Assert.Equal(HopsLabel + "\n\nA show.", (string?)series.Element("plot"));
+        Assert.Equal(HopsLabel, (string?)episode.Element("plot"));
+    }
+
+    [Fact]
+    public async Task ASync_NamesTheAlias_WhenTheAdminSetOne()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        await rig.State.UpdateAsync(static s => s.Home.Peers[0].Alias = "Pat");
+        rig.Peer.Add("The Matrix", 1999, tmdb: 603);
+        await rig.SyncAsync();
+        var entry = rig.Entries.Single();
+        var nfo = Path.Combine(rig.LibraryFolder, entry.StubRelPath!.Split('/')[0], entry.StubRelPath.Split('/')[0] + ".nfo");
+        var text = await File.ReadAllTextAsync(nfo);
+        Assert.Contains("From Pat's server. " + Tail, text, StringComparison.Ordinal);
+        Assert.Contains("<tag>Shoal: Hops</tag>", text, StringComparison.Ordinal);
+    }
+
     // --- enricher re-apply
 
-    private sealed class LabelItems : IStubItems
+    internal sealed class LabelItems : IStubItems
     {
         public Dictionary<Guid, (string Path, string? Overview, IReadOnlyList<string> Tags)> Items { get; } = [];
+
+        /// <summary>Gets the studios of each item (2.9.2 K6); an item with none here holds none.</summary>
+        public Dictionary<Guid, IReadOnlyList<string>> Studios { get; } = [];
 
         public int Saves { get; private set; }
 
@@ -159,16 +262,17 @@ public sealed class FriendLabelTests
         public IReadOnlyList<LabelItemView> ListLabelled() => [.. Items.Keys.Select(id => GetLabelled(id)!)];
 
         public LabelItemView? GetLabelled(Guid itemId) => Items.TryGetValue(itemId, out var item)
-            ? new LabelItemView(itemId, item.Path, item.Overview, item.Tags, (overview, tags, _) =>
+            ? new LabelItemView(itemId, item.Path, item.Overview, item.Tags, Studios.GetValueOrDefault(itemId) ?? [], (overview, tags, studios, _) =>
             {
                 Saves++;
                 Items[itemId] = (item.Path, overview, tags);
+                Studios[itemId] = studios;
                 return Task.CompletedTask;
             })
             : null;
     }
 
-    private static async Task<(SyncRig Rig, FakeItemPaths Paths, ShoalIndex Index, LabelItems Items, StubEnricher Enricher)> EnricherRigAsync()
+    internal static async Task<(SyncRig Rig, FakeItemPaths Paths, ShoalIndex Index, LabelItems Items, StubEnricher Enricher)> EnricherRigAsync()
     {
         var rig = await SyncRig.CreateAsync();
         var paths = new FakeItemPaths();
@@ -190,7 +294,7 @@ public sealed class FriendLabelTests
 
                 Assert.Equal(1, await enricher.ApplyLabelsAsync());
                 var after = items.Items[stub];
-                Assert.Equal(Label + "\n\nA provider's overview.", after.Overview);
+                Assert.Equal(HopsLabel + "\n\nA provider's overview.", after.Overview);
                 Assert.Contains("Shoal", after.Tags);
                 Assert.Contains("Drama", after.Tags);
                 Assert.Contains(after.Tags, static t => t.StartsWith("Shoal: ", StringComparison.Ordinal));
@@ -240,7 +344,7 @@ public sealed class FriendLabelTests
                 Assert.True(await enricher.ReapplyLabelAsync(stub));
                 Assert.False(await enricher.ReapplyLabelAsync(stub, CancellationToken.None)); // the save raised the event again: no-op
                 Assert.Equal(1, items.Saves);
-                Assert.StartsWith(Label + "\n\n", items.Items[stub].Overview, StringComparison.Ordinal);
+                Assert.StartsWith(HopsLabel + "\n\n", items.Items[stub].Overview, StringComparison.Ordinal);
             }
         }
     }

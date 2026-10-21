@@ -1,0 +1,55 @@
+{
+  "preset": "CombineIntoMine",
+  "created": [
+    {
+      "name": "Friends in Movies",
+      "type": "movies"
+    }
+  ],
+  "removed": [
+    {
+      "libKey": "<hex>",
+      "name": "Hops Movies"
+    }
+  ],
+  "moves": [
+    {
+      "peerKey": "<id>",
+      "peerName": "Hops",
+      "type": "movies",
+      "from": [
+        "Hops Movies"
+      ],
+      "to": "Friends in Movies"
+    }
+  ],
+  "titlesCollapsing": 0,
+  "usersLosingAccess": [
+    "<id>"
+  ],
+  "usersGainingAccess": [],
+  "restrictedGainingAccess": [],
+  "planHash": "<id>",
+  "targets": [
+    {
+      "type": "movies",
+      "chosen": "<id>",
+      "candidates": [
+        {
+          "id": "<id>",
+          "name": "Movies",
+          "savesNfo": true
+        }
+      ],
+      "rejected": false
+    }
+  ],
+  "needsTargets": false,
+  "targetsSavingNfo": [
+    "Movies"
+  ],
+  "targetsRewritingTitles": [
+    "Movies"
+  ],
+  "shoalLibrariesNotLocked": []
+}

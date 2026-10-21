@@ -23,7 +23,9 @@ namespace Jellyfin.Plugin.Shoal.Playback;
 /// <param name="PlaySessionId">The PlaySessionId the client holds (Home's own, from PlaybackInfo).</param>
 /// <param name="PositionTicks">The position, or null.</param>
 /// <param name="IsPaused">Whether playback is paused.</param>
-public sealed record PlaybackNote(Guid UserId, string? PlaySessionId, long? PositionTicks, bool IsPaused);
+/// <param name="ItemId">The local item the event names (core's <c>ItemId</c>), or the empty id.</param>
+/// <param name="DeviceId">The session's device id, capped (<see cref="Jellyfin.Plugin.Shoal.Authorization.DeviceKey.Cap"/>), or null.</param>
+public sealed record PlaybackNote(Guid UserId, string? PlaySessionId, long? PositionTicks, bool IsPaused, Guid ItemId = default, string? DeviceId = null);
 
 /// <summary>
 /// The exact session reports Home sends a Peer (DESIGN 6.8, 6.11): only the listed fields, and never a request that could stop more than one job.
@@ -179,8 +181,21 @@ public sealed class PeerSessionReporter : IAsyncDisposable
     public void OnStop(PlaybackNote note)
     {
         ArgumentNullException.ThrowIfNull(note);
-        if (Find(note) is not { } grant)
+        if (FindMine(note) is not { } grant)
         {
+            // 2.9.2 K9 (Pilot 25): at the default level, so a lab shows why a stop freed nothing (ids hashed). A user with no grant and no Shoal slot only
+            // played a local item: Debug, so ordinary plays do not fill the log.
+            var mine = _grants.ForUser(note.UserId).Where(g => g.LocalUserId == note.UserId).ToList();
+            var slots = _slots.ActiveSlots(note.UserId);
+            _logger.Log(
+                mine.Count > 0 || slots > 0 ? LogLevel.Information : LogLevel.Debug,
+                "Playback stopped: nothing released, no grant of this user matched (item {Item}, device {Device}, play session id {HasSession}; this user's grants {Grants}, of this item {OfItem}, live slots {Slots})",
+                Redact.Id(note.ItemId),
+                Redact.Id(note.DeviceId),
+                !string.IsNullOrEmpty(note.PlaySessionId),
+                mine.Count,
+                mine.Count(g => g.LocalItemId == note.ItemId),
+                slots);
             return;
         }
 
@@ -190,10 +205,24 @@ public sealed class PeerSessionReporter : IAsyncDisposable
         _lastStart.TryRemove(grant.GrantId, out _);
 
         // Home's own books are settled at once, on the caller's thread: a full or slow report queue can never keep a slot or a grant alive (Warden 07 L-3).
-        var request = PeerSessionRequests.Report(true, grant, position, false);
-        _slots.ReleaseHls(grant.GrantId);
-        _slots.ReleaseStatic(grant.LocalUserId, grant.SlotItem);
+        // 2.9.2 K9: that holds for every grant of this user's play session, also a direct play the Peer gave no PlaySessionId (nothing to report then).
+        var held = _slots.HoldsSlot(grant);
+        var hls = _slots.ReleaseHls(grant.GrantId);
+        var direct = _slots.ReleaseStatic(grant.LocalUserId, grant.SlotItem);
         _grants.Remove(grant.GrantId);
+        if (!held)
+        {
+            // 2.9.2 K9 (Pilot 25): the grant went, but no slot was held under its key; a slot the user still holds then waits for the Grace.
+            _logger.LogInformation("Playback stopped: grant of item {Item} dropped, but it held no slot (device {Device}, by {Match}; this user's live slots {Slots})", Redact.Id(grant.LocalItemId), Redact.Id(grant.CallerDeviceId), MatchedByPlaySession(grant, note) ? "play session" : "item and device", _slots.ActiveSlots(grant.LocalUserId));
+        }
+
+        _logger.LogDebug("Playback stopped: grant of item {Item} released (hls slot {Hls}, static slot {Static}, by {Match})", Redact.Id(grant.LocalItemId), hls, direct, MatchedByPlaySession(grant, note) ? "play session" : "item and device");
+        if (!Reportable(grant))
+        {
+            return;
+        }
+
+        var request = PeerSessionRequests.Report(true, grant, position, false);
         Enqueue(async token =>
         {
             await SendAsync(request, grant, token).ConfigureAwait(false);
@@ -265,17 +294,34 @@ public sealed class PeerSessionReporter : IAsyncDisposable
         _stop.Dispose();
     }
 
-    private Grant? Find(PlaybackNote note)
+    // "Mine": the grant of the event's own user and play session, whether the Peer can be told about it or not.
+    // 2.9.2 K9 (Pilot 22): jellyfin-web builds a direct play URL itself without a PlaySessionId and reports PlaySessionId "" (its getParam of that URL), so
+    // an event with no matching play session falls back to this user's newest grant of the named item on the same device. Both lookups are scoped to the
+    // event's own user: one local user can never stop another user's Peer transcode or free their slot.
+    private Grant? FindMine(PlaybackNote note)
     {
-        if (string.IsNullOrEmpty(note.PlaySessionId))
+        if (!string.IsNullOrEmpty(note.PlaySessionId) && _grants.FindByPlaySession(note.UserId, note.PlaySessionId) is { } bySession && bySession.LocalUserId == note.UserId)
+        {
+            return bySession;
+        }
+
+        if (note.ItemId == Guid.Empty || string.IsNullOrEmpty(note.DeviceId))
         {
             return null;
         }
 
-        // FindByPlaySession only returns a grant of this user: one local user can never stop another user's Peer transcode.
-        var grant = _grants.FindByPlaySession(note.UserId, note.PlaySessionId);
-        return grant is not null && grant.LocalUserId == note.UserId && !string.IsNullOrEmpty(grant.PeerPlaySessionId) ? grant : null;
+        return _grants.ForUser(note.UserId)
+            .Where(g => g.LocalUserId == note.UserId && g.LocalItemId == note.ItemId && string.Equals(g.CallerDeviceId, note.DeviceId, StringComparison.Ordinal))
+            .OrderByDescending(static g => g.CreatedUtc)
+            .FirstOrDefault();
     }
+
+    private static bool MatchedByPlaySession(Grant grant, PlaybackNote note) => string.Equals(grant.LocalPlaySessionId, note.PlaySessionId, StringComparison.Ordinal);
+
+    // "Reportable": one of mine that the Peer knows by a PlaySessionId, so a report can name it.
+    private Grant? Find(PlaybackNote note) => FindMine(note) is { } grant && Reportable(grant) ? grant : null;
+
+    private static bool Reportable(Grant grant) => !string.IsNullOrEmpty(grant.PeerPlaySessionId);
 
     private void PingIfDue(Grant grant, bool force = false)
     {

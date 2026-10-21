@@ -120,15 +120,12 @@ public sealed class TvAccessTests : IAsyncLifetime
     // --- the picker
 
     [Fact]
-    public async Task ATvLibrary_IsListedWithItsCounts_AndSelectableOnlyWhenTvShowsAreOn()
+    public async Task V291_ATvLibrary_IsListedWithItsCounts_AndAlwaysSelectable_EvenWithAnOldConfigThatHadTvOff()
     {
-        _tvEnabled = false;
-        var off = AdminTestSupport.Render(await Controller().RemoteLibraries(SyncRig.PeerKey, default)).Json[0];
-        _tvEnabled = true;
+        _tvEnabled = false; // an old config XML with TvShowsEnabled false
         var on = AdminTestSupport.Render(await Controller().RemoteLibraries(SyncRig.PeerKey, default)).Json[0];
 
-        Assert.Equal("tvshows", off.GetProperty("type").GetString());
-        Assert.False(off.GetProperty("selectable").GetBoolean());
+        Assert.Equal("tvshows", on.GetProperty("type").GetString());
         Assert.True(on.GetProperty("selectable").GetBoolean());
         Assert.Equal((12, 345, 345), (on.GetProperty("seriesCount").GetInt32(), on.GetProperty("episodeCount").GetInt32(), on.GetProperty("count").GetInt32()));
     }
@@ -169,15 +166,14 @@ public sealed class TvAccessTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddingATvLibrary_WithTvShowsOff_IsRefused_AndNothingIsCreated()
+    public async Task V291_AddingATvLibrary_WithAnOldConfigThatHadTvOff_Works()
     {
-        _tvEnabled = false;
+        _tvEnabled = false; // ignored since v2.9.1
 
         var result = AdminTestSupport.Render(await Add(Controller()));
 
-        Assert.Equal(400, result.Status);
-        Assert.Empty(_rig.State.Current.Home.Peers.Single().Libraries);
-        Assert.Null(_libraries.LastCollectionType);
+        Assert.NotEqual(400, result.Status);
+        Assert.Single(_rig.State.Current.Home.Peers.Single().Libraries);
     }
 
     // --- the index

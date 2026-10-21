@@ -1,0 +1,55 @@
+{
+  "layout": {
+    "preset": "CombineIntoMine",
+    "defaultTargets": {
+      "movies": "<hex>"
+    }
+  },
+  "libraries": [
+    {
+      "libKey": "<hex>",
+      "name": "Friends in Movies",
+      "type": "movies",
+      "placement": "Main",
+      "legacy": false,
+      "jellyfinLibraryId": "<id>",
+      "connections": [
+        {
+          "peerKey": "<id>",
+          "name": "Hops"
+        }
+      ],
+      "access": {
+        "mode": "Selected",
+        "selectedUserIds": [
+          "<id>",
+          "<id>"
+        ],
+        "includeRestricted": false
+      }
+    }
+  ],
+  "order": [
+    "<hex>"
+  ],
+  "hiddenFriendTitles": [],
+  "mainLibrariesSavingNfo": [
+    "Movies"
+  ],
+  "shoalLibrariesNotLocked": [],
+  "mainLibrariesMissing": [],
+  "job": {
+    "running": false,
+    "phase": "Done",
+    "moves": 1,
+    "movesDone": 1,
+    "steps": 2,
+    "stepsDone": 2,
+    "lostAccess": [],
+    "error": null,
+    "gainedAccess": [],
+    "gainedRestricted": [],
+    "canResume": false,
+    "canAbandon": false
+  }
+}

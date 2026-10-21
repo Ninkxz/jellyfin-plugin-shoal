@@ -43,6 +43,34 @@ public sealed class FriendLabelGuardTests
     }
 
     [Fact]
+    public async Task Refresh_ReplacesStudios_PutBack()
+    {
+        var (rig, paths, index, items, enricher) = await FriendLabelTests.EnricherRigAsync();
+        await using (rig)
+        {
+            using (index)
+            {
+                var stub = Guid.NewGuid();
+                var path = System.IO.Path.Combine(rig.LibraryFolder, "M (2000)", "M (2000).strm");
+                items.Items[stub] = (path, "A film.", ["Shoal"]);
+                paths.Items[stub] = path;
+                await index.RebuildAsync();
+                Assert.Equal(1, await enricher.ApplyLabelsAsync());
+                Assert.Equal(["Shared by Hops"], items.Studios[stub]);
+
+                // A "replace all" refresh with a provider on: the provider's studios replace the friend's.
+                items.Studios[stub] = ["Blender Foundation"];
+                var guard = new FriendLabelGuard(null!, index, enricher.ReapplyLabelAsync, NullLogger.Instance);
+                Assert.True(guard.Enqueue(stub));
+                await guard.DrainAsync();
+
+                Assert.Equal(["Shared by Hops"], items.Studios[stub]);
+                Assert.Equal(2, items.Saves);
+            }
+        }
+    }
+
+    [Fact]
     public async Task TheQueueIsBounded_AndAFullQueueDropsTheUpdate()
     {
         var saves = 0;

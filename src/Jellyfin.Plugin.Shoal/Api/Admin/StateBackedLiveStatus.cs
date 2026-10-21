@@ -37,7 +37,6 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
     private readonly Jellyfin.Plugin.Shoal.Diagnostics.SpeedSummaryProvider? _speed;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, byte> _running = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, DateTime> _skipped = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StateBackedLiveStatus"/> class.
@@ -198,17 +197,17 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
         Note(peerKey, report);
     }
 
-    // A sync that did not run (too soon, a scan, busy) must not leave the old "ok" on screen.
+    // A request that did not run (too soon, a scan, busy) is shown next to the last real sync, never in its place (Pilot 24 SKIPPED-INVISIBLE).
     private void Note(string peerKey, SyncReport report)
     {
         if (report.Result == SyncResultKind.Skipped)
         {
-            _skipped[peerKey] = DateTime.UtcNow;
+            _catalogs?.NoteManualRequest(peerKey, new SkippedSync(_sync!.UtcNow, report.Error ?? "unknown"));
             _logger.LogInformation("A manual sync of peer {Peer} was skipped ({Reason})", Redact.Id(peerKey), report.Error);
         }
         else
         {
-            _skipped.TryRemove(peerKey, out _);
+            _catalogs?.NoteManualRequest(peerKey, null);
         }
     }
 
@@ -303,7 +302,7 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
             HeldRemovals = doc.HeldRemovals.Count,
             HeldAdditions = doc.HeldAdditions.Count + doc.TvHeldAdditions.Count,
             AlertCount = alerts.Count,
-            LastSync = _skipped.TryGetValue(peerKey, out var skippedAt) ? new PeerSyncInfo(skippedAt, "skipped", 0, 0) : (last is null ? null : new PeerSyncInfo(last.EndedUtc, last.Result.ToString().ToLowerInvariant(), last.Added, last.Removed)),
+            LastSync = PeerSyncInfo.Of(last, _catalogs.LastSkipped(peerKey)),
             Usage = new PeerUsageInfo(doc.Usage.DiskBytes, quota, stubs, doc.Usage.People, doc.Usage.Genres, doc.Usage.Studios),
             Alerts = alerts
         };
@@ -339,6 +338,14 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
         return best;
     }
 
+    // 2.9.2 K3: the first three held titles, "Title (Year)": movies from HeldAdditionInfo, then series from HeldSeries (no entry ever has the HeldAddition state).
+    private static List<string> HeldExamples(CatalogDocument doc) =>
+        [.. doc.HeldAdditionInfo.Select(static h => (h.Title, h.Year))
+            .Concat(doc.HeldSeries.Select(static h => (h.Title, h.Year)))
+            .Where(static t => t.Title.Length > 0)
+            .Select(static t => t.Year is { } year ? t.Title + " (" + year.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")" : t.Title)
+            .Take(3)];
+
     private static List<PeerAlertInfo> Alerts(CatalogDocument doc)
     {
         var result = new List<PeerAlertInfo>();
@@ -350,7 +357,7 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
                     result.Add(new PeerAlertInfo("heldRemovals", "warn", doc.HeldRemovals.Count, doc.Entries.Where(e => e.State == EntryState.HeldRemoval).Select(e => e.Title).Take(3).ToList()));
                     break;
                 case nameof(SyncAlert.HeldAdditions):
-                    result.Add(new PeerAlertInfo("heldAdditions", "warn", doc.HeldAdditions.Count + doc.TvHeldAdditions.Count, doc.Entries.Where(e => e.State == EntryState.HeldAddition).Select(e => e.Title).Take(3).ToList()));
+                    result.Add(new PeerAlertInfo("heldAdditions", "warn", doc.HeldAdditions.Count + doc.TvHeldAdditions.Count, HeldExamples(doc)));
                     break;
                 case nameof(SyncAlert.QuotaReached):
                     result.Add(new PeerAlertInfo("diskQuota", "warn"));

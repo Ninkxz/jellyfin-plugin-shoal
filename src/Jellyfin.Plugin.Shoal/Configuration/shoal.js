@@ -250,6 +250,7 @@ const STRINGS = {
     ghostPairing: "This pairing is not there any more: the server it was for was removed. Start over to pair again.",
     startOver: "Start over",
     remoteUnreachable: "Shoal couldn't reach {server} just now, so it can't list its libraries. Check that the server is online, then try again.",
+    shareScopeUnknown: "{server} hasn't told Shoal which libraries it shares with you. Ask your friend to check the share on their server.",
     saveFailed: "Couldn't save. Try again in a moment.",
     tooManyTries: "Too many tries. Try again in a few minutes.",
     noticeGone: "That server isn't paired anymore.",
@@ -1111,7 +1112,6 @@ const STRINGS = {
     libMeta: ["{type} · {count} title", "{type} · {count} titles"],
     libMetaTv: "{type} · {series} series, {episodes} episodes",
     libLater: "{type} are coming in a later version.",
-    libTvOff: "TV shows are turned off. Turn them on in Settings, under Extra features.",
     ovTv: "TV shows. The counts above are movies and episodes, and each series is counted here. In both libraries: {a} series (episodes: {b}). New from {server}: {c} series (episodes: {d}).",
     heldSeriesTitle: "Held back, by series",
     heldSeriesIntro: "Shoal paused these changes from {server} until you decide. Each series is separate.",
@@ -1123,8 +1123,6 @@ const STRINGS = {
     heldSeriesAdd: "Add now",
     announceSeriesReleased: "Released",
     pv2PingThrottled: "Shoal could not be checked just now because the server limited the check. Wait a minute and check again. This does not mean Shoal is missing.",
-    fTvShows: "Show TV series from friends",
-    fTvShowsNote: "Turn on to let Shoal sync TV libraries from friends, and to pick them when you add a library. It controls what Shoal syncs, not what Jellyfin already shows. Off by default.",
     fTvThumbs: "Episode pictures",
     fTvThumbsNote: "Keep a small picture for each episode. Turn off to save disk space.",
     libFromFriend: "Libraries from friends' servers can't be shared on.",
@@ -1218,9 +1216,11 @@ const STRINGS = {
     lastUpdated: "Last updated {when}",
     alertRemovalTitle: ["{count} removal on hold", "{count} removals on hold"],
     alertRemovalBody: "{server} stopped listing {count} titles at once. That can happen when a drive disconnects, so Shoal kept them for now. For example: {examples}. If they're still gone after 3 syncs over 24 hours, Shoal removes them.",
+    alertRemovalBodyNoExamples: "{server} stopped listing {count} titles at once. That can happen when a drive disconnects, so Shoal kept them for now. If they're still gone after 3 syncs over 24 hours, Shoal removes them.",
     removeThemNow: "Remove them now",
     alertAdditionTitle: ["{count} new title on hold","{count} new titles on hold"],
     alertAdditionBody: "{server} added {count} titles at once, so Shoal is holding them until you check. That protects your server if something goes wrong on theirs. For example: {examples}. Shoal never adds them on its own.",
+    alertAdditionBodyNoExamples: "{server} added {count} titles at once, so Shoal is holding them until you check. That protects your server if something goes wrong on theirs. Shoal never adds them on its own.",
     addThem: "Add them",
     alertDifferentTitle: "Different server at this address",
     alertCertTitle: "{server}'s certificate changed",
@@ -1276,6 +1276,23 @@ const STRINGS = {
     syncResult_ok: "OK",
     syncResult_partial: "partly",
     syncResult_failed: "failed",
+    syncResult_held: "some changes on hold",
+    syncResult_skipped: "skipped this time",
+    // Pilot 24 SKIPPED-INVISIBLE: a Sync now that did not run is shown next to the last real sync, never in its place.
+    syncSkippedNote: "Sync now skipped this time {when}. {reason}",
+    syncSkippedNoteResult: "Sync now skipped this time {when}. {reason} Last real sync: {result}.",
+    announceSyncSkipped: ["Sync now skipped this time for {server}. {reason}", "Sync now skipped this time for {n} servers."],
+    skipReason_tooSoon: "Shoal synced this server a few minutes ago.",
+    skipReason_scanRunning: "Jellyfin was scanning a library. Shoal tries again in 10 min.",
+    skipReason_busy: "Another sync was still running.",
+    skipReason_layoutJob: "A library move has not finished yet.",
+    skipReason_recovery: "Shoal is paused until its saved data is fixed.",
+    skipReason_disabled: "This server is paused.",
+    skipReason_noStubRoot: "Shoal has no folder for its library files yet. Choose one in Settings.",
+    skipReason_unknownPeer: "Shoal no longer knows this server.",
+    skipReason_unknown: "Shoal could not say why.",
+    syncTooSoon: "Shoal just synced this server. Try again in a few minutes.",
+    syncTooSoonWait: "Shoal just synced this server. Try again in {n} min.",
     addAnotherLibrary: "Add another library",
     addLibraryTitle: "Add a library from {server}",
     noMoreLibraries: "There are no more libraries to add.",
@@ -1445,6 +1462,8 @@ const STRINGS = {
     layNfoSaverOn: "The NFO saver is on for your main library {library}. Jellyfin can overwrite friends' titles' descriptions and art. Turn it off for this library in Jellyfin (Dashboard, Libraries).",
     layNotLocked: "Your library {library} holds a friends' folder next to your own folders, so Shoal leaves its settings alone. Turn off its NFO saver and internet metadata in Jellyfin (Dashboard, Libraries) if you don't want them to touch friends' titles, or move the friends' folder into a library of its own.",
     layAccessChangedAnyway: "Who can see this library was changed anyway.",
+    layMainMissing: "{library} was added into one of your libraries, but that library no longer holds it, so its titles show nowhere. The library may have been removed or renamed in Jellyfin (Dashboard, Libraries). Delete {library} here, or pick another layout.",
+    layRewritesTitles: "Friends' titles in {library} can be rewritten by that library's metadata downloaders and NFO saver. They stay hidden from people you have not picked only through Shoal's hidden tag, which Shoal puts back after each sync. Turn off internet metadata and the NFO saver for {library} in Jellyfin (Dashboard, Libraries) to keep friends' titles as they are.",
     layPlaceWarn: "Everyone who can open that library will see these titles unless you hide them for a person below.",
     layType_movies: "Movies",
     layType_tvshows: "TV Shows",
@@ -1633,6 +1652,11 @@ const STRINGS = {
 
 const PLUGIN_PAGE = 'Shoal';
 const API_PREFIX = 'Shoal/Admin/';
+
+/** Pilot 19 D1: GET Peers/{h} and GET Libraries list a library as "<handle>.<mappingKey>"; the Peers/{h}/Libraries routes and RemoteLibraries use the bare key. */
+function bareMappingKey(handle, key) {
+    return typeof key === 'string' && key.startsWith(handle + '.') ? key.slice(handle.length + 1) : key;
+}
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const STATUS_POLL_MS = 10000;
 const PAIRING_POLL_MS = 2000;
@@ -1735,6 +1759,35 @@ function toMs(value) {
 
     const n = value instanceof Date ? value.getTime() : typeof value === 'number' ? value : Date.parse(value);
     return Number.isFinite(n) ? n : null;
+}
+
+/** The plain-words reason of a skipped Sync now (lastSync.skipReason); an unknown word gets the general line, never a raw key. */
+function skipReasonText(reason) {
+    return t(STRINGS['skipReason_' + reason] !== undefined ? 'skipReason_' + reason : 'skipReason_unknown');
+}
+
+/**
+ * The line for a Sync now that did not run (Pilot 24 SKIPPED-INVISIBLE), or null. The backend sends skippedUtc only while the skip is newer than
+ * the last real sync. withResult: the row does not show the real result itself. When no sync ever ran (result "skipped") the row already says so.
+ */
+function skipNote(lastSync, fmt, withResult) {
+    if (!lastSync || !lastSync.skippedUtc) {
+        return null;
+    }
+
+    const reason = skipReasonText(lastSync.skipReason);
+    if (lastSync.result === 'skipped') {
+        return reason;
+    }
+
+    const vars = { when: fmt.relative(lastSync.skippedUtc), reason, result: t('syncResult_' + lastSync.result) };
+    return t(withResult ? 'syncSkippedNoteResult' : 'syncSkippedNote', vars);
+}
+
+/** A library row's own meta line for a skipped Sync now, or null. */
+function skipLine(lastSync, fmt, withResult) {
+    const text = skipNote(lastSync, fmt, withResult);
+    return text ? el('span', { class: 'shoal-row__meta shoal-meta', 'data-slot': 'skipped', text }) : null;
 }
 
 /** Builds the formatters for one locale and one clock. Pure, so tests can pin both. */
@@ -2257,7 +2310,7 @@ function createApi(client) {
         trustCertificate: (h, body) => call('POST', 'Peers/' + enc(h) + '/TrustCertificate', body),
         remoteLibraries: (h) => call('GET', 'Peers/' + enc(h) + '/RemoteLibraries'),
         addLibrary: (h, list) => call('POST', 'Peers/' + enc(h) + '/Libraries', list),
-        removeLibrary: (h, m) => call('DELETE', 'Peers/' + enc(h) + '/Libraries/' + enc(m)),
+        removeLibrary: (h, m) => call('DELETE', 'Peers/' + enc(h) + '/Libraries/' + enc(bareMappingKey(h, m))),
         hold: (h, kind, action) => call('POST', 'Peers/' + enc(h) + '/Holds/' + enc(kind) + '/' + enc(action)),
         releaseSeries: (h, kind, series) => call('POST', 'Peers/' + enc(h) + '/Holds/' + enc(kind) + '/' + enc('Release') + '?series=' + enc(series)),
         holds: (h) => call('GET', 'Peers/' + enc(h) + '/Holds'),
@@ -4600,7 +4653,8 @@ function dedupNote(s) {
 }
 
 function libLaterNote(type) {
-    return type === 'tvshows' ? t('libTvOff') : t('libLater', { type: t('type_' + type) });
+    // TV shows from friends are always on (owner, v2.9.1): there is no switch to send the admin to.
+    return t('libLater', { type: t('type_' + type) });
 }
 
 /** The TV line of an overlap report (GET Overlap tv), or null when the server sent none. */
@@ -5227,7 +5281,11 @@ function overviewScreen(ctx) {
 
         const syncing = servers.some((s) => s.syncing);
         const last = servers.reduce((m, s) => Math.max(m, toMs(s.lastSync && s.lastSync.atUtc) || 0), 0);
-        replaceKids(lastSyncNode, icon('clock', true), el('span', { text: syncing ? t('syncingNow') : last ? t('lastSync', { when: ctx.fmt.relative(last) }) : t('notSyncedYet') }));
+        // The newest skipped Sync now, next to the last real sync and never in its place (Pilot 24 SKIPPED-INVISIBLE).
+        const skipped = servers.filter((s) => s.lastSync && s.lastSync.skippedUtc).sort((a, b) => toMs(b.lastSync.skippedUtc) - toMs(a.lastSync.skippedUtc))[0];
+        const skipText = !syncing && skipped ? skipNote(skipped.lastSync, ctx.fmt, true) : null;
+        replaceKids(lastSyncNode, icon('clock', true), el('span', { text: syncing ? t('syncingNow') : last ? t('lastSync', { when: ctx.fmt.relative(last) }) : t('notSyncedYet') }),
+            skipText ? el('span', { 'data-slot': 'skipped', text: ' \u00b7 ' + skipText }) : null);
 
         // Servers paired the old way (D17): one calm note above the rows, with the way forward on each row.
         const legacy = servers.filter((x) => x.needsRepair === true || x.pairingMethod === 'qc').length;
@@ -5430,7 +5488,7 @@ function overviewScreen(ctx) {
                     onError: (err) => {
                         if (err.status === 429) {
                             ctx.setCooldown('test:' + handle, err.retryAfter || 60);
-                            ctx.alertMessage(t('availableIn', { n: ctx.cooldownMinutes('test:' + handle) || 1 }));
+                            ctx.fail(t('availableIn', { n: ctx.cooldownMinutes('test:' + handle) || 1 }));
                         } else {
                             ctx.alertMessage(t('testFailed'));
                         }
@@ -5922,6 +5980,7 @@ function overviewScreen(ctx) {
         const now = ctx.now();
         const changed = [];
         let finished = null;
+        const skipped = [];
         for (const s of servers) {
             const model = describeServer(s, ctx.fmt);
             const prev = st.prev.get(s.handle);
@@ -5929,7 +5988,10 @@ function overviewScreen(ctx) {
                 changed.push(t('announceNowState', { server: s.displayName, state: model.chipText }));
             }
 
-            if (prev && prev.syncing && !s.syncing && s.lastSync) {
+            // A Sync now that did not run keeps the old counts in lastSync: say it was skipped, never "Sync finished" with those counts.
+            if (prev && prev.syncing && !s.syncing && s.lastSync && (s.lastSync.skippedUtc || s.lastSync.result === 'skipped')) {
+                skipped.push(s);
+            } else if (prev && prev.syncing && !s.syncing && s.lastSync) {
                 finished = finished || { added: 0, removed: 0 };
                 finished.added += s.lastSync.added || 0;
                 finished.removed += s.lastSync.removed || 0;
@@ -5943,6 +6005,8 @@ function overviewScreen(ctx) {
             ctx.announce(changed.length === 1 ? changed[0] : t('announceManyChanged', { n: changed.length }));
         } else if (finished) {
             ctx.announce(t('announceSyncFinished', finished));
+        } else if (skipped.length) {
+            ctx.announce(t('announceSyncSkipped', { n: skipped.length, server: skipped[0].displayName, reason: skipReasonText(skipped[0].lastSync.skipReason) }));
         }
     }
 
@@ -6505,6 +6569,7 @@ function librariesScreen(ctx) {
             el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(mapping)
                 ? t('libraryMetaSplit', { remote: ctx.fmt.num(mapping.remoteCount), local: ctx.fmt.num(mapping.localCount), when: mapping.lastSync ? ctx.fmt.relative(mapping.lastSync.atUtc) : t('never') })
                 : t('libraryMeta', { count: ctx.fmt.num(mapping.count), n: mapping.count, when: mapping.lastSync ? ctx.fmt.relative(mapping.lastSync.atUtc) : t('never') }) }),
+            skipLine(mapping.lastSync, ctx.fmt, true),
             holds.length ? el('span', { class: 'shoal-row__holds' }, holds) : null);
 
         const savedCount = users.filter((u) => a.selectedUserIds.includes(u.id)).length;
@@ -6723,6 +6788,11 @@ function loadErrorBox(onRetry) {
         button({ label: t('tryAgain'), small: true, onClick: onRetry }));
 }
 
+/** PLAN 2.9.2 U2: the friend's share does not say which libraries it includes (409 shareScopeUnknown from RemoteLibraries and from the add). */
+function isShareScopeUnknown(err) {
+    return !!err && err.status === 409 && err.kind === 'shareScopeUnknown';
+}
+
 /* ====================================================================================== */
 /* Screen: Library layouts (PLAN v2.9 U-M1, U-M2; docs/design/ui-v2/layouts.html)          */
 /* ====================================================================================== */
@@ -6882,13 +6952,25 @@ function notLockedWarning(name) {
     return box;
 }
 
+function mainMissingWarning(name) {
+    const box = warnBox(t('layMainMissing', { library: name }));
+    box.classList.add('shoal-warnbox--missing');
+    return box;
+}
+
+function rewritesWarning(name) {
+    const box = warnBox(t('layRewritesTitles', { library: name }));
+    box.classList.add('shoal-warnbox--rewrites');
+    return box;
+}
+
 function nfoSaverWarning(name) {
     const box = warnBox(t('layNfoSaverOn', { library: name }));
     box.classList.add('shoal-warnbox--nfo');
     return box;
 }
 
-function layoutLinkPanel(ctx, data, nfoNames, notLocked) {
+function layoutLinkPanel(ctx, data, nfoNames, notLocked, missing) {
     const headId = uid('shoal-h');
     return el('section', { class: 'shoal-panel shoal-linkpanel', 'aria-labelledby': headId },
         el('div', { class: 'shoal-link-panel' },
@@ -6897,7 +6979,8 @@ function layoutLinkPanel(ctx, data, nfoNames, notLocked) {
                 el('p', { class: 'shoal-meta', text: data ? layoutSummary(data) : t('layLinkBody') })),
             ctx.linkEl('layouts', {}, 'emby-button raised shoal-btn', t('layLinkBtn'))),
         (nfoNames || []).map(nfoSaverWarning),
-        (notLocked || []).map(notLockedWarning));
+        (notLocked || []).map(notLockedWarning),
+        (missing || []).map(mainMissingWarning));
 }
 
 /** The owner's warning box: an icon and one sentence, as a note. */
@@ -7087,6 +7170,13 @@ function layoutsScreen(ctx) {
     const notLockedUnplaced = () => {
         const shown = new Set(libs().map(jellyfinNameOf).filter(Boolean));
         return nfoSaverNames(st.data && st.data.shoalLibrariesNotLocked).filter((n) => !shown.has(n));
+    };
+    // mainLibrariesMissing (Warden 13 L5): names of placement-Main records (the Shoal library's own name) whose main library no longer holds their folder.
+    const missingNames = () => nfoSaverNames(st.data && st.data.mainLibrariesMissing);
+    const missingFor = (lib) => (lib.placement === 'Main' && missingNames().includes(lib.name) ? [lib.name] : []);
+    const missingUnplaced = () => {
+        const mains = new Set(libs().filter((l) => l.placement === 'Main').map((l) => l.name));
+        return missingNames().filter((n) => !mains.has(n));
     };
     const nfoUnplaced = () => {
         const u = nfoUnresolved();
@@ -7374,7 +7464,7 @@ function layoutsScreen(ctx) {
 
         // Combine puts friends' titles into the admin's own libraries: the placement warning, and the libraries whose NFO saver is on or that Shoal leaves unlocked.
         const combineNotes = combine
-            ? [warnBox(t('layPlaceWarn')), nfoSaverNames(pv.targetsSavingNfo).map(nfoSaverWarning), nfoSaverNames(pv.shoalLibrariesNotLocked).map(notLockedWarning)]
+            ? [warnBox(t('layPlaceWarn')), nfoSaverNames(pv.targetsRewritingTitles).map(rewritesWarning), nfoSaverNames(pv.targetsSavingNfo).map(nfoSaverWarning), nfoSaverNames(pv.shoalLibrariesNotLocked).map(notLockedWarning)]
             : [];
 
         const cancel = button({ label: t('cancel'), onClick: () => {
@@ -7849,7 +7939,7 @@ function layoutsScreen(ctx) {
             who,
             acts,
             open,
-            isMain ? el('div', { class: 'shoal-lib__more shoal-lib__warn' }, warnBox(t('layPlaceWarn')), nfoFor(lib).map(nfoSaverWarning), notLockedFor(lib).map(notLockedWarning)) : null,
+            isMain ? el('div', { class: 'shoal-lib__more shoal-lib__warn' }, warnBox(t('layPlaceWarn')), missingFor(lib).map(mainMissingWarning), nfoFor(lib).map(nfoSaverWarning), notLockedFor(lib).map(notLockedWarning)) : null,
             !isMain && notLockedFor(lib).length ? el('div', { class: 'shoal-lib__more shoal-lib__warn' }, notLockedFor(lib).map(notLockedWarning)) : null);
     }
 
@@ -7862,6 +7952,7 @@ function layoutsScreen(ctx) {
             el('div', { class: 'shoal-under__head' }, el('h2', { class: 'shoal-h2 shoal-sec', id: headId, text: t('laySecLibraries') }), create),
             nfoUnplaced().map(nfoSaverWarning),
             notLockedUnplaced().map(notLockedWarning),
+            missingUnplaced().map(mainMissingWarning),
             el('ul', { class: 'shoal-libs', 'aria-labelledby': headId },
                 el('li', { class: 'shoal-libs__head', 'aria-hidden': 'true' },
                     el('span', { text: t('layColLibrary') }), el('span', { text: t('layColPlacement') }), el('span', { text: t('layColFeeds') }), el('span', { text: t('layColWho') }), el('span')),
@@ -8463,15 +8554,12 @@ function settingsScreen(ctx) {
         f.trickUsed = el('div', { class: 'shoal-trickcache' });
         renderTrickCache(d.trickplayCacheBytes);
         f.attachments = checkRow({ id: uid('shoal-f'), label: t('fAttachments'), note: t('fAttachmentsNote'), checked: d.attachmentsEnabled !== false });
-        f.tvShows = checkRow({ id: uid('shoal-f'), label: t('fTvShows'), note: t('fTvShowsNote'), checked: !!d.tvShowsEnabled });
-        f.tvThumbs = checkRow({ id: uid('shoal-f'), label: t('fTvThumbs'), note: t('fTvThumbsNote'), checked: d.tvEpisodeThumbs !== false, disabled: !d.tvShowsEnabled });
-        f.tvShows.input.addEventListener('change', () => {
-            f.tvThumbs.input.disabled = !f.tvShows.input.checked;
-        });
+        // TV shows from friends are always on (owner, v2.9.1): no switch; Episode pictures stays.
+        f.tvThumbs = checkRow({ id: uid('shoal-f'), label: t('fTvThumbs'), note: t('fTvThumbsNote'), checked: d.tvEpisodeThumbs !== false });
         f.reencode = checkRow({ id: uid('shoal-f'), label: t('fReencode'), note: t('fReencodeNote'), checked: d.reencodeImages !== false });
         f.sandbox = el('div', { class: 'shoal-sandbox' });
         renderSandbox(d.imageSandbox);
-        form.append(settingsPanel(t('sFeatures'), f.altVersions.root, f.tvShows.root, f.tvThumbs.root, f.trickplay.root, f.trickGb.root, f.trickUsed, f.attachments.root, f.reencode.root, f.sandbox));
+        form.append(settingsPanel(t('sFeatures'), f.altVersions.root, f.tvThumbs.root, f.trickplay.root, f.trickGb.root, f.trickUsed, f.attachments.root, f.reencode.root, f.sandbox));
 
         // 4. Speed tests
         f.speedEvery = selectField({ id: uid('shoal-f'), label: t('fSpeedEvery'), options: SPEED_HOURS.map((h) => ({ value: String(h), label: t('everyHours', { n: h }) })), value: String(d.speedTestIntervalHours) });
@@ -8536,7 +8624,6 @@ function settingsScreen(ctx) {
             parkAfterHours: Number(f.parkHours.input.value),
             tailscaleSocket: tsMode === 'custom' ? f.tsPath.value() : tsMode,
             alternateVersionsEnabled: f.altVersions.input.checked,
-            tvShowsEnabled: f.tvShows.input.checked,
             tvEpisodeThumbs: f.tvThumbs.input.checked,
             trickplayEnabled: f.trickplay.input.checked,
             trickplayCacheGb: Number(f.trickGb.input.value),
@@ -8864,7 +8951,7 @@ ctx.toast(t('settingsSaved'));
         }
 
         protectNode = hardeningPanel();
-        appendKids(body, [layoutLinkPanel(ctx, st.layouts, st.nfoMains, st.notLocked), ctx.features.inboxExplainer ? inboxCard(ctx) : null, buildForm(st.settings), protectNode, keyStoragePanel(st.settings), parentalPanel(), statePanel(), dangerPanel()]);
+        appendKids(body, [layoutLinkPanel(ctx, st.layouts, st.nfoMains, st.notLocked, st.mainsMissing), ctx.features.inboxExplainer ? inboxCard(ctx) : null, buildForm(st.settings), protectNode, keyStoragePanel(st.settings), parentalPanel(), statePanel(), dangerPanel()]);
     }
 
     async function load(initial) {
@@ -8878,6 +8965,7 @@ ctx.toast(t('settingsSaved'));
             st.layouts = layouts && typeof layouts === 'object' ? layouts : null;
             st.nfoMains = nfoSaverNames(sts && sts.mainLibrariesSavingNfo, st.layouts && st.layouts.mainLibrariesSavingNfo);
             st.notLocked = nfoSaverNames(sts && sts.shoalLibrariesNotLocked, st.layouts && st.layouts.shoalLibrariesNotLocked);
+            st.mainsMissing = nfoSaverNames(sts && sts.mainLibrariesMissing, st.layouts && st.layouts.mainLibrariesMissing);
             st.hasFriends = !!(sts && (sts.friends || []).length);
             st.hardening = st.hasFriends ? await ctx.api.hardening().catch(() => null) : null;
             if (!ctx.alive) {
@@ -9946,7 +10034,8 @@ function addressHints(reading, onFix) {
 
         function showAddError(err) {
             const noRoot = !!err && err.kind === 'noStubRoot';
-            const kids = [el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: noRoot ? t('noStubRootAdd') : err && err.status === 409 ? t('addConflict') : failureMessage(err, 'addFailed') }))];
+            const scope = isShareScopeUnknown(err);
+            const kids = [el('p', { class: 'shoal-fieldError', role: 'alert' }, icon('x', true), el('span', { class: 'shoal-fieldError__text', text: noRoot ? t('noStubRootAdd') : scope ? t('shareScopeUnknown', { server }) : err && err.status === 409 ? t('addConflict') : failureMessage(err, 'addFailed') }))];
             if (noRoot) {
                 kids.push(button({ label: t('openSettings'), small: true, onClick: () => ctx.navigate('settings') }));
             }
@@ -10000,7 +10089,7 @@ function addressHints(reading, onFix) {
                 let have = new Set();
                 try {
                     const known = await ctx.api.peer(wiz.peerHandle);
-                    have = new Set((known.libraries || []).map((m) => m.mappingKey));
+                    have = new Set((known.libraries || []).map((m) => bareMappingKey(wiz.peerHandle, m.mappingKey)));
                 } catch {
                     /* the picker then offers everything and the server refuses a duplicate in words */
                 }
@@ -10049,6 +10138,11 @@ function addressHints(reading, onFix) {
 
                         restartWizard();
                     } })]);
+                    return;
+                }
+
+                if (isShareScopeUnknown(err)) {
+                    replaceKids(listHost, [formHint(t('shareScopeUnknown', { server }), 'warn'), button({ label: t('tryAgain'), small: true, onClick: () => build() })]);
                     return;
                 }
 
@@ -11257,8 +11351,10 @@ function serverDetailScreen(ctx) {
             },
             onError: (err) => {
                 if (err.status === 429 && o.cooldownKey) {
+                    // Pilot 23: a 429 was only spoken, so the click looked dead. Keep it on screen, with the wait when the reply carries Retry-After.
                     ctx.setCooldown(o.cooldownKey, err.retryAfter || 60);
-                    ctx.alertMessage(t('availableIn', { n: ctx.cooldownMinutes(o.cooldownKey) || 1 }));
+                    const mins = err.retryAfter ? Math.max(1, Math.ceil(err.retryAfter / 60)) : 0;
+                    ctx.fail(o.tooSoon ? (mins ? t('syncTooSoonWait', { n: mins }) : t('syncTooSoon')) : t('availableIn', { n: mins || ctx.cooldownMinutes(o.cooldownKey) || 1 }));
                 } else {
                     ctx.fail(o.errorText ? o.errorText(err) : failureMessage(err));
                 }
@@ -11334,7 +11430,7 @@ function serverDetailScreen(ctx) {
         const problem = model.key === 'accessRemoved' || model.key === 'differentServer';
         const certProblem = model.key === 'certChanged';
         const syncNote = el('span', { class: 'shoal-meta shoal-action__note', id: uid('shoal-note'), hidden: true });
-        const syncBtn = button({ label: t('syncNow'), icon: 'sync', onClick: (ev, btn) => act(btn, { busy: t('syncing'), cooldownKey: 'peersync:' + s.handle, run: () => ctx.api.syncPeer(s.handle), announce: t('announceSyncStarted') }) });
+        const syncBtn = button({ label: t('syncNow'), icon: 'sync', onClick: (ev, btn) => act(btn, { busy: t('syncing'), cooldownKey: 'peersync:' + s.handle, tooSoon: true, run: () => ctx.api.syncPeer(s.handle), announce: t('announceSyncStarted') }) });
         const testNote = el('span', { class: 'shoal-meta shoal-action__note', id: uid('shoal-note'), hidden: true });
         const testBtn = button({ label: t('testLink'), onClick: (ev, btn) => act(btn, { busy: t('testing'), cooldownKey: 'test:' + s.handle, run: () => ctx.api.speedTest(s.handle, false), after: () => ctx.later(() => st.speed && st.speed.load(true), 1500) }) });
         // With the keys locked every action that needs a key is replaced by Pair again (ui-spec 8.3.9, 8.8).
@@ -11410,18 +11506,24 @@ function serverDetailScreen(ctx) {
         const quotaGb = st.data.usage ? Math.round(st.data.usage.quotaBytes / 1e9) : 0;
         const settingsLink = () => button({ label: t('openSettings'), small: true, onClick: () => ctx.navigate('settings') });
         const rank = (a) => (a.severity === 'bad' ? 0 : 1);
+        // U1: with no examples the body has no "For example:" sentence.
+        const heldBody = (key, keyNoExamples, a) => {
+            const ex = (Array.isArray(a.examples) ? a.examples : []).filter((x) => typeof x === 'string' && x.trim() !== '');
+            const args = { server: sv, n: a.count, count: ctx.fmt.num(a.count), examples: ex.join(', ') };
+            return t(ex.length ? key : keyNoExamples, args);
+        };
         const alerts = (st.data.alerts || []).map((a, i) => ({ a, i })).sort((x, y) => rank(x.a) - rank(y.a) || x.i - y.i).map((x) => x.a);
         for (const a of alerts) {
             const before = out.length;
             switch (a.kind) {
                 case 'heldRemovals':
-                    out.push(alertBox('warn', t('alertRemovalTitle', { n: a.count, count: ctx.fmt.num(a.count) }), t('alertRemovalBody', { server: sv, n: a.count, count: ctx.fmt.num(a.count), examples: (a.examples || []).join(', ') }), [
+                    out.push(alertBox('warn', t('alertRemovalTitle', { n: a.count, count: ctx.fmt.num(a.count) }), heldBody('alertRemovalBody', 'alertRemovalBodyNoExamples', a), [
                         button({ label: t('removeThemNow'), variant: 'primary', onClick: (ev, btn) => act(btn, { busy: t('applying'), run: () => ctx.api.hold(s.handle, 'removals', 'Release'), announce: t('announceHoldReleased') }) }),
                         button({ label: t('keepForNow'), onClick: (ev, btn) => act(btn, { busy: t('applying'), run: () => ctx.api.hold(s.handle, 'removals', 'Keep') }) })
                     ]));
                     break;
                 case 'heldAdditions':
-                    out.push(alertBox('warn', t('alertAdditionTitle', { n: a.count, count: ctx.fmt.num(a.count) }), t('alertAdditionBody', { server: sv, n: a.count, count: ctx.fmt.num(a.count), examples: (a.examples || []).join(', ') }), [
+                    out.push(alertBox('warn', t('alertAdditionTitle', { n: a.count, count: ctx.fmt.num(a.count) }), heldBody('alertAdditionBody', 'alertAdditionBodyNoExamples', a), [
                         button({ label: t('addThem'), variant: 'primary', onClick: (ev, btn) => act(btn, { busy: t('applying'), run: () => ctx.api.hold(s.handle, 'additions', 'Release') }) }),
                         button({ label: t('notNow'), onClick: (ev, btn) => act(btn, { busy: t('applying'), run: () => ctx.api.hold(s.handle, 'additions', 'Keep') }) })
                     ]));
@@ -11594,7 +11696,7 @@ function serverDetailScreen(ctx) {
                     },
                     onError: (err) => {
                         if (err && err.status === 429) {
-                            ctx.alertMessage(t('availableIn', { n: ctx.cooldownMinutes('rotate:' + s.handle) || 1 }));
+                            ctx.fail(t('availableIn', { n: ctx.cooldownMinutes('rotate:' + s.handle) || 1 }));
                         } else {
                             const key = 'rotateErr_' + (err && err.kind);
                             ctx.alertMessage(t(STRINGS[key] === undefined ? 'rotateErr_failed' : key));
@@ -11720,6 +11822,7 @@ function serverDetailScreen(ctx) {
                         el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(m)
                             ? t('libraryFromMetaSplit', { name: m.remoteName || '', remote: ctx.fmt.num(m.remoteCount), local: ctx.fmt.num(m.localCount), when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' })
                             : t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' }) }),
+                        skipLine(m.lastSync, ctx.fmt, false),
                         holds),
                     el('div', { class: 'shoal-row__controls shoal-row__controls--inline' }, summary, ctx.linkEl('libraries', { focus: 'lib-' + m.mappingKey }, 'shoal-link', t('changeWhoCanSee')), rm));
             })));
@@ -11754,11 +11857,11 @@ function serverDetailScreen(ctx) {
         try {
             remote = await ctx.api.remoteLibraries(s.handle);
         } catch (err) {
-            ctx.alertMessage(err && err.status === 502 ? t('remoteUnreachable', { server: s.displayName }) : t('genericFailure'));
+            ctx.fail(isShareScopeUnknown(err) ? t('shareScopeUnknown', { server: s.displayName }) : err && err.status === 502 ? t('remoteUnreachable', { server: s.displayName }) : t('genericFailure'));
             return;
         }
 
-        const have = new Set((st.data.libraries || []).map((m) => m.mappingKey));
+        const have = new Set((st.data.libraries || []).map((m) => bareMappingKey(s.handle, m.mappingKey)));
         const choices = remote.filter((r) => !r.added && !have.has(r.mappingKey));
         const ticked = new Set();
         const res = await openDialog(ctx, {
@@ -11788,10 +11891,10 @@ function serverDetailScreen(ctx) {
             try {
                 await ctx.api.addLibrary(s.handle, res.map((k) => ({ mappingKey: k, localLibraryName: t('defaultLocalName', { server: s.displayName, library: (remote.find((r) => r.mappingKey === k) || {}).name || '' }), selectedUserIds: [] })));
                 ctx.announce(t('announceLibraryAdded'));
-ctx.toast(t('announceLibraryAdded'));
+                ctx.toast(t('announceLibraryAdded'));
                 load(false, true);
             } catch (err) {
-                ctx.alertMessage(err && err.status === 409 ? t('addConflict') : failureMessage(err, 'addFailed'));
+                ctx.fail(isShareScopeUnknown(err) ? t('shareScopeUnknown', { server: s.displayName }) : err && err.status === 409 ? t('addConflict') : failureMessage(err, 'addFailed'));
             }
         }
     }

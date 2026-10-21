@@ -151,21 +151,106 @@ public sealed class StateBackedLiveStatusTests
     }
 
     [Fact]
-    public async Task ASyncThatWasSkipped_ShowsAsSkipped_NotAsTheOldOk()
+    public async Task HeldAdditions_ExamplesAreTitles()
+    {
+        // 2.9.2 K3 acceptance: a held batch of 30 shows 3 real titles ("Title (Year)"), and the count stays 30.
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Settings = SyncSettings.Default with { NewItemsMinCount = 10, NewItemsPercent = 20 };
+        for (var i = 0; i < 5; i++)
+        {
+            rig.Peer.Add("Base " + i.ToString(System.Globalization.CultureInfo.InvariantCulture), 2000, tmdb: 100 + i, configure: m => { m.PosterTag = null; m.BackdropTag = null; });
+        }
+
+        await rig.SyncAsync();
+        for (var i = 0; i < 30; i++)
+        {
+            rig.Peer.Add("Flood " + i.ToString("D2", System.Globalization.CultureInfo.InvariantCulture), 2020, tmdb: 5000 + i, configure: m => { m.PosterTag = null; m.BackdropTag = null; });
+        }
+
+        Assert.Equal(SyncResultKind.Held, (await rig.SyncAsync()).Result);
+        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State);
+
+        var alert = live.ForPeer(SyncRig.PeerKey).Alerts.Single(a => a.Kind == "heldAdditions");
+
+        Assert.Equal(30, alert.Count);
+        Assert.Equal(["Flood 00 (2020)", "Flood 01 (2020)", "Flood 02 (2020)"], alert.Examples);
+        Assert.Equal(30, rig.Catalog().HeldAdditionInfo.Count(h => h.MappingKey == SyncRig.MappingKey));
+
+        await rig.Sync.ReleaseAsync(SyncRig.PeerKey, ReleaseKind.Additions);
+        Assert.Empty(rig.Catalog().HeldAdditionInfo); // a release clears them
+    }
+
+    [Fact]
+    public async Task ASyncThatWasSkipped_ShowsTheSkip_NextToTheLastRealSync()
     {
         await using var rig = await SyncRig.CreateAsync();
         rig.Peer.Add("One", 2000, tmdb: 1);
         await rig.SyncAsync(SyncTrigger.Manual);
+        var real = rig.Catalog().LastSync!.EndedUtc;
         var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State);
 
+        rig.Time.Advance(TimeSpan.FromMinutes(3));
         Assert.True(live.StartSync(SyncRig.PeerKey)); // within five minutes, so the service skips it
         await WaitIdleAsync(live);
-        Assert.Equal("skipped", live.ForPeer(SyncRig.PeerKey).LastSync!.Result);
+        var shown = live.ForPeer(SyncRig.PeerKey).LastSync!;
+        Assert.Equal("ok", shown.Result); // the real result stays
+        Assert.Equal(real, shown.AtUtc); // and its time: the Overview said "just now" (Pilot 24)
+        Assert.Equal(real.AddMinutes(3), shown.SkippedUtc);
+        Assert.Equal("tooSoon", shown.SkipReason);
 
-        rig.Time.Advance(TimeSpan.FromMinutes(6));
+        rig.Time.Advance(TimeSpan.FromMinutes(3));
         live.StartSync(SyncRig.PeerKey);
         await WaitIdleAsync(live);
-        Assert.Equal("ok", live.ForPeer(SyncRig.PeerKey).LastSync!.Result);
+        shown = live.ForPeer(SyncRig.PeerKey).LastSync!;
+        Assert.Equal("ok", shown.Result);
+        Assert.Null(shown.SkippedUtc); // a request that ran clears the skip
+    }
+
+    [Fact]
+    public async Task ASkip_IsForgotten_WhenAScheduledSyncRunsAfterIt()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Peer.Add("One", 2000, tmdb: 1);
+        await rig.SyncAsync();
+        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State);
+        live.StartSync(SyncRig.PeerKey);
+        await WaitIdleAsync(live);
+        Assert.NotNull(live.ForPeer(SyncRig.PeerKey).LastSync!.SkippedUtc);
+
+        rig.Time.Advance(TimeSpan.FromMinutes(10));
+        await rig.SyncAsync(); // the schedule, not the page: the skip is older than this sync
+
+        var shown = live.ForPeer(SyncRig.PeerKey).LastSync!;
+        Assert.Equal(rig.Catalog().LastSync!.EndedUtc, shown.AtUtc);
+        Assert.Null(shown.SkippedUtc);
+    }
+
+    [Fact]
+    public async Task Pilot24_ASkippedSyncNow_ReachesTheLibraryRows_AndKeepsTheirResult()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Peer.Add("One", 2000, tmdb: 1);
+        await rig.SyncAsync(); // the scheduled sync before the click
+        var real = rig.Catalog().LastSync!;
+        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State);
+        var libraries = new FakeLibraries();
+        var accounts = new FakeAccounts();
+        var visibility = new Jellyfin.Plugin.Shoal.Visibility.VisibilityService(rig.State, libraries, accounts, rig.Time, NullLogger<Jellyfin.Plugin.Shoal.Visibility.VisibilityService>.Instance);
+        var view = new AdminLibraryView(rig.State, rig.Catalogs, libraries, accounts, visibility);
+        var controller = new AdminLibrariesController(rig.State, view, new Jellyfin.Plugin.Shoal.Visibility.AccessService(rig.State, accounts, visibility, rig.Time), visibility)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() }
+        };
+
+        rig.Time.Advance(TimeSpan.FromMinutes(3));
+        live.StartSync(SyncRig.PeerKey); // "Sync now" 3 minutes later: core logs "skipped (tooSoon)"
+        await WaitIdleAsync(live);
+
+        var row = Assert.Single(AdminTestSupport.Body(controller.GetLibraries()).GetProperty("mappings").EnumerateArray()).GetProperty("lastSync");
+        Assert.Equal(real.Result.ToString().ToLowerInvariant(), row.GetProperty("result").GetString());
+        Assert.Equal(real.EndedUtc, row.GetProperty("atUtc").GetDateTime());
+        Assert.Equal(real.EndedUtc.AddMinutes(3), row.GetProperty("skippedUtc").GetDateTime());
+        Assert.Equal("tooSoon", row.GetProperty("skipReason").GetString());
     }
 
     private static async Task WaitIdleAsync(StateBackedLiveStatus live)

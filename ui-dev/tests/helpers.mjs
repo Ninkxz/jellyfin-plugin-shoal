@@ -12,6 +12,11 @@ export const html = fs.readFileSync(path.join(cfgDir, 'shoal.html'), 'utf8');
 export const css = fs.readFileSync(path.join(cfgDir, 'shoal.css'), 'utf8');
 export const js = fs.readFileSync(path.join(cfgDir, 'shoal.js'), 'utf8');
 
+/** A golden reply from tests/contracts (shared with the backend tests), as { status, body } for a mock option such as remoteLibrariesGolden. */
+export function golden(name, status) {
+    return { status, body: JSON.parse(fs.readFileSync(path.resolve(here, '../../tests/contracts', name + '.json'), 'utf8')) };
+}
+
 let shoalModule = null;
 let dom = null;
 
@@ -122,4 +127,15 @@ export async function mountPage(opts) {
             page.remove();
         }
     };
+}
+
+/**
+ * A clock that runs from noon today (local), so relative times ("2 hours ago") do not turn into "yesterday at ..." when the tests run just after midnight.
+ * Pass it as mountPage({ now: middayNow() }).
+ */
+export function middayNow() {
+    const noon = new Date(Date.now());
+    noon.setHours(12, 0, 0, 0);
+    const offset = Date.now() - noon.getTime();
+    return () => Date.now() - offset;
 }

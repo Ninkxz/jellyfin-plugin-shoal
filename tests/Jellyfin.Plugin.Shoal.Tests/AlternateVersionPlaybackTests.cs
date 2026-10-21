@@ -243,6 +243,46 @@ public sealed class AlternateVersionPlaybackTests : IAsyncLifetime
         Assert.True(_slots.CanStart(User, SlotKey.Of("k3m9q2x7v1tz8c4n"), StateSamples.PeerKeyA, 4));
     }
 
+    // 2.9.2 K9 (Pilot 25 FAIL, a test lab: a title is on two servers): wired as in production, with BOTH the version resolver and the groups. jellyfin-web
+    // direct-plays a grouped title, then Back. The grant of a picked member has no version set (SlotItem = the item), while the static stream used to key
+    // its slot by the resolver's set (SlotKey.Of(stub key)), so the stop released a slot nobody held and Status kept counting 1 for the 2 min Grace.
+    // The stop is core's PlaybackStopEventArgs as SessionManager.OnPlaybackStopped (v12.1) builds it: Item = the local item, DeviceId = session.DeviceId,
+    // PlaySessionId "" (the web client builds a direct play URL itself).
+    [Fact]
+    public async Task K9_AWebDirectPlayOfAGroupedTitle_StoppedWithAnEmptyPlaySession_FreesItsSlotAtOnce()
+    {
+        var catalog = new StubCatalog(new CatalogStore(new ShoalPaths(_dir.Path), NullLogger.Instance));
+        var endpoints = new FakeEndpoints(new PeerEndpoint(StateSamples.PeerKeyA, "Hops", new Uri(_peer.BaseUrl), "shoal-a1b2c3d4e5f6-4b0c1d2e", FakeJellyfinPeer.DefaultToken).Configured(PeerNetwork.Tailnet, null, false, _peer.ServerId));
+        var trust = new PeerTrust(_client, _registry, _time);
+        var member = new MemberChoice(StateSamples.PeerKeyA, catalog.Find(StateSamples.PeerKeyA, "Title 0002")!, PeerItemOther, PeerItemOther, false);
+        var groups = new OneMember(member);
+        var info = new PlaybackInfoHandler(_grants, new RateLimiter(_time, 600, 100), endpoints, _client, trust, _registry, catalog, _state, new FakeDevices(), new NoLimits(), new FakeNotice(), new FakeAdmins(), _slots, () => true, _time, NullLogger<PlaybackInfoHandler>.Instance, null, _resolver, groups: groups);
+        var stream = new StaticStreamHandler(catalog, endpoints, _client, trust, _registry, _slots, new RateLimiter(_time, 1200, 100), _state, new FakeNotice(), NullLogger<StaticStreamHandler>.Instance, _resolver, groups: groups, grants: _grants);
+
+        Assert.Equal(200, (await RunAsync(await info.HandleAsync(InfoRequest(Primary, null), default))).Status);
+        var grant = Assert.Single(_grants.ForUser(User));
+        Assert.Equal(PeerItemOther, grant.PeerItemId); // the picked member plays
+        Assert.Equal(206, (await RunAsync(await stream.HandleAsync(StaticRequest(Primary, null), default))).Status);
+        Assert.Equal(1, _slots.ActiveSlotsOnPeer(StateSamples.PeerKeyA)); // what Status shows as activeStreams
+        Assert.True(_slots.HoldsSlot(grant)); // the stream's slot is the one the grant's books name
+
+        await using var reporter = new PeerSessionReporter(_grants, endpoints, _client, new HlsJobControl(endpoints, _client, NullLogger<HlsJobControl>.Instance), _slots, _time, NullLogger<PeerSessionReporter>.Instance);
+        var stop = new MediaBrowser.Controller.Library.PlaybackStopEventArgs
+        {
+            Item = new MediaBrowser.Controller.Entities.Movies.Movie { Id = Primary },
+            Users = [new Jellyfin.Database.Implementations.Entities.User("friend", "auth", "reset") { Id = User }],
+            PlaybackPositionTicks = 500_000_000,
+            MediaSourceId = Primary.ToString("N"),
+            DeviceId = "device-1",
+            ClientName = "Jellyfin Web",
+            PlaySessionId = string.Empty,
+        };
+        reporter.OnStop(Assert.IsType<PlaybackNote>(SessionReporterHost.Note(stop)));
+
+        Assert.Empty(_grants.ForUser(User));
+        Assert.Equal(0, _slots.ActiveSlotsOnPeer(StateSamples.PeerKeyA)); // at once, not after the Grace
+    }
+
     [Fact]
     public async Task T_ALT_7_AStaticStreamThatNamesASourceOfAnotherTitle_IsRefusedWithoutAPeerCall()
     {
@@ -452,6 +492,24 @@ public sealed class AlternateVersionPlaybackTests : IAsyncLifetime
         var context = new ResourceExecutingContext(action, [], []);
         await filter.OnResourceExecutionAsync(context, () => Task.FromResult<ResourceExecutedContext>(null!));
         return context.Result;
+    }
+
+    // A title on two servers whose best member is fixed (the real GroupPlayback needs the group book and the ranking).
+    private sealed class OneMember : IGroupPlayback
+    {
+        private readonly MemberChoice _member;
+
+        public OneMember(MemberChoice member) => _member = member;
+
+        public IReadOnlyList<MemberChoice>? Candidates(string stubPeerKey, CatalogEntry stubEntry, CallerUser user) => [_member];
+
+        public IReadOnlyList<MemberChoice> CandidatesForCopy(string stubPeerKey, CatalogEntry stubEntry, CallerUser user, string copyLibKey) => [_member];
+
+        public MemberChoice? Member(string stubPeerKey, CatalogEntry stubEntry, string grantPeerKey, Guid grantPeerItemId) => grantPeerItemId == _member.PeerItemId ? _member : null;
+
+        public IReadOnlyList<Guid> PeerIds(CatalogEntry stubEntry) => [_member.PeerItemId];
+
+        public bool Admits(string stubPeerKey, CatalogEntry stubEntry, MemberChoice member, CallerUser user, string? copyLibKey) => true;
     }
 
     private sealed class NoLimits : ISystemLimits

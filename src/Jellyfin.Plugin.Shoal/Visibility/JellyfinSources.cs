@@ -102,10 +102,24 @@ public sealed class JellyfinLibrarySource : ILibrarySource
     }
 
     /// <inheritdoc />
-    public Task RemoveAsync(string name, CancellationToken cancellationToken)
+    public async Task RemoveAsync(string name, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return _libraries.RemoveVirtualFolder(name, refreshLibrary: false);
+        await _libraries.RemoveVirtualFolder(name, refreshLibrary: false).ConfigureAwait(false);
+
+        // Pilot 23 REMOVE-SERVER-GHOST: without a refresh core keeps the library's CollectionFolder item, so /UserViews, the nav and My Media list it (empty)
+        // although /Library/VirtualFolders does not. A scan never deletes it (CollectionFolder.CanDelete is false); ValidateTopLibraryFolders drops the row of a
+        // collection folder whose folder is gone, but the user root keeps the item it had loaded until the next pass reloads its children. Core's own removal
+        // (refreshLibrary true) runs that pass and then a full scan; two non-recursive passes do the same without scanning every library.
+        // The library is gone either way: a failed pass must not make the caller keep its id (the next scans finish the job).
+        try
+        {
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
+        {
+        }
     }
 
     /// <inheritdoc />
@@ -129,6 +143,7 @@ public sealed class JellyfinLibrarySource : ILibrarySource
     {
         var root = System.IO.Path.GetFullPath(path).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var failed = 0;
         foreach (var types in new[] { new[] { BaseItemKind.Movie, BaseItemKind.Video, BaseItemKind.Episode }, [BaseItemKind.Season], [BaseItemKind.Series] })
         {
             foreach (var item in _libraries.GetItemList(new InternalItemsQuery { ParentId = libraryId, Recursive = true, IncludeItemTypes = types }))
@@ -136,9 +151,22 @@ public sealed class JellyfinLibrarySource : ILibrarySource
                 cancellationToken.ThrowIfCancellationRequested();
                 if (item.Path is { } itemPath && System.IO.Path.GetFullPath(itemPath).StartsWith(root, comparison))
                 {
-                    _libraries.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false });
+                    // Warden 13 L7: one item that cannot be deleted does not stop the others; the caller hears about it below.
+                    try
+                    {
+                        _libraries.DeleteItem(item, new DeleteOptions { DeleteFileLocation = false });
+                    }
+                    catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
+                    {
+                        failed++;
+                    }
                 }
             }
+        }
+
+        if (failed > 0)
+        {
+            throw new InvalidOperationException(failed + " items could not be removed"); // the folder stays in the library; the next removal tries again
         }
 
         await Task.CompletedTask.ConfigureAwait(false);

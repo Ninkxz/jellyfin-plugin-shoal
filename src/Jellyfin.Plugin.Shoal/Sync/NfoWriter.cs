@@ -31,8 +31,9 @@ public static class NfoWriter
     /// <param name="movie">The sanitized movie.</param>
     /// <param name="peerDisplayName">The peer's display name, for the <c>Shoal: &lt;Peer&gt;</c> tag; cleaned here to 64 characters.</param>
     /// <param name="extraTags">More tags (the library tag of a shared library folder, K44), or null.</param>
+    /// <param name="friendName">The friend the plot label names (2.9.2 K4: the peer's shown name), or null for the generic label.</param>
     /// <returns>The file content.</returns>
-    public static byte[] Write(SanitizedMovie movie, string peerDisplayName, IReadOnlyList<string>? extraTags = null)
+    public static byte[] Write(SanitizedMovie movie, string peerDisplayName, IReadOnlyList<string>? extraTags = null, string? friendName = null)
     {
         ArgumentNullException.ThrowIfNull(movie);
         using var stream = new MemoryStream();
@@ -53,7 +54,7 @@ public static class NfoWriter
                 Text(xml, "premiered", premiered.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             }
 
-            Text(xml, "plot", FriendLabel.Apply(movie.Overview));
+            Text(xml, "plot", FriendLabel.Apply(movie.Overview, friendName is null ? null : [friendName]));
             Text(xml, "tagline", movie.Tagline);
             Text(xml, "mpaa", movie.OfficialRating ?? string.Empty);
             if (movie.CommunityRating is { } rating)
@@ -66,7 +67,8 @@ public static class NfoWriter
                 Text(xml, "genre", genre);
             }
 
-            foreach (var studio in movie.Studios)
+            // K5: the friend is the only studio; the peer's studios are dropped (W1: written whatever OmitFacets says).
+            foreach (var studio in FriendLabel.Studios(friendName is null ? null : [friendName]))
             {
                 Text(xml, "studio", studio);
             }

@@ -89,6 +89,25 @@ public interface ISlotLedger
     /// <param name="peerMaxConversions">The peer's <c>MaxConcurrentTranscodes</c>.</param>
     /// <returns>True when no conversion can start.</returns>
     bool ConversionsFull(string peerKey, int peerMaxConversions) => false;
+
+    /// <summary>
+    /// Whether all of the peer's conversion slots are held, not counting the HLS slots this user's device has moved on from (2.9.2 K10, the same rule as
+    /// <see cref="StreamSlots.TryTakeHls"/>).
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="peerMaxConversions">The peer's <c>MaxConcurrentTranscodes</c>.</param>
+    /// <param name="userId">The user.</param>
+    /// <param name="itemId">The local item (slot key).</param>
+    /// <param name="origin">The series and device of the new stream.</param>
+    /// <returns>True when no conversion can start.</returns>
+    bool ConversionsFull(string peerKey, int peerMaxConversions, Guid userId, Guid itemId, SlotOrigin origin) => ConversionsFull(peerKey, peerMaxConversions);
+
+    /// <summary>
+    /// Counts the live slots of a user (2.9.2 K11: the "already playing" number of the Busy message).
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <returns>The number of live static and HLS slots.</returns>
+    int ActiveSlots(Guid userId) => 0;
 }
 
 /// <summary>

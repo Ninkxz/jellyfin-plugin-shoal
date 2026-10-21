@@ -177,7 +177,8 @@ internal sealed class PlaybackParts
             new TypedCapture<PlaybackInfoHandler>(log),
             new AttachmentRebuilder(() => parts.AttachmentsEnabled),
             cards: parts.Cards,
-            groups: new LiveGroups(() => parts.GroupOverride));
+            groups: new LiveGroups(() => parts.GroupOverride),
+            maxStreamsPerUser: () => parts.MaxStreams);
         parts.Handler = handler;
         builder.Services.AddSingleton<IPlaybackInfoHandler>(handler);
         builder.Services.AddSingleton(parts.Cards);
@@ -302,6 +303,10 @@ internal sealed class FakeNotice : IOfflineNotice
     public void PeerOffline(Guid userId, string peerKey, string peerName) => Notices.Add((userId, peerKey));
 
     public void QualityRefused(Guid userId, string peerKey) => QualityRefusals.Add((userId, peerKey));
+
+    public List<(Guid User, string Peer, string Name, BusyReason Reason, int Playing)> Busies { get; } = [];
+
+    public void Busy(Guid userId, string peerKey, string peerName, BusyReason reason, int playing = 0) => Busies.Add((userId, peerKey, peerName, reason, playing));
 }
 
 internal sealed class FakeAdmins : IAdminNotifier
@@ -330,6 +335,11 @@ internal sealed class FakeSlots : ISlotLedger
     public bool CanStart(Guid userId, Guid itemId, string peerKey, int peerMax, SlotOrigin origin) => Real?.CanStart(userId, itemId, peerKey, peerMax, origin) ?? true;
 
     public bool ConversionsFull(string peerKey, int peerMaxConversions) => Real?.ConversionsFull(peerKey, peerMaxConversions) ?? false;
+
+    public bool ConversionsFull(string peerKey, int peerMaxConversions, Guid userId, Guid itemId, SlotOrigin origin) =>
+        Real?.ConversionsFull(peerKey, peerMaxConversions, userId, itemId, origin) ?? false;
+
+    public int ActiveSlots(Guid userId) => Real?.ActiveSlots(userId) ?? 0;
 }
 
 internal sealed class FakeLimits : ISystemLimits

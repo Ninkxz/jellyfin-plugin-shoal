@@ -59,7 +59,7 @@ internal sealed record SettingsDto
     /// <summary>Gets how many HLS segments Home reads ahead (2 to 20).</summary>
     public int? HlsBufferAhead { get; init; }
 
-    /// <summary>Gets a value indicating whether friends' TV libraries can be added and synced (DESIGN v2.7).</summary>
+    /// <summary>Gets a value an older page may still send; ignored (TV shows from friends are always on since v2.9.1).</summary>
     public bool? TvShowsEnabled { get; init; }
 
     /// <summary>Gets a value indicating whether episode thumbnails are fetched for TV libraries.</summary>
@@ -284,7 +284,6 @@ public class AdminSettingsController : ControllerBase
         config.AutoFitQualityToLink = body.AutoFitQualityToLink ?? config.AutoFitQualityToLink;
         config.MaxStreamsPerUser = body.MaxStreamsPerUser ?? config.MaxStreamsPerUser;
         config.HlsBufferAhead = body.HlsBufferAhead ?? config.HlsBufferAhead;
-        config.TvShowsEnabled = body.TvShowsEnabled ?? config.TvShowsEnabled;
         config.TvEpisodeThumbs = body.TvEpisodeThumbs ?? config.TvEpisodeThumbs;
         config.HlsSubtitlesEnabled = body.HlsSubtitlesEnabled ?? config.HlsSubtitlesEnabled;
         config.DetectableByFriends = body.DetectableByFriends ?? config.DetectableByFriends;
@@ -552,7 +551,7 @@ public class AdminSettingsController : ControllerBase
             AutoFitQualityToLink = c.AutoFitQualityToLink,
             MaxStreamsPerUser = c.MaxStreamsPerUser,
             HlsBufferAhead = c.HlsBufferAhead,
-            TvShowsEnabled = c.TvShowsEnabled,
+            TvShowsEnabled = true, // always on (v2.9.1)
             TvEpisodeThumbs = c.TvEpisodeThumbs,
             HlsSubtitlesEnabled = c.HlsSubtitlesEnabled,
             DetectableByFriends = c.DetectableByFriends,
