@@ -108,10 +108,10 @@ public sealed class PeerSessionReporterTests : IClassFixture<PlaybackFixture>, I
         return H.World.Sign("rep-" + user.ToString("N"), principal);
     }
 
-    private async Task<Grant> NewGrantAsync(Guid? user = null, string? item = null, bool transcode = true)
+    private async Task<Grant> NewGrantAsync(Guid? user = null, string? item = null, bool transcode = true, bool peerSession = true)
     {
         var owner = user ?? MatrixWorld.Admin;
-        H.Peer.PlaybackInfoReply = (id, _) => Reply.Json(Answer(id, transcode));
+        H.Peer.PlaybackInfoReply = (id, _) => Reply.Json(peerSession ? Answer(id, transcode) : WithoutPeerSession(Answer(id, transcode)));
         using var response = await H.SendAsync(Sign(owner), HttpMethod.Post, $"/Items/{item ?? Item}/PlaybackInfo", r => r.Content = new StringContent("{}", Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return P.Grants.ForUser(owner).OrderBy(static g => g.CreatedUtc).Last();
@@ -327,6 +327,110 @@ public sealed class PeerSessionReporterTests : IClassFixture<PlaybackFixture>, I
         Assert.Empty(H.Peer.Requests);
         Assert.NotNull(P.Grants.Get(grant.GrantId));
         Assert.True(grant.PeerJobStarted);
+    }
+
+    // 2.9.2 K9: a direct play the Peer answered without a PlaySessionId (allowed, Grants.cs) still gives its slot and grant back on stop.
+    private async Task<Grant> DirectPlayWithoutPeerSessionAsync(Guid user)
+    {
+        var grant = await NewGrantAsync(user, transcode: false, peerSession: false);
+        Assert.True(string.IsNullOrEmpty(grant.PeerPlaySessionId));
+        using var play = await H.SendAsync(Sign(user), HttpMethod.Get, $"/Videos/{Item}/stream?Static=true", r => r.Headers.TryAddWithoutValidation("Range", "bytes=0-9"));
+        Assert.Equal(HttpStatusCode.PartialContent, play.StatusCode);
+        Assert.Equal(1, P.StreamSlots.ActiveSlots(user));
+        return grant;
+    }
+
+    private static object WithoutPeerSession(object answer)
+    {
+        ((Dictionary<string, object?>)answer).Remove("PlaySessionId");
+        return answer;
+    }
+
+    [Fact]
+    public async Task Stop_DirectPlayWithoutPeerSession_ReleasesSlotAndGrant()
+    {
+        var grant = await DirectPlayWithoutPeerSessionAsync(MatrixWorld.Admin);
+        H.Peer.Requests.Clear();
+
+        _reporter.OnStop(Note(grant, position: 500_000_000));
+
+        Assert.Null(P.Grants.Get(grant.GrantId)); // settled synchronously
+        Assert.Equal(0, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
+        await Task.Delay(200);
+        Assert.DoesNotContain(H.Peer.Requests, Report); // nothing the Peer could match, so nothing is sent
+        Assert.DoesNotContain(H.Peer.Requests, static r => r.Method == "DELETE");
+    }
+
+    [Fact]
+    public async Task Stop_OtherUsersSession_ReleasesNothing()
+    {
+        var grant = await DirectPlayWithoutPeerSessionAsync(MatrixWorld.Admin);
+        H.Peer.Requests.Clear();
+
+        _reporter.OnStop(Note(grant, user: MatrixWorld.Selected)); // another user names the admin's play session
+        _reporter.OnStop(Note(grant, session: "no-such-session"));
+        _reporter.OnStop(Note(grant, session: string.Empty));
+
+        Assert.NotNull(P.Grants.Get(grant.GrantId));
+        Assert.Equal(1, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
+        await Task.Delay(200);
+        Assert.Empty(H.Peer.Requests);
+    }
+
+    // 2.9.2 K9 (Pilot 22 FAIL): core's PlaybackStopEventArgs as SessionManager.OnPlaybackStopped (v12.1) builds it from jellyfin-web's real
+    // PlaybackStopInfo for a direct play. jellyfin-web (playbackmanager.js createStreamInfo) builds the stream URL itself without a PlaySessionId, so
+    // PlayState.PlaySessionId = getParam('playSessionId', url) = "". The body it posts: ItemId, MediaSourceId, PositionTicks, PlayMethod "DirectPlay",
+    // PlaySessionId "", PlaylistItemId, NowPlayingQueue, VolumeLevel, IsMuted, IsPaused... Core keeps ItemId as the event's Item and the session's DeviceId.
+    private static PlaybackNote WebStop(Grant grant, Guid? user = null, Guid? item = null, string? device = null)
+    {
+        var stop = new MediaBrowser.Controller.Library.PlaybackStopEventArgs
+        {
+            Item = new MediaBrowser.Controller.Entities.Movies.Movie { Id = item ?? grant.LocalItemId },
+            Users = [new Jellyfin.Database.Implementations.Entities.User("friend", "auth", "reset") { Id = user ?? grant.LocalUserId }],
+            PlaybackPositionTicks = 500_000_000,
+            MediaSourceId = grant.LocalItemId.ToString("N"),
+            DeviceId = device ?? grant.CallerDeviceId,
+            ClientName = "Jellyfin Web",
+            PlaySessionId = string.Empty,
+        };
+        return Assert.IsType<PlaybackNote>(SessionReporterHost.Note(stop));
+    }
+
+    [Fact]
+    public async Task Stop_JellyfinWebDirectPlay_EmptyPlaySessionId_ReleasesSlotAndGrant_AndReportsToThePeer()
+    {
+        var grant = await NewGrantAsync(transcode: false);
+        using var play = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, $"/Videos/{Item}/stream?Static=true", r => r.Headers.TryAddWithoutValidation("Range", "bytes=0-9"));
+        Assert.Equal(HttpStatusCode.PartialContent, play.StatusCode);
+        Assert.Equal(1, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
+        H.Peer.Requests.Clear();
+
+        _reporter.OnStop(WebStop(grant));
+
+        Assert.Null(P.Grants.Get(grant.GrantId)); // settled at once, not after the 2 min Grace
+        Assert.Equal(0, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
+        var stopped = await WaitForAsync(static r => r.Path == "/Sessions/Playing/Stopped", 1);
+        using var json = JsonDocument.Parse(Assert.Single(stopped).Body);
+        Assert.Equal(PeerPlaySession, json.RootElement.GetProperty("PlaySessionId").GetString()); // the Peer's own id, never the empty one
+    }
+
+    [Fact]
+    public async Task Stop_JellyfinWebEmptyPlaySessionId_OtherUserDeviceOrItem_ReleasesNothing()
+    {
+        var grant = await NewGrantAsync(transcode: false);
+        using var play = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, $"/Videos/{Item}/stream?Static=true", r => r.Headers.TryAddWithoutValidation("Range", "bytes=0-9"));
+        Assert.Equal(1, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
+        H.Peer.Requests.Clear();
+
+        _reporter.OnStop(WebStop(grant, user: MatrixWorld.Selected)); // another user naming the admin's item on the admin's device
+        _reporter.OnStop(WebStop(grant, device: "another-device"));
+        _reporter.OnStop(WebStop(grant, item: MatrixWorld.ItemB));
+        _reporter.OnStop(WebStop(grant, item: Guid.Empty));
+
+        Assert.NotNull(P.Grants.Get(grant.GrantId));
+        Assert.Equal(1, P.StreamSlots.ActiveSlots(MatrixWorld.Admin));
+        await Task.Delay(200);
+        Assert.DoesNotContain(H.Peer.Requests, Report);
     }
 
     [Fact]

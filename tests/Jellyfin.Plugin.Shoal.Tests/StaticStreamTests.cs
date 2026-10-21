@@ -665,12 +665,22 @@ public sealed class StaticStreamTests : IClassFixture<PlaybackFixture>, IAsyncLi
         b.Dispose();
         await WaitForConnectionsAsync(MatrixWorld.Admin, 0);
         P.Time.Advance(TimeSpan.FromSeconds(100));
-        using var stillHeld = await GetAsync($"/Videos/{ItemC}/stream?Static=true", admin, "bytes=0-9");
+
+        // 2.9.2 K10: the device that played them has moved on when it starts another title, so the lingering is checked from the user's other device.
+        var otherDevice = H.World.Sign("p-admin-tv", new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [
+                new System.Security.Claims.Claim(CallerContext.UserIdClaim, MatrixWorld.Admin.ToString("N")),
+                new System.Security.Claims.Claim(CallerContext.DeviceIdClaim, "device-admin-tv"),
+                new System.Security.Claims.Claim(CallerContext.TokenClaim, "tok" + MatrixWorld.Admin.ToString("N")),
+                new System.Security.Claims.Claim(CallerContext.IsApiKeyClaim, "False"),
+            ],
+            "test")));
+        H.Peer.StreamChunkDelayMs = 0;
+        using var stillHeld = await GetAsync($"/Videos/{ItemC}/stream?Static=true", otherDevice, "bytes=0-9");
         Assert.Equal(HttpStatusCode.TooManyRequests, stillHeld.StatusCode); // the slots linger for the grace period
 
         P.Time.Advance(TimeSpan.FromSeconds(30));
-        H.Peer.StreamChunkDelayMs = 0;
-        using var released = await GetAsync($"/Videos/{ItemC}/stream?Static=true", admin, "bytes=0-9");
+        using var released = await GetAsync($"/Videos/{ItemC}/stream?Static=true", otherDevice, "bytes=0-9");
         Assert.Equal(HttpStatusCode.PartialContent, released.StatusCode);
     }
 

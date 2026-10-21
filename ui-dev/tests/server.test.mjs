@@ -1,7 +1,9 @@
 // U5: Server detail (ui-spec 8.3, 8.3.12) against the mock admin API.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mountPage, makeClock } from './helpers.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { mountPage, makeClock, golden, cfgDir } from './helpers.mjs';
 
 async function server(id, extra) {
     const clock = makeClock(Date.UTC(2026, 9, 15, 12, 0, 0));
@@ -81,6 +83,32 @@ test('alerts: bad before warn, every kind has its words, and none of the notes c
         const link = [...p.page.querySelectorAll('.shoal-alert a')].find((a) => a.textContent === 'Open Sintel');
         assert.match(link.getAttribute('href'), /^#\/details\?id=item-hops-1/);
         assert.match(text, /For example: Sintel, Spring, Hero/);
+    } finally {
+        p.close();
+    }
+});
+
+test('ui.alerts.heldAdditions.noExamples.noDanglingSentence', async () => {
+    for (const [id, title, tail] of [
+        ['h-fern', '600 new titles on hold', /Fernwood added 600 titles at once, so Shoal is holding them until you check\. That protects your server if something goes wrong on theirs\. Shoal never adds them on its own\./],
+        ['h-hops', '140 removals on hold', /Hops stopped listing 140 titles at once\. That can happen when a drive disconnects, so Shoal kept them for now\. If they're still gone after 3 syncs over 24 hours, Shoal removes them\./]
+    ]) {
+        const p = await server(id, { scenario: 'problems', noExamples: true });
+        try {
+            const box = [...p.page.querySelectorAll('.shoal-alert')].find((b) => b.querySelector('.shoal-hint__title').textContent === title);
+            assert.ok(box, title);
+            assert.match(box.textContent, tail);
+            assert.doesNotMatch(box.textContent, /For example|:\s*\.|\.\s*\./);
+        } finally {
+            p.close();
+        }
+    }
+});
+
+test('held alerts with real titles keep the For example sentence', async () => {
+    const p = await server('h-fern', { scenario: 'problems' });
+    try {
+        assert.match(p.text(), /Fernwood added 600 titles at once.*For example: Sintel, Spring, Hero\. Shoal never adds them on its own\./s);
     } finally {
         p.close();
     }
@@ -196,7 +224,7 @@ test('libraries: each row links to its switch and can be removed after a confirm
         const row = [...p.page.querySelectorAll('.shoal-row--library')].find((r) => r.textContent.includes('Hops Movies'));
         assert.match(row.textContent, /From Movies · 1,204 titles · last sync/);
         const link = [...row.querySelectorAll('a')].find((a) => a.textContent === 'Change who can see this');
-        assert.match(link.getAttribute('href'), /lib-m-hops-movies/);
+        assert.match(link.getAttribute('href'), /lib-h-hops\.m-hops-movies/);
         buttonIn(row, 'Remove…').click();
         await p.wait(60);
         const d = dialog(p);
@@ -204,7 +232,10 @@ test('libraries: each row links to its switch and can be removed after a confirm
         assert.match(d.textContent, /People here stop seeing its 1,204 titles\. Shoal deletes the library and its entries; Hops keeps its files\./);
         buttonIn(d, 'Remove library').click();
         await p.wait(200);
-        assert.equal(calls(p, 'DELETE', /Libraries\/m-hops-movies$/).length, 1);
+        // Pilot 19 D1: the row's id is the composite <handle>.<key> (as the real server lists it); the DELETE route takes the bare key under the handle.
+        const deletes = p.mock.calls.filter((c) => c.method === 'DELETE').map((c) => c.path);
+        assert.equal(deletes.length, 1);
+        assert.match(deletes[0], /(^|\/)Peers\/h-hops\/Libraries\/m-hops-movies$/);
     } finally {
         p.close();
     }
@@ -434,6 +465,135 @@ test('Server detail: Add a library sends the bare array the controller reads (it
         assert.equal(sent[0].body.length, 1);
         assert.match(sent[0].body[0].mappingKey, /^rl-/);
         assert.ok(Array.isArray(sent[0].body[0].selectedUserIds));
+    } finally {
+        p.close();
+    }
+});
+
+const visibleBar = (p) => p.page.querySelector('.shoal-errors .shoal-errorbar');
+const srAlert = (p) => (p.page.querySelector('[data-slot="alert"]') || {}).textContent || '';
+const SCOPE_HINT =/hasn't told Shoal which libraries it shares with you\. Ask your friend to check the share on their server\./;
+
+test('ui.picker.scopeUnknown.showsHint: Add a library on a share of unknown scope names the server and opens no picker', async () => {
+    const p = await server('h-hops', { remoteLibrariesGolden: golden('peers.remote-libraries.scope-unknown', 409) });
+    try {
+        const name = header(p).querySelector('h1, h2').textContent.trim();
+        buttonIn(p.page, 'Add another library').click();
+        await p.wait(200);
+        assert.equal(dialog(p), null, 'no dialog with an empty list');
+        // Pilot 23 K2/U2-DIALOG: the hint was only in the screen-reader region; it must be a visible bar too.
+        const bar = visibleBar(p);
+        assert.ok(bar, 'a visible error bar');
+        assert.match(bar.textContent, SCOPE_HINT);
+        assert.ok(bar.textContent.includes(name + " hasn't told Shoal"), 'the bar names the server: ' + name);
+        assert.match(srAlert(p), SCOPE_HINT, 'still spoken');
+        assert.equal(calls(p, 'POST', /Peers\/h-hops\/Libraries$/).length, 0);
+    } finally {
+        p.close();
+    }
+});
+
+test('ui.picker.scopeUnknown.showsHint: the add from the dialog answers 409 shareScopeUnknown and shows the hint, not "already added"', async () => {
+    const p = await server('h-hops', { addLibraryGolden: golden('peers.remote-libraries.scope-unknown', 409) });
+    try {
+        buttonIn(p.page, 'Add another library').click();
+        await p.wait(200);
+        const d = dialog(p);
+        [...d.querySelectorAll('.shoal-check input')].find((i) => !i.disabled).click();
+        await p.wait(30);
+        buttonIn(d, 'Add and start syncing').click();
+        await p.wait(250);
+        const bar = visibleBar(p);
+        assert.ok(bar, 'a visible error bar after the add');
+        assert.match(bar.textContent, SCOPE_HINT);
+        assert.match(srAlert(p), SCOPE_HINT, 'still spoken');
+        assert.doesNotMatch(p.text(), /already added/);
+    } finally {
+        p.close();
+    }
+});
+
+/* Pilot 23 K3-LIBROW: every word the backend can store in lastSync.result (SyncResultKind in CatalogTypes.cs) has copy, so the row never shows a raw key. */
+const SYNC_RESULTS = (() => {
+    const src = fs.readFileSync(path.resolve(cfgDir, '../Sync/CatalogTypes.cs'), 'utf8');
+    const block = src.slice(src.indexOf('public enum SyncResultKind'));
+    return [...block.slice(0, block.indexOf('}')).matchAll(/JsonStringEnumMemberName\("([a-z]+)"\)/g)].map((m) => m[1]);
+})();
+
+test('K3: the library row has plain words for every sync result the backend produces (held, skipped ...)', async () => {
+    assert.ok(SYNC_RESULTS.includes('held') && SYNC_RESULTS.includes('skipped'), 'parsed ' + JSON.stringify(SYNC_RESULTS));
+    for (const result of SYNC_RESULTS) {
+        const p = await server('h-hops', { libraryLastSyncResult: result });
+        try {
+            const text = p.text();
+            assert.match(text, /last sync .+ \(([a-zA-Z ]+)\)/, result + ': the row shows the result');
+            assert.doesNotMatch(text, /syncResult_/, result + ': no raw key');
+        } finally {
+            p.close();
+        }
+    }
+});
+
+// Every skip word the sync service can produce (SyncReport.Skipped("...")) plus the fallback of a skip without one; read from the source.
+const SKIP_REASONS = (() => {
+    const sync = fs.readFileSync(path.resolve(cfgDir, '../Sync/CatalogSyncService.cs'), 'utf8');
+    const live = fs.readFileSync(path.resolve(cfgDir, '../Api/Admin/StateBackedLiveStatus.cs'), 'utf8');
+    const words = [...sync.matchAll(/SyncReport\.Skipped\("([A-Za-z]+)"\)/g)].map((m) => m[1]);
+    const fallback = /new SkippedSync\([^;]*report\.Error \?\? "([A-Za-z]+)"\)/.exec(live);
+    return [...new Set(words.concat(fallback ? [fallback[1]] : []))];
+})();
+
+test('SKIPPED-INVISIBLE: every skip reason the backend produces has plain words on the library row, next to the real result and time', async () => {
+    assert.ok(['tooSoon', 'scanRunning', 'busy', 'layoutJob', 'unknown'].every((r) => SKIP_REASONS.includes(r)), 'parsed ' + JSON.stringify(SKIP_REASONS));
+    for (const reason of SKIP_REASONS) {
+        const p = await server('h-hops', { lastSyncSkipReason: reason });
+        try {
+            const row = p.page.querySelector('[data-shoal-view="server"] .shoal-row--library');
+            const note = row.querySelector('[data-slot="skipped"]');
+            assert.ok(note, reason + ': the row says the sync was skipped');
+            assert.match(note.textContent, /^Sync now skipped this time 1 min ago\. \S.+\.$/, reason + ': ' + note.textContent);
+            assert.match(row.textContent, /last sync 12 min ago \(OK\)/, reason + ': the real time and result stay');
+            assert.doesNotMatch(row.textContent, /skipReason_|syncResult_|\u2013|\u2014/, reason + ': no raw key, no dash');
+            if (reason !== 'unknown') {
+                assert.doesNotMatch(note.textContent, /could not say why/, reason + ': its own words, not the general line');
+            }
+        } finally {
+            p.close();
+        }
+    }
+});
+
+test('SKIPPED-INVISIBLE: with no skip the row has no skip line, and a skip with no sync before says why once', async () => {
+    let p = await server('h-hops');
+    try {
+        assert.equal(p.page.querySelector('[data-shoal-view="server"] [data-slot="skipped"]'), null);
+    } finally {
+        p.close();
+    }
+
+    p = await server('h-hops', { lastSyncSkipReason: 'tooSoon', libraryLastSyncResult: 'skipped' });
+    try {
+        const row = p.page.querySelector('[data-shoal-view="server"] .shoal-row--library');
+        assert.match(row.textContent, /\(skipped this time\)/);
+        assert.equal(row.querySelector('[data-slot="skipped"]').textContent, 'Shoal synced this server a few minutes ago.');
+    } finally {
+        p.close();
+    }
+});
+
+test('SYNCNOW-429: Sync now inside the 5 minute cooldown says so on screen, with the wait from Retry-After', async () => {
+    const p = await server('h-hops');
+    try {
+        buttonIn(p.page.querySelector('[data-shoal-view="server"]'), 'Sync now').click();
+        await p.wait(250);
+        assert.equal(visibleBar(p), null, 'the first sync starts');
+        buttonIn(p.page.querySelector('[data-shoal-view="server"]'), 'Sync now').click();
+        await p.wait(250);
+        assert.equal(calls(p, 'POST', /Peers\/h-hops\/Sync$/).length, 2, 'the second click reached the server and got 429');
+        const bar = visibleBar(p);
+        assert.ok(bar, 'a visible bar, not silence');
+        assert.match(bar.textContent, /Shoal just synced this server\. Try again in 4 min\./);
+        assert.match(srAlert(p), /Shoal just synced this server/);
     } finally {
         p.close();
     }

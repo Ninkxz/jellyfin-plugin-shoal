@@ -1,10 +1,10 @@
 // U6: Settings (ui-spec 8.5), "Protect your shared videos" (D9), banners with their actions (8.8), danger zone.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mountPage } from './helpers.mjs';
+import { mountPage, middayNow } from './helpers.mjs';
 
 async function settings(scenario, extra) {
-    return mountPage(Object.assign({ scenario, params: { view: 'settings' }, settleMs: 400 }, extra || {}));
+    return mountPage(Object.assign({ scenario, params: { view: 'settings' }, settleMs: 400, now: middayNow() }, extra || {})); // relative times stay "hours ago" after midnight
 }
 
 const buttonIn = (root, text) => [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
@@ -51,7 +51,7 @@ test('Save sends every field under the names of 8.5.1 and confirms', async () =>
         await p.wait(150);
         const put = p.mock.calls.find((c) => c.method === 'PUT' && c.path === 'Settings');
         assert.ok(put);
-        assert.deepEqual(Object.keys(put.body).sort(), ['alternateVersionsEnabled', 'artQuality', 'attachmentsEnabled', 'autoFitQualityToLink', 'diskQuotaGbPerPeer', 'hlsSubtitlesEnabled', 'maxStreamsPerUser', 'massDeletionMinCount', 'massDeletionPercent', 'newItemsMinCount', 'newItemsPercent', 'notifyClientsWhenOffline', 'parkAfterHours', 'parkOfflinePeers', 'reencodeImages', 'speedTestIntervalHours', 'stubRoot', 'stubRootNetworkAck', 'syncIntervalHours', 'tailscaleSocket', 'trickplayCacheGb', 'trickplayEnabled', 'tvEpisodeThumbs', 'tvShowsEnabled', 'hlsBufferAhead', 'offlineCardEnabled', 'requestServiceName', 'requestServiceUrl'].sort());
+        assert.deepEqual(Object.keys(put.body).sort(), ['alternateVersionsEnabled', 'artQuality', 'attachmentsEnabled', 'autoFitQualityToLink', 'diskQuotaGbPerPeer', 'hlsSubtitlesEnabled', 'maxStreamsPerUser', 'massDeletionMinCount', 'massDeletionPercent', 'newItemsMinCount', 'newItemsPercent', 'notifyClientsWhenOffline', 'parkAfterHours', 'parkOfflinePeers', 'reencodeImages', 'speedTestIntervalHours', 'stubRoot', 'stubRootNetworkAck', 'syncIntervalHours', 'tailscaleSocket', 'trickplayCacheGb', 'trickplayEnabled', 'tvEpisodeThumbs', 'hlsBufferAhead', 'offlineCardEnabled', 'requestServiceName', 'requestServiceUrl'].sort());
         assert.equal(put.body.massDeletionMinCount, 30);
         assert.equal(put.body.syncIntervalHours, 6);
         assert.match(p.text(), /Settings saved/);
@@ -493,6 +493,19 @@ test('L2: Settings names each library Shoal leaves unlocked, as text', async () 
         assert.match(notes[0], /^Your library Movies holds a friends' folder next to your own folders, so Shoal leaves its settings alone\./);
         assert.match(notes[1], /<b>x<\/b>/);
         assert.equal(p.page.querySelectorAll('.shoal-linkpanel b').length, 0);
+    } finally {
+        p.close();
+    }
+});
+
+test('L5: Settings names each Main library whose main library no longer holds it, as text', async () => {
+    const p = await mountPage({ scenario: 'default', params: { view: 'settings' }, settleMs: 400, mainsMissing: ['Friends in Movies', '<i>x</i>'] });
+    try {
+        const notes = [...p.page.querySelectorAll('.shoal-linkpanel .shoal-warnbox--missing')].map((n) => n.textContent);
+        assert.equal(notes.length, 2);
+        assert.match(notes[0], /^Friends in Movies was added into one of your libraries, but that library no longer holds it/);
+        assert.match(notes[1], /<i>x<\/i>/);
+        assert.equal(p.page.querySelectorAll('.shoal-linkpanel i').length, 0);
     } finally {
         p.close();
     }

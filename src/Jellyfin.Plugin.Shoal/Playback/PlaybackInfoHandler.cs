@@ -48,6 +48,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     private readonly IVersionResolver? _versions;
     private readonly OfflineCards? _cards;
     private readonly IGroupPlayback? _groups;
+    private readonly Func<int> _maxStreamsPerUser;
     private readonly ILogger<PlaybackInfoHandler> _logger;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _lastCanaryAlert = new();
 
@@ -74,6 +75,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     /// <param name="versions">Maps the media source the client names to a version of the title (DESIGN v2.6.4); none means the title has one version.</param>
     /// <param name="cards">The offline card (owner request 2026-10-16); none means an offline friend gets the plain refusal.</param>
     /// <param name="groups">Picks the server of a grouped title per play (PLAN v2.9 K42); none means every title plays from its stub's server.</param>
+    /// <param name="maxStreamsPerUser">The streams one user may run at once (<c>MaxStreamsPerUser</c>), to word the Busy message; none means 4.</param>
     public PlaybackInfoHandler(
         GrantStore grants,
         RateLimiter limiter,
@@ -94,9 +96,11 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         IAttachmentRebuilder? attachments = null,
         IVersionResolver? versions = null,
         OfflineCards? cards = null,
-        IGroupPlayback? groups = null)
+        IGroupPlayback? groups = null,
+        Func<int>? maxStreamsPerUser = null)
     {
         _groups = groups;
+        _maxStreamsPerUser = maxStreamsPerUser ?? (static () => 4);
         _cards = cards;
         _versions = versions;
         _grants = grants;
@@ -131,7 +135,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         // 1. limits and peer state
         if (!_limiter.TryTake(caller.UserId))
         {
-            return Error(PlaybackErrorCode.RateLimitExceeded);
+            return Busy(caller.UserId, peerKey, BusyReason.TooFast);
         }
 
         // A stopped stub server refuses at once, unless the title is grouped: then another server may play it (K42; checked again below for the server picked).
@@ -143,7 +147,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
 
         if (!_grants.HasRoom(caller.UserId, request.ItemId, caller.DeviceId))
         {
-            return Error(PlaybackErrorCode.RateLimitExceeded);
+            return Busy(caller.UserId, peerKey, StreamsReason(caller.UserId));
         }
 
         // 2. read the request
@@ -188,6 +192,8 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         QualityCap? cap = null;
         PlaybackInfoResponse? answer = null;
         IActionResult? lastFailure = null;
+        IActionResult? busyFailure = null;
+        var busyPeer = string.Empty;
         var stubPeerKey = peerKey;
         var stubPeerItemId = peerItemId;
         var stubSourceId = peerMediaSourceId;
@@ -252,7 +258,9 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
             peerState = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey);
             if (peerState is not null && !_slots.CanStart(caller.UserId, setId.Length == 0 ? request.ItemId : SlotKey.Of(setId), peerKey, peerState.MaxConcurrentStreams, new SlotOrigin(entry.Kind == EntryKind.Episode ? entry.PeerSeriesId : string.Empty, caller.DeviceId)))
             {
-                lastFailure = Error(PlaybackErrorCode.RateLimitExceeded);
+                // K11: the message goes out only if this refusal is the answer (another server of a grouped title may still play it).
+                lastFailure = busyFailure = Error(PlaybackErrorCode.RateLimitExceeded);
+                busyPeer = peerKey;
                 continue;
             }
 
@@ -297,6 +305,9 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
                     continue;
                 }
 
+                // 2.9.2 K8: a 200 to this token-bearing call, sent under a fresh pin, proves the peer accepts the token just as /Users/Me would.
+                // Without it, a stream right after a pin refresh finds the auth stale and PeerTrust's 10 s on-demand limit refuses to recheck (H1).
+                _registry.RecordAuthVerified(peerKey);
                 answer = PlaybackInfoBuilder.ParsePeerAnswer(await response.ReadBytesAsync(callToken).ConfigureAwait(false));
             }
             catch (OperationCanceledException) when (budget.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -337,6 +348,11 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         if (answer is null || peer is null)
         {
             // Every server failed: the last failure stands (the offline card or refusal of the last server tried).
+            if (lastFailure is not null && ReferenceEquals(lastFailure, busyFailure))
+            {
+                SendBusy(caller.UserId, busyPeer, StreamsReason(caller.UserId));
+            }
+
             return lastFailure ?? Error(PlaybackErrorCode.NotAllowed);
         }
 
@@ -374,9 +390,11 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
         }
 
         // Conversion pre-check (6.2 step 6): a source that can only be converted needs a free conversion slot at the peer.
-        if (built.Grant.Method == PlayMethod.Transcode && peerState is not null && _slots.ConversionsFull(peerKey, peerState.MaxConcurrentTranscodes))
+        // 2.9.2 K10: the HLS slots this device has moved on from (a retry of the same title included) do not count, as at the first segment.
+        if (built.Grant.Method == PlayMethod.Transcode && peerState is not null
+            && _slots.ConversionsFull(peerKey, peerState.MaxConcurrentTranscodes, caller.UserId, built.Grant.SlotItem, new SlotOrigin(entry.Kind == EntryKind.Episode ? entry.PeerSeriesId : string.Empty, caller.DeviceId)))
         {
-            return Error(PlaybackErrorCode.RateLimitExceeded);
+            return Busy(caller.UserId, peerKey, BusyReason.Conversions);
         }
 
         // 6. canary: nothing that belongs to the Peer may be in what goes back
@@ -401,7 +419,7 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
 
         if (_grants.TryAdd(built.Grant) is GrantOutcome.RefusedUser or GrantOutcome.RefusedGlobal)
         {
-            return Error(PlaybackErrorCode.RateLimitExceeded); // lost a race for the last place
+            return Busy(caller.UserId, peerKey, StreamsReason(caller.UserId)); // lost a race for the last place
         }
 
         _logger.LogInformation("Served Shoal PlaybackInfo for item {Item} from peer {Peer}", Redact.Id(request.ItemId), Redact.Id(peerKey));
@@ -417,6 +435,24 @@ public sealed class PlaybackInfoHandler : IPlaybackInfoHandler
     }
 
     private static ShoalRawJsonResult Error(PlaybackErrorCode code) => new(StatusCodes.Status200OK, PlaybackInfoBuilder.ErrorBody(code));
+
+    // 2.9.2 K11 (gate G8 open, the plan's default): the client still gets RateLimitExceeded, and the user's sessions get a message that says which limit.
+    private ShoalRawJsonResult Busy(Guid userId, string peerKey, BusyReason reason)
+    {
+        SendBusy(userId, peerKey, reason);
+        return Error(PlaybackErrorCode.RateLimitExceeded);
+    }
+
+    private void SendBusy(Guid userId, string peerKey, BusyReason reason)
+    {
+        var shown = _state.Current.Home.Peers.FirstOrDefault(p => p.PeerKey == peerKey)?.ShownName() ?? string.Empty;
+        _notice.Busy(userId, peerKey, shown, reason, _slots.ActiveSlots(userId));
+    }
+
+    // A stream refusal is the user's own limit when the user already runs as many streams as allowed; otherwise the friend's server is full (or the user holds
+    // half of it, which reads the same to the user).
+    private BusyReason StreamsReason(Guid userId) =>
+        _slots.ActiveSlots(userId) >= Math.Max(1, _maxStreamsPerUser()) ? BusyReason.UserStreams : BusyReason.PeerStreams;
 
     private bool Stopped(string peerKey) => _registry.StatusOf(peerKey) is PeerStatus.AuthFailed or PeerStatus.IdentityMismatch or PeerStatus.TlsKeyChanged or PeerStatus.Disabled;
 

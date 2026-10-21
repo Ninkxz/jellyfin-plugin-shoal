@@ -1,0 +1,34 @@
+{
+  "preset": "CombineIntoMine",
+  "created": [],
+  "removed": [],
+  "moves": [],
+  "titlesCollapsing": 0,
+  "usersLosingAccess": [],
+  "usersGainingAccess": [],
+  "restrictedGainingAccess": [],
+  "planHash": "<id>",
+  "targets": [
+    {
+      "type": "movies",
+      "chosen": null,
+      "candidates": [
+        {
+          "id": "<id>",
+          "name": "Kids movies",
+          "savesNfo": false
+        },
+        {
+          "id": "<id>",
+          "name": "Movies",
+          "savesNfo": false
+        }
+      ],
+      "rejected": false
+    }
+  ],
+  "needsTargets": true,
+  "targetsSavingNfo": [],
+  "targetsRewritingTitles": [],
+  "shoalLibrariesNotLocked": []
+}

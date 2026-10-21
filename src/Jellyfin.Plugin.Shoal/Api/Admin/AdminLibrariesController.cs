@@ -49,7 +49,7 @@ internal sealed record DriftDto(Guid UserId, string Kind);
 /// <param name="ServerHandle">The server's handle.</param>
 /// <param name="ServerName">The server's name (text only).</param>
 /// <param name="Count">Titles with a stub (the same as LocalCount; kept for older pages).</param>
-/// <param name="LastSync">The last sync of the server.</param>
+/// <param name="LastSync">The last sync of the server (the catalog is per server), with a skipped "Sync now" after it.</param>
 /// <param name="HeldRemovals">Removals on hold in this library.</param>
 /// <param name="HeldAdditions">Additions on hold in this library.</param>
 /// <param name="Access">Who can see it.</param>
@@ -175,7 +175,7 @@ public sealed class AdminLibraryView : ILibraryView
         foreach (var peer in state.Home.Peers.Where(p => onlyPeer is null || string.Equals(p.PeerKey, onlyPeer, StringComparison.Ordinal)))
         {
             var document = _catalogs.Load(peer.PeerKey).Document;
-            var last = document.LastSync;
+            var last = SyncInfoDto.From(PeerSyncInfo.Of(document.LastSync, _catalogs.LastSkipped(peer.PeerKey)));
             foreach (var mapping in peer.Libraries)
             {
                 var entries = document.Entries.Where(e => string.Equals(e.MappingKey, mapping.MappingKey, StringComparison.Ordinal)).ToList();
@@ -202,9 +202,9 @@ public sealed class AdminLibraryView : ILibraryView
                     peer.PeerKey,
                     peer.DisplayName,
                     counts.Local,
-                    last is null ? null : new SyncInfoDto(last.EndedUtc, last.Result.ToString().ToLowerInvariant(), last.Added, last.Removed),
+                    last,
                     entries.Count(e => e.State == EntryState.HeldRemoval),
-                    entries.Count(e => e.State == EntryState.HeldAddition),
+                    HeldAdditionsOf(document, mapping.MappingKey),
                     new LibraryAccessDto(mapping.Access.Mode, [.. mapping.Access.SelectedUserIds.Where(id => !shareUsers.Contains(id))], mapping.Access.IncludeRestricted),
                     differences,
                     counts.Remote,
@@ -217,6 +217,11 @@ public sealed class AdminLibraryView : ILibraryView
         var users = accounts.Select(a => new UserDto(a.Id, a.Name, null, a.IsAdministrator, a.IsDisabled, a.EnableAllFolders, managed.Contains(a.Id), a.IsRestricted)).ToList();
         return (result, users);
     }
+
+    // 2.9.2 K3: held movies by their mapping, plus the held episodes of the mapping's series groups (no entry ever has the HeldAddition state).
+    private static int HeldAdditionsOf(CatalogDocument document, string mappingKey) =>
+        document.HeldAdditionInfo.Count(h => string.Equals(h.MappingKey, mappingKey, StringComparison.Ordinal))
+        + document.HeldSeries.Where(h => string.Equals(h.MappingKey, mappingKey, StringComparison.Ordinal)).Sum(static h => h.Episodes);
 }
 
 /// <summary>

@@ -1,0 +1,30 @@
+[
+  {
+    "mappingKey": "raaaaaaaabbbbcccc",
+    "name": "Movies",
+    "type": "movies",
+    "count": 2,
+    "selectable": true,
+    "added": false,
+    "seriesCount": 0,
+    "episodeCount": 0,
+    "remoteCount": 2,
+    "localCount": 0,
+    "hiddenByDedup": 0,
+    "dedupWinner": null
+  },
+  {
+    "mappingKey": "rbbbbbbbbccccdddd",
+    "name": "TV shows",
+    "type": "tvshows",
+    "count": 2,
+    "selectable": true,
+    "added": false,
+    "seriesCount": 1,
+    "episodeCount": 2,
+    "remoteCount": 1,
+    "localCount": 0,
+    "hiddenByDedup": 0,
+    "dedupWinner": null
+  }
+]

@@ -9,11 +9,19 @@ namespace Jellyfin.Plugin.Shoal.Api.Admin;
 // identified by its local peer key, a friend by its share id. No token, no invite, no peer-side or user GUID ever appears here.
 
 /// <summary>The last catalog sync of a server.</summary>
-/// <param name="AtUtc">When it finished.</param>
-/// <param name="Result">ok, partial, failed, held or skipped.</param>
+/// <param name="AtUtc">When the last real sync finished (when the skip was, if no sync ever ran).</param>
+/// <param name="Result">ok, partial, failed or held; skipped only when no sync ever ran.</param>
 /// <param name="Added">Titles added.</param>
 /// <param name="Removed">Titles removed.</param>
-internal sealed record SyncInfoDto(DateTime AtUtc, string Result, int Added, int Removed);
+/// <param name="SkippedUtc">When a manual "Sync now" after that sync did not run, or absent.</param>
+/// <param name="SkipReason">Why it did not run (tooSoon, scanRunning, busy, layoutJob, ...), or absent.</param>
+internal sealed record SyncInfoDto(DateTime AtUtc, string Result, int Added, int Removed, DateTime? SkippedUtc = null, string? SkipReason = null)
+{
+    /// <summary>The wire shape of a peer's last sync.</summary>
+    /// <param name="info">The sync, or null.</param>
+    /// <returns>The DTO, or null.</returns>
+    public static SyncInfoDto? From(PeerSyncInfo? info) => info is null ? null : new SyncInfoDto(info.AtUtc, info.Result, info.Added, info.Removed, info.SkippedUtc, info.SkipReason);
+}
 
 /// <summary>Streams running through one server.</summary>
 /// <param name="N">Running now.</param>

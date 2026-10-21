@@ -106,6 +106,21 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
 
     public int EpisodeCount { get; set; }
 
+    /// <summary>Gets or sets the share user's <c>Policy.EnabledFolders</c> (2.9.2 K2); null means the ids of the movie and TV views (N form, as Pilot 21 G1 saw).</summary>
+    public List<string>? EnabledFolders { get; set; }
+
+    /// <summary>Gets or sets the share user's <c>Policy.EnableAllFolders</c>.</summary>
+    public bool? EnableAllFolders { get; set; } = false;
+
+    /// <summary>Gets or sets a value indicating whether <c>/UserViews</c> also lists core's Playlists view, which is never in EnabledFolders (Pilot 21 G1).</summary>
+    public bool ListPlaylistsView { get; set; } = true;
+
+    /// <summary>Gets the id of that Playlists view.</summary>
+    public Guid PlaylistsViewId { get; } = Guid.Parse("d8e71732000040008000000000000001");
+
+    /// <summary>Replaces the answer to <c>/Users/Me</c>: (status, body), or null for the policy above.</summary>
+    public Func<(int Status, string Body)?>? MeOverride { get; set; }
+
     public List<PeerMovie> Movies { get; } = [];
 
     public ConcurrentQueue<string> Requests { get; } = new();
@@ -269,7 +284,22 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
         }
         else if (path == "/Users/Me")
         {
-            await WriteJsonAsync(ctx, new { Id = Guid.NewGuid().ToString("N"), Name = "shoal-home" });
+            if (MeOverride?.Invoke() is { } me)
+            {
+                ctx.Response.StatusCode = me.Status;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync(me.Body);
+                return;
+            }
+
+            // The shape of the share user's own /Users/Me (Pilot 21 G1): ids in N form, EnableAllFolders false.
+            var enabled = EnabledFolders ?? [LibraryId.ToString("N"), .. Tv is null ? Array.Empty<string>() : [Tv.LibraryId.ToString("N")]];
+            await WriteJsonAsync(ctx, new
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Name = "shoal-home",
+                Policy = new { IsAdministrator = false, EnableAllFolders, EnabledFolders = enabled, EnableAllDevices = false, MaxActiveSessions = 1 },
+            });
         }
         else if (path == "/UserViews")
         {
@@ -277,6 +307,11 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
             if (Tv is not null)
             {
                 views.Add(new { Id = Tv.LibraryId.ToString("N"), Name = Tv.LibraryName, CollectionType = "tvshows" });
+            }
+
+            if (ListPlaylistsView)
+            {
+                views.Add(new { Id = PlaylistsViewId.ToString("N"), Name = "Playlists", CollectionType = "playlists" });
             }
 
             await WriteJsonAsync(ctx, new { Items = views, TotalRecordCount = views.Count });
@@ -527,7 +562,22 @@ internal sealed class SyncRig : IAsyncDisposable
     }
 
     /// <summary>Maps the TV library of the fake peer (set <see cref="FakeLibraryPeer.Tv"/> first).</summary>
-    public Task AddTvMappingAsync() => State.UpdateAsync(s => s.Home.Peers[0].Libraries.Add(new LibraryMapping { MappingKey = TvMappingKey, RemoteName = Peer.Tv!.LibraryName, CollectionType = "tvshows", LocalLibraryName = "Hops TV shows", Subfolder = "tv" }));
+    public async Task AddTvMappingAsync()
+    {
+        await State.UpdateAsync(s => s.Home.Peers[0].Libraries.Add(new LibraryMapping { MappingKey = TvMappingKey, RemoteName = Peer.Tv!.LibraryName, CollectionType = "tvshows", LocalLibraryName = "Hops TV shows", Subfolder = "tv" }));
+        RememberLibrary(TvMappingKey, Peer.Tv!.LibraryId);
+    }
+
+    /// <summary>
+    /// Stores the peer library id of a mapping, as Add does since 2.9.2 K1 (the rig's legacy keys "movies-1" and "tv-1" resolve by stored id only).
+    /// </summary>
+    public void RememberLibrary(string mappingKey, Guid peerLibraryId)
+    {
+        var document = Catalog();
+        document.Libraries.RemoveAll(l => l.MappingKey == mappingKey);
+        document.Libraries.Add(new CatalogLibrary { MappingKey = mappingKey, PeerLibraryId = peerLibraryId.ToString("N") });
+        Catalogs.Save(document);
+    }
 
     public CatalogDocument Catalog() => Catalogs.Load(PeerKey).Document;
 
@@ -572,6 +622,7 @@ internal sealed class SyncRig : IAsyncDisposable
         var reader = new PeerCatalogReader(Client, trust, Registry, sanitizer, Log);
         Reader = reader;
         Catalogs = new CatalogStore(Paths, Log);
+        RememberLibrary(MappingKey, Peer.LibraryId);
         var fetcher = new ImageFetcher(Client, NullLogger<ImageFetcher>.Instance);
         var writer = new StubWriter(fetcher, Log);
         ITvLayout layout = _realTv ? new TvLayout() : new TestTvLayout();

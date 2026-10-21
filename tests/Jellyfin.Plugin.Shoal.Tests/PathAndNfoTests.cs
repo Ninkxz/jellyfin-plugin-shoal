@@ -312,12 +312,12 @@ public sealed class PathAndNfoTests
         Assert.Equal("Matrix", (string?)movie.Element("sorttitle"));
         Assert.Equal("1999", (string?)movie.Element("year"));
         Assert.Equal("1999-03-30", (string?)movie.Element("premiered"));
-        Assert.Equal(FriendLabel.Text + "\n\nA hacker learns the truth.\n\nSecond paragraph.", (string?)movie.Element("plot"));
+        Assert.Equal(FriendLabel.Generic + "\n\nA hacker learns the truth.\n\nSecond paragraph.", (string?)movie.Element("plot"));
         Assert.Equal("Welcome to the Real World.", (string?)movie.Element("tagline"));
         Assert.Equal("R", (string?)movie.Element("mpaa"));
         Assert.Equal("8.2", (string?)movie.Element("rating"));
         Assert.Equal(["Action", "Sci-Fi"], movie.Elements("genre").Select(static e => e.Value));
-        Assert.Equal(["Warner Bros."], movie.Elements("studio").Select(static e => e.Value));
+        Assert.Empty(movie.Elements("studio")); // 2.9.2 K5: the peer's studios are never written; with no friend named there is none
         var ids = movie.Elements("uniqueid").ToList();
         Assert.Equal(["tmdb", "imdb"], ids.Select(static e => (string?)e.Attribute("type")));
         Assert.Equal(["603", "tt0133093"], ids.Select(static e => e.Value));
@@ -340,6 +340,14 @@ public sealed class PathAndNfoTests
         {
             Assert.DoesNotContain(forbidden, names);
         }
+    }
+
+    [Fact]
+    public void Nfo_PlotNamesFriend()
+    {
+        var movie = XDocument.Parse(Encoding.UTF8.GetString(NfoWriter.Write(FullMovie(), "Hops", null, "Pat"))).Root!;
+        Assert.Equal("From Pat's server. May buffer or be unavailable sometimes. If it won't play, try again later.\n\nA hacker learns the truth.\n\nSecond paragraph.", (string?)movie.Element("plot"));
+        Assert.Contains("Shoal: Hops", movie.Elements("tag").Select(static e => e.Value)); // the tag stays on the display name
     }
 
     [Fact]

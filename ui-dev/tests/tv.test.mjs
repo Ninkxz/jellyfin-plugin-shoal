@@ -14,21 +14,21 @@ async function page(params, extra) {
 }
 
 test('the overlap report and the server page carry the TV line, and leave it out when the server sends none', async () => {
-    let p = await page({ view: 'overlap', id: 'h-hops' }, { tvShows: true });
+    let p = await page({ view: 'overlap', id: 'h-hops' });
     try {
         assert.match(p.text(), /TV shows. The counts above are movies and episodes, and each series is counted here. In both libraries: 12 series \(episodes: 310\)\. New from Hops: 8 series \(episodes: 150\)\./);
     } finally {
         p.close();
     }
 
-    p = await page({ view: 'server', id: 'h-hops' }, { tvShows: true });
+    p = await page({ view: 'server', id: 'h-hops' });
     try {
         assert.match(p.text(), /TV shows. The counts above are movies and episodes, and each series is counted here. In both libraries: 12 series \(episodes: 310\)/);
     } finally {
         p.close();
     }
 
-    p = await page({ view: 'overlap', id: 'h-hops' });
+    p = await page({ view: 'overlap', id: 'h-hops' }, { noTvOverlap: true });
     try {
         assert.doesNotMatch(p.text(), /TV shows\. In both libraries/);
     } finally {
@@ -88,42 +88,34 @@ test('a throttled Shoal check is not the same as no Shoal', async () => {
     }
 });
 
-test('Settings: the TV switches are there, the thumbnails follow the main one, and both are saved', async () => {
+// Owner, v2.9.1: TV shows from friends are a key feature, always on. Settings has no TV switch; Episode pictures stays and is saved.
+test('Settings: no TV switch; Episode pictures is there, enabled and saved; the save body has no tvShowsEnabled', async () => {
     const p = await page({ view: 'settings' });
     try {
-        const row = (label) => [...p.page.querySelectorAll('label.shoal-check')].find((l) => l.textContent.includes(label)).querySelector('input');
-        const tv = row('Show TV series from friends');
-        const thumbs = row('Episode pictures');
-        assert.equal(tv.checked, false);
-        assert.equal(thumbs.disabled, true);
-        tv.click();
+        const labels = [...p.page.querySelectorAll('label.shoal-check')].map((l) => l.textContent);
+        assert.equal(labels.some((l) => /Show TV series|TV series from friends/.test(l)), false);
+        const thumbs = [...p.page.querySelectorAll('label.shoal-check')].find((l) => l.textContent.includes('Episode pictures')).querySelector('input');
         assert.equal(thumbs.disabled, false);
+        assert.equal(thumbs.checked, true);
         buttonIn(p.page, 'Save').click();
         await p.wait(200);
         const put = calls(p, 'PUT', /^Settings$/).at(-1);
-        assert.equal(put.body.tvShowsEnabled, true);
+        assert.equal('tvShowsEnabled' in put.body, false);
         assert.equal(put.body.tvEpisodeThumbs, true);
+        assert.doesNotMatch(p.text(), /turn (them|TV)[^.]* on|TV shows are turned off|Turn on to let Shoal sync TV/i);
     } finally {
         p.close();
     }
 });
 
-test('the library picker offers a TV library once TV is on, and says how to turn it on while it is off', async () => {
-    let p = await page({ view: 'server', id: 'h-hops' });
-    try {
-        buttonIn(p.page, 'Add another library').click();
-        await p.wait(200);
-        assert.match(p.text(), /TV shows are turned off\. Turn them on in Settings, under Extra features\./);
-    } finally {
-        p.close();
-    }
-
-    p = await page({ view: 'server', id: 'h-hops' }, { tvShows: true });
+test('the library picker always offers a TV library and never sends the admin to turn TV on', async () => {
+    const p = await page({ view: 'server', id: 'h-hops' });
     try {
         buttonIn(p.page, 'Add another library').click();
         await p.wait(200);
         const tv = [...p.page.querySelectorAll('.shoal-check')].find((c) => c.textContent.includes('TV shows')).querySelector('input');
         assert.equal(tv.disabled, false);
+        assert.doesNotMatch(p.text(), /turned off|Turn them on|in Settings, under Extra features/);
     } finally {
         p.close();
     }

@@ -134,6 +134,118 @@ public sealed class AdminPeerLibrariesTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Contract_RemoteLibraries_MatchesTheGoldenJson()
+    {
+        _rig.Peer.Tv = FakeTvTree.Generate(1, 1, 2); // a TV row too (Warden 14): seriesCount and episodeCount
+        _rig.Peer.EnabledFolders = [_rig.Peer.LibraryId.ToString("N"), _rig.Peer.Tv.LibraryId.ToString("N"), "3fb79a0c5d2e4f6a8b9c0d1e2f3a4b5c"]; // G1: plus a stale id, and Playlists is listed but out of scope
+        var rendered = AdminTestSupport.Render(await _controller.RemoteLibraries(SyncRig.PeerKey, default));
+
+        Assert.Equal(200, rendered.Status);
+        ContractGolden.Match("peers.remote-libraries", rendered.Text);
+    }
+
+    // 2.9.2 K2, from the Pilot 21 G1 payload: EnabledFolders holds the Movies id in N form plus a stale id (a deleted library); /UserViews also lists
+    // a TV library the share does not include and core's Playlists view (never in EnabledFolders). Only Movies is listed.
+    [Fact]
+    public async Task RemoteLibraries_ViewOutsideEnabledFolders_NotListed()
+    {
+        _rig.Peer.Tv = FakeTvTree.Generate(1, 1, 2);
+        _rig.Peer.EnabledFolders = [_rig.Peer.LibraryId.ToString("N"), "3fb79a0c5d2e4f6a8b9c0d1e2f3a4b5c"];
+
+        var rendered = AdminTestSupport.Render(await _controller.RemoteLibraries(SyncRig.PeerKey, default));
+
+        Assert.Equal(200, rendered.Status);
+        var library = Assert.Single(rendered.Json.EnumerateArray());
+        Assert.Equal(_key, library.GetProperty("mappingKey").GetString());
+        Assert.DoesNotContain(_rig.Peer.Requests, r => r.Contains(_rig.Peer.Tv.LibraryId.ToString("N"), StringComparison.OrdinalIgnoreCase)); // never counted
+    }
+
+    [Fact]
+    public async Task RemoteLibraries_AllFolders_409()
+    {
+        _rig.Peer.EnableAllFolders = true;
+
+        var rendered = AdminTestSupport.Render(await _controller.RemoteLibraries(SyncRig.PeerKey, default));
+
+        Assert.Equal(409, rendered.Status);
+        Assert.Equal("shareScopeUnknown", rendered.Json.GetProperty("error").GetString());
+        ContractGolden.Match("peers.remote-libraries.scope-unknown", rendered.Text);
+        Assert.DoesNotContain(_rig.Peer.Requests, static r => r.StartsWith("/Items?", StringComparison.Ordinal)); // nothing was counted either
+    }
+
+    [Theory]
+    [InlineData(200, "{\"Id\":\"0123456789abcdef0123456789abcdef\",\"Name\":\"shoal-home\"}")]
+    [InlineData(200, "{\"Id\":\"0123456789abcdef0123456789abcdef\",\"Policy\":{\"IsAdministrator\":false,\"EnableAllFolders\":false}}")]
+    [InlineData(200, "{\"Id\":\"0123456789abcdef0123456789abcdef\",\"Policy\":{\"IsAdministrator\":false,\"EnabledFolders\":[]}}")]
+    [InlineData(200, "{\"Id\":\"0123456789abcdef0123456789abcdef\",\"Policy\":{\"EnableAllFolders\":false,\"EnabledFolders\":[42]}}")]
+    [InlineData(200, "not json")]
+    [InlineData(401, "{}")]
+    [InlineData(403, "{}")]
+    public async Task RemoteLibraries_UnreadableScope_409(int status, string body)
+    {
+        _rig.Peer.MeOverride = () => (status, body);
+
+        var rendered = AdminTestSupport.Render(await _controller.RemoteLibraries(SyncRig.PeerKey, default));
+
+        Assert.Equal(409, rendered.Status);
+        Assert.Equal("shareScopeUnknown", rendered.Json.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task RemoteLibraries_ScopeReadFailsWithA5xx_Is502()
+    {
+        _rig.Peer.MeOverride = static () => (503, "{}");
+
+        var rendered = AdminTestSupport.Render(await _controller.RemoteLibraries(SyncRig.PeerKey, default));
+
+        Assert.Equal(502, rendered.Status);
+        Assert.Equal("unreachable", rendered.Json.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task RemoteLibraries_AnEmptyShare_ListsNothing()
+    {
+        _rig.Peer.EnabledFolders = [];
+
+        var rendered = AdminTestSupport.Render(await _controller.RemoteLibraries(SyncRig.PeerKey, default));
+
+        Assert.Equal(200, rendered.Status);
+        Assert.Empty(rendered.Json.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task AddLibraries_KeyOutsideScope_400UnknownLibrary()
+    {
+        _rig.Peer.Tv = FakeTvTree.Generate(1, 1, 2);
+        _rig.Peer.EnabledFolders = [_rig.Peer.LibraryId.ToString("N")];
+        var tvKey = AdminPeerLibrariesController.KeyOf(_rig.Peer.Tv.LibraryId);
+        var playlistsKey = AdminPeerLibrariesController.KeyOf(_rig.Peer.PlaylistsViewId);
+
+        var tv = AdminTestSupport.Render(await AddAsync("[{\"mappingKey\":\"" + tvKey + "\",\"localLibraryName\":\"Hops TV\"}]"));
+        var playlists = AdminTestSupport.Render(await AddAsync("[{\"mappingKey\":\"" + playlistsKey + "\",\"localLibraryName\":\"Hops Lists\"}]"));
+
+        Assert.Equal(400, tv.Status);
+        Assert.Equal("unknownLibrary", tv.Json.GetProperty("error").GetString());
+        Assert.Equal(400, playlists.Status);
+        Assert.Empty(Peer.Libraries);
+        Assert.Equal(200, AdminTestSupport.Render(await AddAsync(Single())).Status); // the library in scope still adds
+    }
+
+    [Fact]
+    public async Task AddLibraries_AllFolders_409_AndAddsNothing()
+    {
+        _rig.Peer.EnableAllFolders = true;
+
+        var rendered = AdminTestSupport.Render(await AddAsync(Single()));
+
+        Assert.Equal(409, rendered.Status);
+        Assert.Equal("shareScopeUnknown", rendered.Json.GetProperty("error").GetString());
+        Assert.Empty(Peer.Libraries);
+        Assert.DoesNotContain(_libraries.List(), static l => l.Name == "Hops Movies");
+        Assert.Empty(_live.Syncs);
+    }
+
+    [Fact]
     public async Task RemoteLibraries_AnUnknownServer_Is404_AndAnUnreachableOne_Is502()
     {
         var unknown = AdminTestSupport.Render(await _controller.RemoteLibraries("nobody", default));
@@ -165,6 +277,7 @@ public sealed class AdminPeerLibrariesTests : IAsyncLifetime
         Assert.Equal("Hops Movies", Assert.Single(rendered.Json.GetProperty("added").EnumerateArray()).GetProperty("localLibraryName").GetString());
         Assert.Empty(rendered.Json.GetProperty("hiddenLibraries").EnumerateArray());
         Assert.Equal([SyncRig.PeerKey], _live.Syncs); // the first sync starts
+        Assert.Equal(_rig.Peer.LibraryId.ToString("N"), _rig.Catalog().Libraries.Single(l => l.MappingKey == _key).PeerLibraryId); // 2.9.2 K1: the picked id is stored at Add
     }
 
     [Fact]
@@ -297,6 +410,22 @@ public sealed class AdminPeerLibrariesTests : IAsyncLifetime
         Assert.Empty(_rig.Entries);
         Assert.False(Directory.Exists(folder));
         Assert.Equal(404, AdminTestSupport.Render(await _controller.RemoveLibrary(SyncRig.PeerKey, _key, default)).Status);
+    }
+
+    [Fact]
+    public async Task Pilot19D1_Remove_WithTheCompositeKeyThePageSends_RemovesTheLibrary_AnotherServersPrefixIs404()
+    {
+        await AddAsync(Single());
+        var composite = AdminLibraryView.Compose(SyncRig.PeerKey, _key); // what GET Peers/{h} lists as mappingKey, and what shoal.js sent
+
+        Assert.Equal(404, AdminTestSupport.Render(await _controller.RemoveLibrary(SyncRig.PeerKey, "0123456789abcdef0123456789abcdef." + _key, default)).Status);
+        Assert.NotEmpty(Peer.Libraries);
+
+        var rendered = AdminTestSupport.Render(await _controller.RemoveLibrary(SyncRig.PeerKey, composite, default));
+
+        Assert.Equal(200, rendered.Status);
+        Assert.Empty(Peer.Libraries);
+        Assert.DoesNotContain(_libraries.List(), static l => l.Name == "Hops Movies");
     }
 
     [Fact]

@@ -962,6 +962,7 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 
 .shoalPage .shoal-linkpanel { margin-bottom: 24px; }
 .shoalPage .shoal-linkpanel .shoal-warnbox--nfo, .shoalPage .shoal-lib__warn .shoal-warnbox--nfo, .shoalPage .shoal-linkpanel .shoal-warnbox--notlocked, .shoalPage .shoal-lib__warn .shoal-warnbox--notlocked { margin-top: 12px; }
+.shoalPage .shoal-linkpanel .shoal-warnbox--missing, .shoalPage .shoal-lib__warn .shoal-warnbox--missing { margin-top: 12px; }
 .shoalPage .shoal-link-panel { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .shoalPage .shoal-link-panel__text .shoal-meta { margin-top: 4px; }
 .shoalPage .shoal-inbox { margin-bottom: 24px; }

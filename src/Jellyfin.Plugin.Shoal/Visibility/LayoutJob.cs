@@ -376,7 +376,8 @@ internal static partial class NfoRetag
     }
 
     /// <summary>
-    /// Takes the genres and studios out of every NFO below a folder (Warden 11 L3: a copy in a library not visible to everyone). Never through a link.
+    /// Takes the genres and the peer's studios out of every NFO below a folder (Warden 11 L3: a copy in a library not visible to everyone); the friend studio
+    /// stays (2.9.2 K5, W1). Never through a link.
     /// </summary>
     /// <param name="stubRoot">The stub root.</param>
     /// <param name="folder">The title folder.</param>
@@ -410,7 +411,8 @@ internal static partial class NfoRetag
         return rewritten;
     }
 
-    [GeneratedRegex(@"^[ \t]*<(genre|studio)>[^<]*</\1>\r?\n", RegexOptions.Multiline)]
+    // 2.9.2 K5 (Warden W1): the friend studio "Shared by {name}" stays; any other studio line and every genre line goes.
+    [GeneratedRegex(@"^[ \t]*(?:<genre>[^<]*</genre>|<studio>(?!Shared by )[^<]*</studio>)\r?\n", RegexOptions.Multiline)]
     private static partial Regex FacetLine();
 
     [GeneratedRegex(@"^[ \t]*<tag>shoal-lib-[0-9a-f]{8}</tag>\r?\n", RegexOptions.Multiline)]

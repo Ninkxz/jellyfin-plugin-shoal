@@ -135,11 +135,29 @@ public sealed record PeerLiveInfo
 }
 
 /// <summary>The last sync of a peer.</summary>
-/// <param name="AtUtc">When it ended.</param>
-/// <param name="Result">ok, partial, failed or skipped.</param>
+/// <param name="AtUtc">When the last real sync ended (when the skip was, if no sync ever ran).</param>
+/// <param name="Result">ok, partial, failed or held; skipped only when no sync ever ran.</param>
 /// <param name="Added">Stubs added.</param>
 /// <param name="Removed">Stubs removed.</param>
-public sealed record PeerSyncInfo(DateTime AtUtc, string Result, int Added, int Removed);
+/// <param name="SkippedUtc">When a manual request after that sync was skipped, or null.</param>
+/// <param name="SkipReason">The skip word (tooSoon, scanRunning, busy, ...), or null.</param>
+public sealed record PeerSyncInfo(DateTime AtUtc, string Result, int Added, int Removed, DateTime? SkippedUtc = null, string? SkipReason = null)
+{
+    /// <summary>The last real sync, with a manual request that was skipped after it (an older skip is ignored).</summary>
+    /// <param name="last">The catalog's last sync, or null.</param>
+    /// <param name="skipped">The last skipped manual request, or null.</param>
+    /// <returns>The info, or null when there is neither.</returns>
+    public static PeerSyncInfo? Of(Jellyfin.Plugin.Shoal.Sync.LastSyncInfo? last, Jellyfin.Plugin.Shoal.Sync.SkippedSync? skipped)
+    {
+        var skip = skipped is not null && (last is null || skipped.AtUtc >= last.EndedUtc) ? skipped : null;
+        if (last is null)
+        {
+            return skip is null ? null : new PeerSyncInfo(skip.AtUtc, "skipped", 0, 0, skip.AtUtc, skip.Reason);
+        }
+
+        return new PeerSyncInfo(last.EndedUtc, last.Result.ToString().ToLowerInvariant(), last.Added, last.Removed, skip?.AtUtc, skip?.Reason);
+    }
+}
 
 /// <summary>What Shoal stores for a peer.</summary>
 /// <param name="DiskBytes">Bytes written (stubs and images).</param>

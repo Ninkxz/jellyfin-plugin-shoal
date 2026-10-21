@@ -47,8 +47,9 @@ public interface IStubItems
 /// <param name="Path">The item's path (classified against the stub root before anything is written).</param>
 /// <param name="Overview">The overview core holds now, or null.</param>
 /// <param name="Tags">The tags core holds now.</param>
-/// <param name="Apply">Writes a new overview and tag list to the item and saves it.</param>
-public sealed record LabelItemView(Guid Id, string Path, string? Overview, IReadOnlyList<string> Tags, Func<string, IReadOnlyList<string>, CancellationToken, Task> Apply);
+/// <param name="Studios">The studios core holds now (2.9.2 K6).</param>
+/// <param name="Apply">Writes a new overview, tag list and studio list to the item and saves it.</param>
+public sealed record LabelItemView(Guid Id, string Path, string? Overview, IReadOnlyList<string> Tags, IReadOnlyList<string> Studios, Func<string, IReadOnlyList<string>, IReadOnlyList<string>, CancellationToken, Task> Apply);
 
 /// <summary>
 /// The technical facts core shows for a stub: duration, container and size. They come from the catalog, never from the stub files, because
@@ -358,7 +359,8 @@ public sealed class StubEnricher
     }
 
     /// <summary>
-    /// Puts the friend label back on every movie, series and episode below the stub root and re-asserts the <c>Shoal</c> tags (PLAN v2.9 K48). A remote
+    /// Puts the friend label back on every movie, series and episode below the stub root and re-asserts the <c>Shoal</c> tags (PLAN v2.9 K48) and the friend
+    /// studios (2.9.2 K6: a grouped title names every member). A remote
     /// metadata provider or a forced refresh can replace the overview or the tags core read from the NFO; this runs after each scan. Only items whose
     /// path classifies below a mapped stub folder are touched, and an item that already holds the wanted text and tags is not saved (no-op guard).
     /// </summary>
@@ -509,30 +511,115 @@ public sealed class StubEnricher
 
     // K47: the park tag of an item: a title group's copy (a grouped movie, an extra copy, a grouped series and its episodes) carries its group's, so it hides only
     // when every server of the group is parked; any other stub carries its server's.
-    private string ParkTagOf(IndexedStub stub, string itemPath)
+    private static string ParkTagOf(TitleGroup? group, IndexedStub stub) => group is not null ? LibraryFolders.ParkGroupTag(group.GroupKey) : LibraryFolders.ParkPeerTag(stub.PeerKey);
+
+    // The title group an item belongs to (a grouped movie, an extra copy, a grouped series and its episodes), or null for a title on one server.
+    private TitleGroup? GroupOf(IndexedStub stub, string itemPath)
     {
-        string? groupKey = null;
-        if (Groups is not null)
+        if (Groups is null)
         {
-            if (stub.Kind == IndexKind.Container)
-            {
-                groupKey = _catalog.FindSeriesByTop(stub.PeerKey, stub.FolderName.Split('/')[0]) is { } series && Groups.ByCopy(series.StubKey) is { Kind: GroupKind.Series } g ? g.GroupKey : null;
-            }
-            else if (stub.FolderName.Contains('/', StringComparison.Ordinal))
-            {
-                groupKey = _catalog.Find(stub.PeerKey, stub.FolderName) is { } episode && Groups.ByCopy(episode.ParentKey) is { Kind: GroupKind.Series } g ? g.GroupKey : null;
-            }
-            else if (stub.IsCopy)
-            {
-                groupKey = Groups.ExtraCopyAt(stub.LibKey, Path.GetFileName(Path.GetDirectoryName(itemPath) ?? string.Empty))?.Group.GroupKey;
-            }
-            else
-            {
-                groupKey = Groups.ByCopy(_catalog.Find(stub.PeerKey, stub.FolderName)?.StubKey) is { Kind: GroupKind.Movie } g ? g.GroupKey : null;
-            }
+            return null;
         }
 
-        return groupKey is not null ? LibraryFolders.ParkGroupTag(groupKey) : LibraryFolders.ParkPeerTag(stub.PeerKey);
+        if (stub.Kind == IndexKind.Container)
+        {
+            return _catalog.FindSeriesByTop(stub.PeerKey, stub.FolderName.Split('/')[0]) is { } series && Groups.ByCopy(series.StubKey) is { Kind: GroupKind.Series } g ? g : null;
+        }
+
+        if (stub.FolderName.Contains('/', StringComparison.Ordinal))
+        {
+            return _catalog.Find(stub.PeerKey, stub.FolderName) is { } episode && Groups.ByCopy(episode.ParentKey) is { Kind: GroupKind.Series } g ? g : null;
+        }
+
+        if (stub.IsCopy)
+        {
+            return Groups.ExtraCopyAt(stub.LibKey, Path.GetFileName(Path.GetDirectoryName(itemPath) ?? string.Empty))?.Group;
+        }
+
+        return Groups.ByCopy(_catalog.Find(stub.PeerKey, stub.FolderName)?.StubKey) is { Kind: GroupKind.Movie } movie ? movie : null;
+    }
+
+    /// <summary>
+    /// The friends an item names (2.9.2 K6): every member of its title group in play priority (tier, then the admin's priority number, then the group's
+    /// own order), or the item's own server. A member offline still counts (the label says who hosts it, not who is up); one no longer paired does not.
+    /// Warden 18 M1: a member is named only when the library its copy is in admits at least every user this item's library admits, so a user who can see
+    /// this copy never learns of a friend whose library is closed to them. When this item's library is not known, only its own server is named (the tag's fact).
+    /// </summary>
+    /// <param name="state">The state.</param>
+    /// <param name="group">The item's group, or null.</param>
+    /// <param name="peer">The item's own server, or null.</param>
+    /// <param name="stub">The item as the index classified it.</param>
+    /// <returns>The shown names.</returns>
+    private static IReadOnlyList<string> NamesOf(ShoalState state, TitleGroup? group, PeerState? peer, IndexedStub stub)
+    {
+        IReadOnlyList<string> own = peer is null ? [] : [peer.ShownName()];
+        if (group is null || group.Members.Count == 0)
+        {
+            return own;
+        }
+
+        var type = group.Kind == GroupKind.Series ? "tvshows" : "movies";
+        if (ReachesOf(state, stub.PeerKey, stub.LibKey, stub.MappingKey, type) is not [var item])
+        {
+            return own;
+        }
+
+        IReadOnlyList<string> names = [.. group.Members
+            .Select((m, index) => (Member: m, Peer: state.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, m.PeerKey, StringComparison.Ordinal)), Index: index))
+            .Where(x => x.Peer is not null && ReachesOf(state, x.Member.PeerKey, x.Member.LibKey, null, type) is { Count: > 0 } reaches && reaches.All(r => Covers(r, item)))
+            .OrderBy(static x => x.Peer!.PriorityTier switch { PriorityTier.Prefer => 0, PriorityTier.Normal => 1, _ => 2 })
+            .ThenBy(static x => x.Peer!.Priority)
+            .ThenBy(static x => x.Index)
+            .Select(static x => x.Peer!.ShownName())];
+        return names.Count > 0 ? names : own;
+    }
+
+    // M1: the libraries a server's copy of a title can be in, with who may open them. A known library key gives that library; with none (a legacy folder, or a
+    // member recorded without one) every mapping of the server for the type counts (or the item's own mapping), so an unknown copy is judged by its narrowest.
+    private static IReadOnlyList<Reach> ReachesOf(ShoalState state, string peerKey, string libKey, string? mappingKey, string type)
+    {
+        if (libKey.Length > 0)
+        {
+            return state.Home.Libraries.FirstOrDefault(l => string.Equals(l.LibKey, libKey, StringComparison.Ordinal)) is { } library
+                ? [new Reach(library.LibKey, LibraryFolders.AccessOf(state, library), library)]
+                : [];
+        }
+
+        if (state.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, peerKey, StringComparison.Ordinal)) is not { } peer)
+        {
+            return [];
+        }
+
+        return [.. peer.Libraries
+            .Where(m => mappingKey is not null ? string.Equals(m.MappingKey, mappingKey, StringComparison.Ordinal) : string.Equals(m.CollectionType, type, StringComparison.Ordinal))
+            .Select(m => (Mapping: m, Library: LibraryFolders.LibraryOf(state, peerKey, m)))
+            .Select(x => new Reach(x.Library?.LibKey ?? string.Empty, LibraryFolders.AccessOfMapping(state, peerKey, x.Mapping), x.Library))];
+    }
+
+    // M1: whether every user who may open the narrow library may also open the wide one. The same library always does. A main-library placement adds core's own
+    // access to that main library, so it covers only a copy added into the same main library. "Everyone except restricted profiles" never covers a selection
+    // (the selection may hold a restricted profile and the enricher does not read accounts).
+    private static bool Covers(Reach wide, Reach narrow)
+    {
+        if (wide.LibKey.Length > 0 && string.Equals(wide.LibKey, narrow.LibKey, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (wide.Library?.Placement == LibraryPlacement.Main
+            && !(narrow.Library is { Placement: LibraryPlacement.Main, JellyfinLibraryId: { } main } && wide.Library.JellyfinLibraryId == main))
+        {
+            return false;
+        }
+
+        var w = wide.Access;
+        var n = narrow.Access;
+        if (w.Mode == AccessMode.Everyone)
+        {
+            return w.IncludeRestricted || (n.Mode == AccessMode.Everyone && !n.IncludeRestricted);
+        }
+
+        return n.Mode == AccessMode.Selected && n.SelectedUserIds.All(w.SelectedUserIds.Contains);
     }
 
     private async Task<bool> ApplyLabelAsync(ShoalState state, LabelItemView item, CancellationToken cancellationToken)
@@ -543,8 +630,14 @@ public sealed class StubEnricher
             return false; // not below a mapped stub folder: never touched
         }
 
-        var overview = FriendLabel.Apply(item.Overview);
         var peer = state.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, stub.PeerKey, StringComparison.Ordinal));
+        var group = GroupOf(stub, item.Path);
+        var names = NamesOf(state, group, peer, stub); // K6: a grouped title names its members (M1: those at least as visible); the NFO names only its own friend
+        var overview = FriendLabel.Apply(item.Overview, names);
+
+        // K6: the studios are exactly one "Shared by {name}" per friend (a refresh or a provider may have replaced them); with no known friend they stay.
+        var wantedStudios = FriendLabel.Studios(names);
+        var studios = wantedStudios.Count == 0 || wantedStudios.SequenceEqual(item.Studios, StringComparer.Ordinal) ? item.Studios : wantedStudios;
 
         // K45: a movie's copy keeps exactly its shoal-alt tags (one per higher-ordered library that also holds the title); a title with no group has none.
         IReadOnlyList<string>? alt = null;
@@ -554,15 +647,15 @@ public sealed class StubEnricher
             alt = Groups.AltTagsOf(stub.LibKey, folder, stub.OwnerUnknown ? null : _catalog.Find(stub.PeerKey, stub.FolderName)?.StubKey);
         }
 
-        var tags = WantedTags(item.Tags, peer?.DisplayName ?? string.Empty, stub.LibKey.Length > 0 ? stub.LibKey : null, alt, stub.OwnerUnknown ? null : ParkTagOf(stub, item.Path));
-        if (string.Equals(overview, item.Overview, StringComparison.Ordinal) && ReferenceEquals(tags, item.Tags))
+        var tags = WantedTags(item.Tags, peer?.DisplayName ?? string.Empty, stub.LibKey.Length > 0 ? stub.LibKey : null, alt, stub.OwnerUnknown ? null : ParkTagOf(group, stub));
+        if (string.Equals(overview, item.Overview, StringComparison.Ordinal) && ReferenceEquals(tags, item.Tags) && ReferenceEquals(studios, item.Studios))
         {
             return false; // no-op guard: nothing to save, which also ends the ItemUpdated loop
         }
 
         try
         {
-            await item.Apply(overview, tags, cancellationToken).ConfigureAwait(false);
+            await item.Apply(overview, tags, studios, cancellationToken).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
@@ -571,6 +664,9 @@ public sealed class StubEnricher
             return false;
         }
     }
+
+    // M1: one library a copy can be in (its key, empty when not known), who may open it, and the library itself when the state has it.
+    private sealed record Reach(string LibKey, LibraryAccess Access, ShoalLibrary? Library);
 }
 
 /// <summary>
@@ -640,7 +736,7 @@ public sealed class JellyfinStubItems : IStubItems
             return null; // seasons and anything else carry no label
         }
 
-        return new LabelItemView(item.Id, item.Path, item.Overview, item.Tags ?? [], (overview, tags, ct) => ApplyLabelAsync(item, overview, tags, ct));
+        return new LabelItemView(item.Id, item.Path, item.Overview, item.Tags ?? [], item.Studios ?? [], (overview, tags, studios, ct) => ApplyLabelAsync(item, overview, tags, studios, ct));
     }
 
     // The paths of the group the item belongs to: the primary's own and its local alternates. An alternate asks its primary.
@@ -657,10 +753,13 @@ public sealed class JellyfinStubItems : IStubItems
         return [.. new[] { primary.Path }.Concat(primary.LocalAlternateVersions ?? []).Where(static p => !string.IsNullOrEmpty(p))];
     }
 
-    private static async Task ApplyLabelAsync(BaseItem item, string overview, IReadOnlyList<string> tags, CancellationToken cancellationToken)
+    // 2.9.2 K6: BaseItem.Studios is a settable string[] persisted by UpdateToRepositoryAsync (scout G6, decompiled 12.1.0). A live write is still to be
+    // confirmed in the lab.
+    private static async Task ApplyLabelAsync(BaseItem item, string overview, IReadOnlyList<string> tags, IReadOnlyList<string> studios, CancellationToken cancellationToken)
     {
         item.Overview = overview;
         item.Tags = [.. tags];
+        item.Studios = [.. studios];
         await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
     }
 
@@ -712,7 +811,7 @@ public sealed class ShoalPostScan : ILibraryPostScanTask
 }
 
 /// <summary>
-/// Puts the friend label back when core updates a Shoal item (a metadata refresh can replace the overview), PLAN v2.9 K48. Only items in the index are
+/// Puts the friend label (and since 2.9.2 K6 the friend studios) back when core updates a Shoal item (a metadata refresh can replace them), PLAN v2.9 K48. Only items in the index are
 /// looked at. Warden 10 L1: updates go through one bounded queue keyed by item (an item already waiting is not queued twice, a full queue drops the update: the
 /// post-scan pass puts every label back anyway), one worker saves at a time, and the update the guard's own save raises is ignored (re-entrancy mark).
 /// </summary>

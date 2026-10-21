@@ -172,7 +172,7 @@ internal sealed class TestTvLayout : ITvLayout
 
 internal sealed class TestTvNfo : ITvNfoWriter
 {
-    public string Series(SanitizedSeries series, IReadOnlyList<string> tags) => Write("tvshow", w =>
+    public string Series(SanitizedSeries series, IReadOnlyList<string> tags, string? friendName = null) => Write("tvshow", w =>
     {
         w.WriteElementString("title", series.Title);
         w.WriteElementString("plot", series.Overview);
@@ -186,7 +186,7 @@ internal sealed class TestTvNfo : ITvNfoWriter
         Tags(w, tags);
     });
 
-    public string Episode(SanitizedEpisode episode, IReadOnlyList<string> tags) => Write("episodedetails", w =>
+    public string Episode(SanitizedEpisode episode, IReadOnlyList<string> tags, string? friendName = null) => Write("episodedetails", w =>
     {
         w.WriteElementString("title", episode.Title);
         w.WriteElementString("season", episode.Season.ToString(CultureInfo.InvariantCulture));

@@ -93,6 +93,33 @@ public sealed class AdminLibrariesControllerTests
     }
 
     [Fact]
+    public async Task HeldAdditions_CountedPerLibrary()
+    {
+        var (controller, rig, _) = Create();
+        using (rig)
+        {
+            await rig.CreateLibraryAsync();
+            var catalogs = new CatalogStore(new ShoalPaths(rig.Dir.Path), NullLogger<CatalogStore>.Instance);
+            var document = new CatalogDocument { PeerKey = VisibilityRig.PeerKey, CompletedOnce = true };
+            for (var i = 0; i < 30; i++)
+            {
+                var id = Guid.NewGuid().ToString("N");
+                document.HeldAdditions.Add(id);
+                document.HeldAdditionInfo.Add(new HeldAddition { PeerItemId = id, MappingKey = VisibilityRig.MappingKey, Title = "Held " + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+
+            var other = Guid.NewGuid().ToString("N"); // another library's hold is not counted here
+            document.HeldAdditions.Add(other);
+            document.HeldAdditionInfo.Add(new HeldAddition { PeerItemId = other, MappingKey = "other-mapping", Title = "Elsewhere" });
+            catalogs.Save(document);
+
+            var mapping = Assert.Single(AdminTestSupport.Body(controller.GetLibraries()).GetProperty("mappings").EnumerateArray());
+
+            Assert.Equal(30, mapping.GetProperty("heldAdditions").GetInt32());
+        }
+    }
+
+    [Fact]
     public async Task AccessChange_IsStored_ReturnsTheNewAccess_AndRefusesASharingAccount()
     {
         var (controller, rig, id) = Create();

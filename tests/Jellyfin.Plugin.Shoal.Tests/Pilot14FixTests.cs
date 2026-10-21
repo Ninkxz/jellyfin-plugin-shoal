@@ -64,7 +64,7 @@ public sealed class Pilot14FixTests
         rig.Time.Advance(TimeSpan.FromHours(7));
         await rig.SyncAsync();
 
-        Assert.Contains("From a friend", System.IO.File.ReadAllText(nfo), StringComparison.Ordinal);
+        Assert.Contains("From Hops's server. " + FriendLabel.Tail, System.IO.File.ReadAllText(nfo), StringComparison.Ordinal);
         Assert.False(System.IO.File.Exists(System.IO.Path.Combine(folder, "movie.nfo")));
         Assert.Equal(hadPoster, System.IO.File.Exists(System.IO.Path.Combine(folder, "poster.jpg")));
         Assert.Equal(StubDamage.None, StubInspector.Of(rig.LibraryFolder, rig.Catalog().Entries.Single(static e => e.Title == "Alien")));

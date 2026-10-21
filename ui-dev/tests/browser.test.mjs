@@ -367,3 +367,33 @@ test('layouts Combine: preview with a target select at 375px', { skip }, async (
     assert.deepEqual(problems, []);
     await ctx.close();
 });
+
+// Warden 13 L5: the missing main library warning fits a phone on Library layouts and Settings.
+test('missing main library warning: no sideways scroll at 375, CSP clean', { skip }, async () => {
+    for (const view of ['layouts', 'settings']) {
+        const { page, ctx, problems } = await open('scenario=default&view=' + view + '&missing=Movies,Gone%20Library&csp=1', 375, 800);
+        const m = await page.evaluate(() => ({ n: document.querySelectorAll('.shoal-warnbox--missing').length, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth, csp: window.__csp }));
+        assert.ok(m.n >= 1, view);
+        assert.equal(m.hscroll, false, view);
+        assert.deepEqual(m.csp, [], view);
+        assert.deepEqual(problems, [], view);
+        await ctx.close();
+    }
+});
+
+// Owner, v2.9.1: TV always on. Settings on a phone has no TV toggle, keeps Episode pictures, and does not scroll sideways.
+test('Settings at 375 has no TV toggle and keeps Episode pictures', { skip }, async () => {
+    const { page, ctx, problems } = await open('scenario=default&view=settings&csp=1', 375, 800);
+    const m = await page.evaluate(() => ({
+        tv: [...document.querySelectorAll('label.shoal-check')].some((l) => /TV series from friends/.test(l.textContent)),
+        thumbs: [...document.querySelectorAll('label.shoal-check')].some((l) => /Episode pictures/.test(l.textContent)),
+        hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        csp: window.__csp
+    }));
+    assert.equal(m.tv, false);
+    assert.equal(m.thumbs, true);
+    assert.equal(m.hscroll, false);
+    assert.deepEqual(m.csp, []);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+});

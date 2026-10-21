@@ -929,6 +929,7 @@ public sealed class CatalogSyncTests
         load.Document.Entries.Clear();
         load.Document.Libraries.Clear();
         rig.Catalogs.Save(load.Document);
+        rig.RememberLibrary(SyncRig.MappingKey, rig.Peer.LibraryId); // what Add stores (2.9.2 K1)
 
         var again = await rig.SyncAsync(SyncTrigger.Manual);
 

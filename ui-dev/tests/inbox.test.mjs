@@ -2,10 +2,10 @@
 // { installed, posted, postedUtc, recipients, missingRecipients, title, body, buttonNote, fallbackNote, error }, POST answers { sent, explainer }.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mountPage, visibleText } from './helpers.mjs';
+import { mountPage, visibleText, middayNow } from './helpers.mjs';
 
 async function settings(extra) {
-    return mountPage(Object.assign({ scenario: 'default', params: { view: 'settings' }, settleMs: 400 }, extra || {}));
+    return mountPage(Object.assign({ scenario: 'default', params: { view: 'settings' }, settleMs: 400, now: middayNow() }, extra || {})); // relative times stay "hours ago" after midnight
 }
 
 const card = (p) => p.page.querySelector('.shoal-inbox');

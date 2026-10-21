@@ -64,7 +64,7 @@ public sealed class NoTrickplay : ITrickplaySanitizer
 }
 
 /// <summary>
-/// The default TV services (DESIGN v2.7, K34): they do nothing, which is v1 behavior with <c>TvShowsEnabled</c> off. K35, K36 and K37 Replace them.
+/// The default TV services (DESIGN v2.7, K34): they do nothing, which is v1 behavior (tests; the plugin always registers TV since v2.9.1). K35, K36 and K37 Replace them.
 /// </summary>
 public sealed class NoTv : ITvSanitizer, ITvLayout, ITvNfoWriter, IPeerTvReader, ITvPlanner, ITvImageWork
 {
@@ -101,13 +101,13 @@ public sealed class NoTv : ITvSanitizer, ITvLayout, ITvNfoWriter, IPeerTvReader,
     public IReadOnlyList<TvMove> MatchEpisodeMoves(IReadOnlyList<CatalogEntry> goneEpisodes, IReadOnlyList<SanitizedEpisode> newEpisodes) => [];
 
     /// <inheritdoc />
-    string ITvNfoWriter.Series(SanitizedSeries series, IReadOnlyList<string> tags) => string.Empty;
+    string ITvNfoWriter.Series(SanitizedSeries series, IReadOnlyList<string> tags, string? friendName) => string.Empty;
 
     /// <inheritdoc />
     string ITvNfoWriter.Season(SanitizedSeason season, IReadOnlyList<string> tags) => string.Empty;
 
     /// <inheritdoc />
-    string ITvNfoWriter.Episode(SanitizedEpisode episode, IReadOnlyList<string> tags) => string.Empty;
+    string ITvNfoWriter.Episode(SanitizedEpisode episode, IReadOnlyList<string> tags, string? friendName) => string.Empty;
 
     /// <inheritdoc />
     public Task<TvListings> ListAsync(PeerEndpoint peer, Guid peerLibraryId, CancellationToken cancellationToken) =>

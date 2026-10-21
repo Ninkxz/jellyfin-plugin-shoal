@@ -582,6 +582,8 @@ public sealed class LayoutJobService : IHostedService, IDisposable
         }
 
         state = _state.Current;
+        var jellyfinLibraries = _layout.Libraries.List();
+        var accountsNow = _accounts.List(); // read again: creating a library reconciles, which rewrites the lists of the accounts Shoal manages
         var targetNames = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var request in requests)
         {
@@ -597,18 +599,25 @@ public sealed class LayoutJobService : IHostedService, IDisposable
                 Sources = [.. sources.Select(static l => new LayoutSource { LibKey = l.LibKey, PathRel = l.PathRel })],
             };
 
-            // Who loses access: admitted by a source today, not by the target.
-            foreach (var account in accounts)
+            // Who loses access: sees the titles in a source today, not in the target. Who gains (Warden 10 M1): reported in the job status, never blocked
+            // (owner decision: Everyone keeps meaning everyone). Warden 14: the same rule as Preview, so a placement-Main library also needs its main library
+            // open in core (found by folder; the target's folder is already in it here).
+            var targetMain = MainAccess.MainIdOf(state, target, jellyfinLibraries);
+            var sourceMains = sources.Select(l => MainAccess.MainIdOf(state, l, jellyfinLibraries)).ToList();
+            foreach (var account in accountsNow)
             {
                 var user = account.ToCallerUser();
-                if (sources.Any(l => AccessPolicy.Admitted(user, LibraryFolders.AccessOf(state, l), shareUsers)) && !AccessPolicy.Admitted(user, target.Access, shareUsers))
+                var before = sources.Where((l, i) => AccessPolicy.Admitted(user, LibraryFolders.AccessOf(state, l), shareUsers) && MainAccess.Opens(state, account, sourceMains[i])).Any();
+                var after = AccessPolicy.Admitted(user, target.Access, shareUsers) && MainAccess.Opens(state, account, targetMain);
+                if (before && !after)
                 {
                     lost.Add(account.Id);
                 }
+                else if (after && !before)
+                {
+                    gained.Add(account);
+                }
             }
-
-            // Who gains (Warden 10 M1): reported in the job status, never blocked (owner decision: Everyone keeps meaning everyone).
-            gained.AddRange(AccessGain.Gaining(accounts, target.Access, [.. sources.Select(l => LibraryFolders.AccessOf(state, l))], shareUsers));
 
             if (!targetNames.TryGetValue(toKey, out var used))
             {
@@ -988,9 +997,9 @@ public sealed class LayoutJobService : IHostedService, IDisposable
 
             if (!library.IsLegacy)
             {
-                if (library.Feeds.Count == 0)
+                if (library.Feeds.Count == 0 && !(await _layout.DeleteLockedAsync(libKey, CancellationToken.None).ConfigureAwait(false)).Ok)
                 {
-                    await _layout.DeleteLockedAsync(libKey, CancellationToken.None).ConfigureAwait(false);
+                    _logger.LogWarning("Shoal could not remove a library a move left empty; delete it on the Library layouts page"); // Warden 13 L7
                 }
 
                 continue;

@@ -366,6 +366,26 @@ public sealed class StreamSlots : ISlotLedger
         }
     }
 
+    /// <summary>
+    /// Whether all of the peer's conversion slots are held, not counting the HLS slots this user's device has moved on from (2.9.2 K10: the same rule as
+    /// <see cref="TryTakeHls"/>, so the PlaybackInfo pre-check does not refuse a retry the segment request would allow).
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="peerMaxConversions">The peer's <c>MaxConcurrentTranscodes</c>.</param>
+    /// <param name="userId">The user.</param>
+    /// <param name="itemId">The local item (slot key).</param>
+    /// <param name="origin">The series and device of the new stream.</param>
+    /// <returns>True when no conversion can start.</returns>
+    public bool ConversionsFull(string peerKey, int peerMaxConversions, Guid userId, Guid itemId, SlotOrigin origin)
+    {
+        lock (_gate)
+        {
+            PruneLocked();
+            var movedOn = Superseded(userId, itemId, origin).Hls; // 2.9.2 K10: what TryTakeHls would drop does not count
+            return _hls.Count(p => p.Value.PeerKey == peerKey && !movedOn.Contains(p.Key)) >= peerMaxConversions;
+        }
+    }
+
     /// <inheritdoc />
     public bool HoldsSlot(Grant grant)
     {
@@ -447,22 +467,26 @@ public sealed class StreamSlots : ISlotLedger
 
     private static SlotOrigin OriginOf(Grant grant) => new(grant.SeriesKey, grant.CallerDeviceId);
 
-    // The streams a device has moved on from (DESIGN v2.7.8): the same user starts another episode of the same series on the same device, and the earlier stream is
-    // finished sending: a static slot with no open connection (bytes only flow on an open connection, which stays counted), an HLS slot with no segment request for
-    // HlsSupersedeAfter. Such a slot is counted as gone in every limit and dropped when the new slot is taken (Pilot 08, N9: a leaked slot refused the third episode).
+    // The streams a device has moved on from (DESIGN v2.7.8, 2.9.2 K10): the same user starts something on the same device, and an earlier stream of that device is
+    // finished sending: a static slot of another title with no open connection (bytes only flow on an open connection, which stays counted), an HLS slot with no
+    // segment request for HlsSupersedeAfter, the same title under another grant included (a retry after a failed start). Any title counts, not only the next
+    // episode (a user report: a failed play blocked the next one for 2 min). Such a slot is counted as gone in every limit and dropped when the new slot is taken.
     // A stream that still sends is never superseded, so one device id cannot run several streams on one slot (Warden 16 M1): the limits stay hard.
     private (HashSet<(Guid User, Guid Item)> Static, HashSet<string> Hls) Superseded(Guid userId, Guid itemId, SlotOrigin origin)
     {
-        if (!origin.IsEpisode || string.IsNullOrEmpty(origin.DeviceId))
+        if (string.IsNullOrEmpty(origin.DeviceId))
         {
             return ([], []);
         }
 
         var now = _time.GetUtcNow();
+        var device = origin.DeviceId;
         return (
-            _static.Where(p => p.Key.User == userId && p.Key.Item != itemId && p.Value.Origin == origin && p.Value.Connections == 0).Select(static p => p.Key).ToHashSet(),
-            _hls.Where(p => p.Value.User == userId && p.Value.Item != itemId && p.Value.Origin == origin && now - p.Value.LastActivity >= HlsSupersedeAfter).Select(static p => p.Key).ToHashSet(StringComparer.Ordinal));
+            _static.Where(p => p.Key.User == userId && p.Key.Item != itemId && SameDevice(p.Value.Origin, device) && p.Value.Connections == 0).Select(static p => p.Key).ToHashSet(),
+            _hls.Where(p => p.Value.User == userId && SameDevice(p.Value.Origin, device) && now - p.Value.LastActivity >= HlsSupersedeAfter).Select(static p => p.Key).ToHashSet(StringComparer.Ordinal));
     }
+
+    private static bool SameDevice(SlotOrigin held, string device) => string.Equals(held.DeviceId, device, StringComparison.Ordinal);
 
     private void DropSuperseded(Guid userId, Guid itemId, SlotOrigin origin)
     {

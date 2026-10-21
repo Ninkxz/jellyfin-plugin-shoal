@@ -291,7 +291,7 @@ public sealed class TvSyncEngine
             IReadOnlyList<PeerView> views;
             try
             {
-                views = await _d.Reader.ViewsAsync(_endpoint, ct).ConfigureAwait(false);
+                views = (await _d.Reader.SharedViewsAsync(_endpoint, ct).ConfigureAwait(false)).Views; // 2.9.2 K2: out of scope = missing, held
             }
             catch (PeerCallException ex)
             {
@@ -386,17 +386,6 @@ public sealed class TvSyncEngine
             }
         }
 
-        private static Guid? ResolveLibraryId(CatalogLibrary? known, LibraryMapping mapping, IReadOnlyList<PeerView> views)
-        {
-            if (known is not null && MetadataSanitizer.TryParseId(known.PeerLibraryId, out var stored) && views.Any(v => v.Id == stored))
-            {
-                return stored;
-            }
-
-            var byName = views.Where(v => string.Equals(v.Name, MetadataSanitizer.DisplayName(mapping.RemoteName), StringComparison.Ordinal) && v.CollectionType is "" or "tvshows").ToList();
-            return byName.Count == 1 ? byName[0].Id : null;
-        }
-
         private HashSet<string> LocalKeys()
         {
             var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -451,7 +440,7 @@ public sealed class TvSyncEngine
             }
 
             var known = _doc.Libraries.FirstOrDefault(l => l.MappingKey == mapping.MappingKey);
-            var id = ResolveLibraryId(known, mapping, views);
+            var id = SyncRun.ResolveLibraryId(known, mapping, views); // 2.9.2 K1: by key or stored id, never by name
             if (id is null)
             {
                 _alerts.Add(SyncAlert.LibraryMissing); // its titles are held, never deleted
@@ -472,7 +461,7 @@ public sealed class TvSyncEngine
 
             known.PeerLibraryId = id.Value.ToString("N");
             Directory.CreateDirectory(folder);
-            var target = new StubTarget(_state.StubRoot, folder, _endpoint, LibraryFolders.NfoTags(_state, _peer.PeerKey, mapping)) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, mapping) };
+            var target = new StubTarget(_state.StubRoot, folder, _endpoint, LibraryFolders.NfoTags(_state, _peer.PeerKey, mapping)) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, mapping), FriendName = _peer.ShownName() };
 
             TvListings listings;
             try
@@ -1127,7 +1116,7 @@ public sealed class TvSyncEngine
             SetTags(entry, SeriesTags(s));
             if (entry.FolderRel is not null && (!string.Equals(entry.ContentHash, s.ContentHash, StringComparison.Ordinal) || entry.LabelVersion < FriendLabel.Version))
             {
-                var result = _e._writer.RewriteNfo(target, entry.FolderRel + "/tvshow.nfo", _e._nfo.Series(Facets(s, target), TagsOf(target)), _quota);
+                var result = _e._writer.RewriteNfo(target, entry.FolderRel + "/tvshow.nfo", _e._nfo.Series(Facets(s, target), TagsOf(target), target.FriendName), _quota);
                 if (result.Outcome != StubWriteOutcome.Written)
                 {
                     _alerts.Add(SyncAlert.WriteFailures);
@@ -1158,7 +1147,7 @@ public sealed class TvSyncEngine
             if (entry.StubRelPath is not null && (!string.Equals(entry.ContentHash, ep.ContentHash, StringComparison.Ordinal) || entry.LabelVersion < FriendLabel.Version))
             {
                 var nfoPath = entry.StubRelPath[..^".strm".Length] + ".nfo";
-                var result = _e._writer.RewriteNfo(target, nfoPath, _e._nfo.Episode(ep, TagsOf(target)), _quota);
+                var result = _e._writer.RewriteNfo(target, nfoPath, _e._nfo.Episode(ep, TagsOf(target), target.FriendName), _quota);
                 if (result.Outcome != StubWriteOutcome.Written)
                 {
                     _alerts.Add(SyncAlert.WriteFailures);
@@ -1268,7 +1257,7 @@ public sealed class TvSyncEngine
                     var seasonFolder = seasonEntry.FolderRel![(seriesEntry.FolderRel!.Length + 1)..];
                     var stubKey = NewKey();
                     var stem = _e._layout.EpisodeStem(detailed.Season, detailed.Number, detailed.NumberEnd);
-                    var result = _e._writer.WriteEpisode(target, seriesEntry.FolderRel, seasonFolder, stem, _e._nfo.Episode(detailed, TagsOf(target)), stubKey, _quota);
+                    var result = _e._writer.WriteEpisode(target, seriesEntry.FolderRel, seasonFolder, stem, _e._nfo.Episode(detailed, TagsOf(target), target.FriendName), stubKey, _quota);
                     if (result.Outcome == StubWriteOutcome.QuotaFull)
                     {
                         _alerts.Add(SyncAlert.QuotaReached);
@@ -1323,7 +1312,7 @@ public sealed class TvSyncEngine
                 var stubKey = promoted?.StubKey ?? NewKey();
                 var scratch = new HashSet<string>(taken, StringComparer.Ordinal);
                 var folderName = _e._layout.SeriesFolder(detailed, stubKey, scratch);
-                var result = _e._writer.WriteSeries(target, folderName, _e._nfo.Series(Facets(detailed, target), TagsOf(target)), _quota);
+                var result = _e._writer.WriteSeries(target, folderName, _e._nfo.Series(Facets(detailed, target), TagsOf(target), target.FriendName), _quota);
                 if (result.Outcome == StubWriteOutcome.Exists)
                 {
                     taken.Add(PathSanitizer.CollisionKey(folderName)); // something unknown is on disk under that name: another name

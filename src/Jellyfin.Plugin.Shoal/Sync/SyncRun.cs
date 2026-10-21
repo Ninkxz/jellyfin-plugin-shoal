@@ -66,6 +66,7 @@ internal sealed class SyncRun
     public async Task<SyncReport> RunAsync(CancellationToken userToken, CancellationToken budgetToken)
     {
         var started = _now;
+        StampLabelName(_doc, _peer.ShownName());
         try
         {
             var failure = await PhaseAAndBAsync(budgetToken).ConfigureAwait(false);
@@ -78,6 +79,31 @@ internal sealed class SyncRun
             _report.Complete = false;
             return Finish(started, null);
         }
+    }
+
+    /// <summary>
+    /// 2.9.2 K7: the friend's shown name differs from the one the labels were stamped with (an alias rename, or the friend renamed their server), so
+    /// every NFO label is stale. Clearing each entry's label version makes the movie sync and the TV planner rewrite each NFO once, inside the budget
+    /// (a sync cut short goes on next time); the database items were relabelled at once by the rename. An older file (no stamp) is only stamped.
+    /// </summary>
+    /// <param name="doc">The peer's catalog.</param>
+    /// <param name="shown">The friend's shown name now.</param>
+    private static void StampLabelName(CatalogDocument doc, string shown)
+    {
+        if (string.Equals(doc.LabelName, shown, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (doc.LabelName is not null)
+        {
+            foreach (var entry in doc.Entries)
+            {
+                entry.LabelVersion = 0;
+            }
+        }
+
+        doc.LabelName = shown;
     }
 
     private static string NewStubKey() => RandomNumberGenerator.GetString(KeyAlphabet, 16);
@@ -224,7 +250,10 @@ internal sealed class SyncRun
         IReadOnlyList<PeerView> views;
         try
         {
-            views = await _d.Reader.ViewsAsync(_endpoint, ct).ConfigureAwait(false);
+            // 2.9.2 K2: a mapping outside the share's scope resolves to nothing, so it is LibraryMissing and its titles are held, never deleted.
+            // An unknown scope (or a share account that may open every library) leaves no view at all: every library is held.
+            var shared = await _d.Reader.SharedViewsAsync(_endpoint, ct).ConfigureAwait(false);
+            views = shared.Views;
         }
         catch (PeerCallException ex)
         {
@@ -293,16 +322,37 @@ internal sealed class SyncRun
     private string? VisibilityPath(LibraryMapping mapping) =>
         LibraryFolders.FolderOf(_state, _peer.PeerKey, mapping);
 
-    private static Guid? ResolveLibraryId(CatalogLibrary? known, LibraryMapping mapping, IReadOnlyList<PeerView> views)
+    /// <summary>
+    /// The mapping key of a remote library: the same library always gets the same key ("r" and the first 16 hex digits of its id).
+    /// </summary>
+    /// <param name="remoteId">The library's id on the friend's server.</param>
+    /// <returns>The key.</returns>
+    internal static string MappingKeyOf(Guid remoteId) => "r" + remoteId.ToString("N")[..16];
+
+    /// <summary>
+    /// 2.9.2 K1: the peer library a mapping follows, by its own identity only: the view whose id gives the mapping key, else the stored id
+    /// (a legacy key). Never by name: a library that leaves the share is missing (its titles are held), it is never swapped for a namesake.
+    /// </summary>
+    /// <param name="known">The catalog's record of the mapping, or null.</param>
+    /// <param name="mapping">The mapping.</param>
+    /// <param name="views">The views the share user sees now.</param>
+    /// <returns>The peer library id, or null when the library is missing.</returns>
+    internal static Guid? ResolveLibraryId(CatalogLibrary? known, LibraryMapping mapping, IReadOnlyList<PeerView> views)
     {
-        if (known is not null && MetadataSanitizer.TryParseId(known.PeerLibraryId, out var stored) && views.Any(v => v.Id == stored))
+        bool Fits(PeerView v) => v.CollectionType.Length == 0 || v.CollectionType == mapping.CollectionType;
+
+        var byKey = views.Where(v => string.Equals(MappingKeyOf(v.Id), mapping.MappingKey, StringComparison.Ordinal) && Fits(v)).ToList();
+        if (byKey.Count == 1)
+        {
+            return byKey[0].Id;
+        }
+
+        if (known is not null && MetadataSanitizer.TryParseId(known.PeerLibraryId, out var stored) && views.Any(v => v.Id == stored && Fits(v)))
         {
             return stored;
         }
 
-        var byName = views.Where(v => string.Equals(v.Name, MetadataSanitizer.DisplayName(mapping.RemoteName), StringComparison.Ordinal)
-            && (v.CollectionType.Length == 0 || v.CollectionType == mapping.CollectionType)).ToList();
-        return byName.Count == 1 ? byName[0].Id : null;
+        return null;
     }
 
     private async Task PlanAndApplyAsync(List<LibraryRun> libraries, CancellationToken ct)
@@ -480,6 +530,12 @@ internal sealed class SyncRun
                 {
                     _doc.HeldAdditions.Add(id);
                 }
+
+                // 2.9.2 K3: what the alert and the library row show (the title, not only the peer id).
+                if (!_doc.HeldAdditionInfo.Any(h => h.PeerItemId == id && h.MappingKey == add.Library.Mapping.MappingKey))
+                {
+                    _doc.HeldAdditionInfo.Add(new HeldAddition { PeerItemId = id, MappingKey = add.Library.Mapping.MappingKey, Title = PeerText.Clean(add.Listed.Title, HeldAddition.TitleMax), Year = add.Listed.Year, Kind = EntryKind.Movie });
+                }
             }
 
             adds.RemoveAll(a => guardedAdds.Contains(a));
@@ -489,6 +545,9 @@ internal sealed class SyncRun
         {
             _doc.HeldAdditions.Clear();
         }
+
+        var stillHeld = _doc.HeldAdditions.ToHashSet(StringComparer.Ordinal);
+        _doc.HeldAdditionInfo.RemoveAll(h => !stillHeld.Contains(h.PeerItemId)); // released or no longer listed: forgotten with the id
 
         // ---------- Phase C: details for what needs them
         var needDetails = new List<Guid>();
@@ -689,7 +748,7 @@ internal sealed class SyncRun
         CancellationToken ct)
     {
         var libraryOf = libraries.ToDictionary(static l => l.Mapping.MappingKey, StringComparer.Ordinal);
-        StubTarget TargetOf(LibraryRun library) => new(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping) };
+        StubTarget TargetOf(LibraryRun library) => new(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping), FriendName = _peer.ShownName() };
 
         // A library with no stub on disk yet (new, re-added, or all its titles held back by a better-ranked server) shows nothing until core is told: its first stubs ask for a scan.
         _libraryWithoutStubs = libraries.Select(static l => l.Mapping.MappingKey).Where(key => !_doc.Entries.Any(e => e.MappingKey == key && e.StubRelPath is not null)).ToHashSet(StringComparer.Ordinal);
@@ -1001,7 +1060,7 @@ internal sealed class SyncRun
             return;
         }
 
-        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping) };
+        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping), FriendName = _peer.ShownName() };
         Guid? primary = MetadataSanitizer.TryParseId(entry.PeerMediaSourceId, out var id) ? id : null;
         var wanted = SourceSelector.Select(movie.Examined, primary).Skip(1).ToList();
         var wantedIds = wanted.Select(static s => s.Id.ToString("N")).ToHashSet(StringComparer.Ordinal);
@@ -1083,7 +1142,7 @@ internal sealed class SyncRun
 
     private void RemoveExtras(LibraryRun library, CatalogEntry entry)
     {
-        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping) };
+        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping), FriendName = _peer.ShownName() };
         foreach (var extra in entry.Sources.Skip(1).ToList())
         {
             if (extra.StubRelPath is null || _d.Writer.RemoveFile(target, extra.StubRelPath, _quota))

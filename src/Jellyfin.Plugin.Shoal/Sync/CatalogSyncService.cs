@@ -75,7 +75,7 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
         TvSyncEngine? tv = null,
         PeerRegistry? registry = null,
         GroupBook? groups = null)
-        : this(state, peers.Find, trust, reader, store, writer, local, refresh, () => SyncSettings.From(Plugin.Instance?.Configuration), TimeProvider.System, logger, tv, () => Plugin.Instance?.Configuration.TvShowsEnabled ?? false, registry is null ? null : new DedupReachability(registry, TimeProvider.System).IsUp)
+        : this(state, peers.Find, trust, reader, store, writer, local, refresh, () => SyncSettings.From(Plugin.Instance?.Configuration), TimeProvider.System, logger, tv, () => true, registry is null ? null : new DedupReachability(registry, TimeProvider.System).IsUp)
     {
         _d.Groups = groups;
     }
@@ -95,7 +95,7 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="tv">The TV part of a sync, or null.</param>
-    /// <param name="tvEnabled">Whether TV libraries are synced (the <c>TvShowsEnabled</c> switch); off by default.</param>
+    /// <param name="tvEnabled">Whether TV libraries are synced (always true in the plugin since v2.9.1; tests may turn it off).</param>
     /// <param name="isUp">Whether a peer can be reached (tests); null counts every peer as reachable.</param>
     internal CatalogSyncService(
         IStateStore state,
@@ -144,6 +144,9 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
         get => _d.Groups;
         set => _d.Groups = value;
     }
+
+    /// <summary>Gets the sync service's clock now (UTC), the clock the catalog's sync times are written with.</summary>
+    internal DateTime UtcNow => _d.Time.GetUtcNow().UtcDateTime;
 
     /// <summary>
     /// Whether a peer with this status can hold a title against a lower-ranked peer (D19). A peer that is offline, paused or stopped does not: its titles must not

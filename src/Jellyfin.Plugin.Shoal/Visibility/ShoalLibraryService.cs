@@ -281,7 +281,9 @@ public sealed class ShoalLibraryService
             await _visibility.ReconcileAsync(cancellationToken).ConfigureAwait(false);
 
             // Warden 10 M1 (owner decision): a library set to Everyone keeps taking new friends; the wizard only says who now sees this friend's titles.
-            var gained = AccessGainReport.Of(AccessGain.Gaining(_visibility.Accounts(), target.Access, [], VisibilityService.ShareUserIds(state)));
+            // Warden 14: in a placement-Main library only accounts that can open the main library see the titles (MainAccess, by folder).
+            var targetMain = MainAccess.MainIdOf(state, target, _libraries.List());
+            var gained = AccessGainReport.Of(AccessGain.Gaining(_visibility.Accounts().Where(a => MainAccess.Opens(_state.Current, a, targetMain)), target.Access, [], VisibilityService.ShareUserIds(state)));
             return new LibraryCreateResult(LibraryCreateError.None, target.JellyfinLibraryId, target.LibKey, gained);
         }
 

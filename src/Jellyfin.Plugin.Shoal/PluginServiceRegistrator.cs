@@ -207,7 +207,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             sp.GetService<IAttachmentRebuilder>(),
             sp.GetService<IVersionResolver>(),
             sp.GetService<OfflineCards>(),
-            sp.GetService<IGroupPlayback>()));
+            sp.GetService<IGroupPlayback>(),
+            () => Plugin.Instance?.Configuration.MaxStreamsPerUser ?? 4));
         serviceCollection.AddSingleton<IStaticStreamHandler>(sp => new StaticStreamHandler(
             sp.GetRequiredService<StubCatalog>(),
             sp.GetRequiredService<IPeerEndpoints>(),

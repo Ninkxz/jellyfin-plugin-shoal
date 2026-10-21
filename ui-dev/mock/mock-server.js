@@ -106,13 +106,15 @@ export function createMock(options) {
 
     const servers = new Map();
     const detail = new Map();
+    // lastSyncSkipReason: a Sync now after the last real sync did not run (Pilot 24 SKIPPED-INVISIBLE); the real time and result stay.
+    const skipped = (ls) => opt.lastSyncSkipReason ? Object.assign(ls, { skippedUtc: iso(t0 - 1 * MIN), skipReason: opt.lastSyncSkipReason }) : ls;
 
     function addServer(def) {
         const s = Object.assign({
             proxy: false, pairingError: null, paired: true, path: 'direct', derpRegion: null, rttMs: 38, mbps: 42, jitterMs: 4, lossPct: 0,
             offlineSinceUtc: null, nextCheckUtc: null, syncing: false, titleCount: 0, alertCount: 0, heldRemovals: 0, heldAdditions: 0,
             activeStreams: { n: 0, max: 4 }, hints: [], latest: null,
-            lastSync: { atUtc: iso(t0 - 12 * MIN), result: 'ok', added: 3, removed: 0 }
+            lastSync: skipped({ atUtc: iso(t0 - 12 * MIN), result: 'ok', added: 3, removed: 0 })
         }, def);
         s.verdictSummary = def.verdictSummary || (s.mbps ? verdictSummary(s.mbps) : []);
         servers.set(s.handle, s);
@@ -187,8 +189,8 @@ export function createMock(options) {
     const mappings = [];
     if (servers.size) {
         const mk = (key, name, serverHandle, serverName, count, access, extra) => Object.assign({
-            mappingKey: key, localLibraryName: X(name), remoteName: 'Movies', serverHandle, serverName: X(serverName), count,
-            lastSync: { atUtc: iso(t0 - 12 * MIN), result: 'ok', added: 3, removed: 0 }, heldRemovals: 0, heldAdditions: 0,
+            mappingKey: serverHandle + '.' + key, localLibraryName: X(name), remoteName: 'Movies', serverHandle, serverName: X(serverName), count, // Pilot 19 D1: the real id is "<handle>.<key>"
+            lastSync: skipped({ atUtc: iso(t0 - 12 * MIN), result: opt.libraryLastSyncResult || 'ok', added: 3, removed: 0 }), heldRemovals: 0, heldAdditions: 0, // libraryLastSyncResult: a SyncResultKind word read from CatalogTypes.cs by the test
             access, drift: []
         }, extra || {});
         if (servers.has('h-hops')) {
@@ -321,7 +323,7 @@ export function createMock(options) {
     const ownLibraries = [
         { id: 'lib-movies', name: hostile ? XSS : 'Movies', type: 'movies', count: 2480, selectable: true },
         { id: 'lib-kids', name: 'Kids', type: 'movies', count: 310, selectable: true },
-        { id: 'lib-tv', name: 'TV shows', type: 'tvshows', count: 120, selectable: false },
+        { id: 'lib-tv', name: 'TV shows', type: 'tvshows', count: 120, selectable: true }, // ShareService.Available: only friends' libraries are not selectable
         { id: 'lib-friend', name: hostile ? XSS : 'Hops Movies', type: 'movies', count: 1204, selectable: false, shareable: false, reason: 'federated' }
     ];
 
@@ -332,7 +334,7 @@ export function createMock(options) {
         diskQuotaGbPerPeer: 2, artQuality: 'Standard', autoFitQualityToLink: true, maxStreamsPerUser: 4, hlsSubtitlesEnabled: true,
         speedTestIntervalHours: 6, notifyClientsWhenOffline: true, parkOfflinePeers: false, parkAfterHours: 0.5,
         tailscaleSocket: 'auto', tailscaleDetected: true, keySource: 'file', secretsVolumeUnsafe: false,
-        hlsBufferAhead: 6, offlineCardEnabled: true, requestServiceName: 'Seerr', requestServiceUrl: '', alternateVersionsEnabled: false, tvShowsEnabled: opt.tvShows === true, tvEpisodeThumbs: true, trickplayEnabled: true, trickplayCacheGb: 1, trickplayCacheBytes: opt.trickplayBytes ?? 312 * 1024 * 1024, attachmentsEnabled: true, reencodeImages: true,
+        hlsBufferAhead: 6, offlineCardEnabled: true, requestServiceName: 'Seerr', requestServiceUrl: '', alternateVersionsEnabled: false, tvShowsEnabled: true, tvEpisodeThumbs: true, trickplayEnabled: true, trickplayCacheGb: 1, trickplayCacheBytes: opt.trickplayBytes ?? 312 * 1024 * 1024, attachmentsEnabled: true, reencodeImages: true,
         imageSandbox: opt.sandbox === 'unavailable' ? { state: 'unavailable', limits: 'partial', reason: opt.sandboxReason || 'ffmpegMissing', rejected: 0 }
             : opt.sandbox === 'partial' ? { state: 'active', limits: 'partial', reason: null, rejected: 4 } : { state: 'active', limits: 'full', reason: null, rejected: 0 }
     };
@@ -396,7 +398,7 @@ export function createMock(options) {
     /* ---------------- derived: alerts and server detail ---------------- */
     function alertsFor(s) {
         const a = [];
-        const ex = [X('Sintel'), X('Spring'), X('Hero')];
+        const ex = opt.noExamples ? [] : [X('Sintel'), X('Spring'), X('Hero')];
         if (s.heldRemovals) {
             a.push({ kind: 'heldRemovals', severity: 'warn', count: s.heldRemovals, examples: ex });
         }
@@ -516,7 +518,8 @@ export function createMock(options) {
             backups: opt.playOrder && opt.backups !== 'none' && (s.handle === 'h-hops' || s.handle === 'h-fern')
                 ? (opt.backups === 'only' ? { sharedWithOthers: 12, playsFirst: 0, backupFor: 12 } : { sharedWithOthers: 250, playsFirst: 238, backupFor: 12 })
                 : undefined,
-            tv: opt.tvShows === true ? { sharedSeries: 12, sharedSeriesEpisodes: 310, gainSeries: 8, gainEpisodes: 150 } : undefined
+            // TV shows from friends are always on (v2.9.1); opt.noTvOverlap: a server that counts no series.
+            tv: opt.noTvOverlap ? undefined : { sharedSeries: 12, sharedSeriesEpisodes: 310, gainSeries: 8, gainEpisodes: 150 }
         };
     }
 
@@ -742,7 +745,11 @@ export function createMock(options) {
                 s.syncing = true;
             }
         });
-        setTimeout(() => servers.forEach((s) => { s.syncing = false; s.lastSync = { atUtc: iso(now()), result: 'ok', added: 2, removed: 1 }; }), 4000);
+        // syncSkipReason: the request does not run, so lastSync keeps the old sync and gains the skip.
+        setTimeout(() => servers.forEach((s) => {
+            s.syncing = false;
+            s.lastSync = opt.syncSkipReason ? Object.assign({}, s.lastSync, { skippedUtc: iso(now()), skipReason: opt.syncSkipReason }) : { atUtc: iso(now()), result: 'ok', added: 2, removed: 1 };
+        }), 4000);
         return ok({}, 202);
     });
 
@@ -927,12 +934,17 @@ export function createMock(options) {
 
         return ok({});
     });
-    route('GET', 'Peers/([^/]+)/RemoteLibraries', (m) => (opt.ghost && decodeURIComponent(m[1]) === 'h-ghost' ? fail(404, 'notFound') : ok([
+    // opt.remoteLibrariesGolden / opt.addLibraryGolden: { status, body } read by the test from tests/contracts (the mock has no fs), served as is.
+    route('GET', 'Peers/([^/]+)/RemoteLibraries', (m) => (opt.remoteLibrariesGolden ? { status: opt.remoteLibrariesGolden.status, body: clone(opt.remoteLibrariesGolden.body), headers: {} } : opt.ghost && decodeURIComponent(m[1]) === 'h-ghost' ? fail(404, 'notFound') : ok([
         { mappingKey: 'rl-movies', name: X('Movies'), type: 'movies', count: 1204, remoteCount: 1204, selectable: true },
         { mappingKey: 'rl-big', name: 'Everything', type: 'movies', count: 8400, selectable: true },
-        { mappingKey: 'rl-tv', name: 'TV shows', type: 'tvshows', count: 90, seriesCount: 12, episodeCount: 90, selectable: opt.tvShows === true }
+        { mappingKey: 'rl-tv', name: 'TV shows', type: 'tvshows', count: 90, seriesCount: 12, episodeCount: 90, selectable: true }
     ])));
     route('POST', 'Peers/([^/]+)/Libraries', (m, body) => {
+        if (opt.addLibraryGolden) {
+            return { status: opt.addLibraryGolden.status, body: clone(opt.addLibraryGolden.body), headers: {} };
+        }
+
         if (opt.addLibraryError) {
             return fail(opt.addLibraryError === 'server' ? 500 : 409, opt.addLibraryError);
         }
@@ -942,7 +954,7 @@ export function createMock(options) {
         const hidden = [];
         for (const lib of Array.isArray(body) ? body : []) { // the real controller takes a bare array
             mappings.push({
-                mappingKey: 'm-' + h + '-' + lib.mappingKey, localLibraryName: lib.localLibraryName, remoteName: lib.localLibraryName, serverHandle: h, serverName: s ? s.displayName : '', count: 0,
+                mappingKey: h + '.' + lib.mappingKey, localLibraryName: lib.localLibraryName, remoteName: lib.localLibraryName, serverHandle: h, serverName: s ? s.displayName : '', count: 0,
                 lastSync: null, heldRemovals: 0, heldAdditions: 0, access: { mode: 'Selected', selectedUserIds: lib.selectedUserIds || [], includeRestricted: false }, drift: []
             });
             if (!(lib.selectedUserIds || []).length) {
@@ -953,12 +965,17 @@ export function createMock(options) {
         return ok({ hiddenLibraries: hidden });
     });
     route('DELETE', 'Peers/([^/]+)/Libraries/([^/]+)', (m) => {
-        const i = mappings.findIndex((x) => x.mappingKey === decodeURIComponent(m[2]));
-        if (i >= 0) {
-            mappings.splice(i, 1);
+        // As the real controller: the mapping key of that server (a "<handle>." prefix of the same server is accepted, Pilot 19 D1); anything else is 404.
+        const h = decodeURIComponent(m[1]);
+        const key = decodeURIComponent(m[2]);
+        const bare = key.startsWith(h + '.') ? key.slice(h.length + 1) : key;
+        const i = mappings.findIndex((x) => x.serverHandle === h && x.mappingKey === h + '.' + bare);
+        if (i < 0) {
+            return fail(404, 'notFound');
         }
 
-        return ok({});
+        mappings.splice(i, 1);
+        return ok({ removed: true });
     });
     route('GET', 'Peers/([^/]+)/Overlap', (m) => ok(overlapFor(servers.get(decodeURIComponent(m[1])))));
 

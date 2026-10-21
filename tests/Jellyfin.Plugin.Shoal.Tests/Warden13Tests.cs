@@ -178,7 +178,7 @@ public sealed class Warden13Tests
         using var dir = new TempDirectory();
         var entry = new CatalogEntry { Kind = EntryKind.Movie, StubKey = Guid.NewGuid().ToString("N")[..16], StubRelPath = "Alien/Alien.strm" };
         var folder = System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir.Path, "Alien")).FullName;
-        var label = System.Security.SecurityElement.Escape(FriendLabel.Text);
+        var label = System.Security.SecurityElement.Escape(FriendLabel.Generic);
         System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "Alien.nfo"), "<movie><plot>" + label + "</plot><tag>Shoal</tag></movie>");
 
         Assert.Equal(StubDamage.TagMissing, StubInspector.Of(dir.Path, entry, ["shoal-lib-0123abcd"]));

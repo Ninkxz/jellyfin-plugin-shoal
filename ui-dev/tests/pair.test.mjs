@@ -1,7 +1,7 @@
 // Pairing v2 (docs/ui-spec-pairing-v2.md): "Pair a server" and "Share", both directions, against the mock admin API.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mountPage, makeClock, JUNK, loadShoal } from './helpers.mjs';
+import { mountPage, makeClock, JUNK, loadShoal, golden } from './helpers.mjs';
 
 async function pair(opts) {
     const clock = makeClock(Date.UTC(2026, 9, 15, 12, 0, 0));
@@ -633,7 +633,7 @@ test('choose: libraries, who can see them (only you), a required box for big lib
         const t = StepText(p);
         assert.match(t, /Choose what to add/);
         assert.match(t, /Pick libraries from Willow\. At first only you can see them, so you can try them\./);
-        assert.match(t, /TV shows are turned off\. Turn them on in Settings, under Extra features\./);
+        assert.doesNotMatch(t, /turned off|Turn them on/, "TV shows from friends are always on (v2.9.1)");
         assert.equal(buttonIn(p.page, 'Add and start syncing').getAttribute('aria-disabled'), 'true');
         assert.match(t, /Pick at least one library/);
         const rows = [...p.page.querySelectorAll('.shoal-libpick__item')];
@@ -693,7 +693,7 @@ async function chooseTransport(p, value) {
     await p.wait(60);
 }
 
-test('share step 1: Who label, friend, libraries (movies only), quality and transcodes, the hidden-account note, the codes card', async () => {
+test('share step 1: Who label, friend, libraries (movies and TV), quality and transcodes, the hidden-account note, the codes card', async () => {
     const p = await pair({ params: { view: 'pair', dir: 'share' } });
     try {
         const t = StepText(p);
@@ -701,7 +701,7 @@ test('share step 1: Who label, friend, libraries (movies only), quality and tran
         assert.match(t, /Who are you sharing with\?/);
         assert.match(t, /Shown only to you\./);
         assert.match(t, /Libraries from friends' servers can't be shared on\./);
-        assert.match(t, /TV shows are turned off\. Turn them on in Settings, under Extra features\./);
+        assert.doesNotMatch(t, /turned off|Turn them on/, "TV shows from friends are always on (v2.9.1)");
         assert.match(t, /Shoal makes a hidden sharing account for your friend\. It can only watch the libraries you pick, can't change anything, and you can remove it anytime\./);
         const card = p.page.querySelector('.shoal-codescard');
         assert.equal(card.open, false, 'closed the first time');
@@ -711,7 +711,7 @@ test('share step 1: Who label, friend, libraries (movies only), quality and tran
         const q1 = input(p, 'Highest quality per stream');
         assert.deepEqual([...q1.options].map((o) => o.textContent), ['No limit', '40 Mbps (4K)', '20 Mbps (1080p, high)', '10 Mbps (1080p)', '4 Mbps (720p)']);
         const libs = [...p.page.querySelectorAll('.shoal-choices--checks .shoal-check')];
-        assert.ok(libs.find((c) => /TV shows/.test(c.textContent)).querySelector('input').disabled);
+        assert.equal(libs.find((c) => /TV shows/.test(c.textContent)).querySelector('input').disabled, false, 'own TV libraries can be shared (v2.9.1)');
         assert.ok(libs.find((c) => /Hops Movies/.test(c.textContent)).querySelector('input').disabled);
         await shareThroughWho(p);
         const call = p.mock.calls.find((c) => c.method === 'POST' && c.path === 'Shares');
@@ -1051,6 +1051,45 @@ test('any other add failure is also shown next to the button, and a retry clears
         const slot = p.page.querySelector('[data-slot="adderror"]');
         assert.match(slot.textContent, /Couldn't add those libraries\. Try again in a moment\./);
         assert.equal(buttonIn(slot, 'Open Settings'), undefined, 'the Settings button is only for the missing folder');
+    } finally {
+        p.close();
+    }
+});
+
+/* ---------------- PLAN 2.9.2 U2: the friend's share scope is unknown (409 shareScopeUnknown, golden file) ---------------- */
+
+const SCOPE_HINT = /\S hasn't told Shoal which libraries it shares with you\. Ask your friend to check the share on their server\./;
+
+test('ui.picker.scopeUnknown.showsHint', async () => {
+    const p = await pair({ remoteLibrariesGolden: golden('peers.remote-libraries.scope-unknown', 409) });
+    try {
+        await startInvite(p);
+        p.clock.advance(7000);
+        await p.poll();
+        assert.equal(p.wiz().step, 'choose');
+        await p.wait(200);
+        const list = p.page.querySelector('.shoal-libpick');
+        assert.match(list.textContent, SCOPE_HINT);
+        assert.doesNotMatch(list.textContent, JUNK);
+        assert.doesNotMatch(list.textContent, /Couldn't load|couldn't reach/i, 'not a load failure or an unreachable server');
+        assert.equal(p.page.querySelectorAll('.shoal-libpick__item').length, 0, 'nothing to pick');
+        assert.ok(buttonIn(list, 'Try again'), 'the admin can look again once the friend fixed the share');
+        assert.equal(p.mock.calls.filter((c) => c.method === 'POST' && /\/Libraries$/.test(c.path)).length, 0);
+    } finally {
+        p.close();
+    }
+});
+
+test('ui.picker.scopeUnknown.showsHint: the add answers 409 shareScopeUnknown, and the hint stands next to the button', async () => {
+    const p = await pair({ addLibraryGolden: golden('peers.remote-libraries.scope-unknown', 409) });
+    try {
+        await toChoose(p);
+        buttonIn(p.page, 'Add and start syncing').click();
+        await p.wait(150);
+        const slot = p.page.querySelector('[data-slot="adderror"]');
+        assert.match(slot.textContent, SCOPE_HINT);
+        assert.doesNotMatch(slot.textContent, /already added/, 'not the generic 409 text');
+        assert.equal(p.wiz().step, 'choose');
     } finally {
         p.close();
     }

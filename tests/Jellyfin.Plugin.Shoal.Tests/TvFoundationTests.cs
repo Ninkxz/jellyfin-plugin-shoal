@@ -290,10 +290,10 @@ public sealed class TvFoundationTests
     // ---------------- settings ----------------
 
     [Fact]
-    public void TheTvSettings_DefaultToOffAndThumbsOn_AndSurviveACopyAndTheXml()
+    public void TheTvSettings_TvAlwaysOnAndThumbsOn_AndSurviveACopyAndTheXml()
     {
         var configuration = new PluginConfiguration();
-        Assert.False(configuration.TvShowsEnabled);
+        Assert.True(configuration.TvShowsEnabled); // v2.9.1: always on
         Assert.True(configuration.TvEpisodeThumbs);
         Assert.Empty(SettingsValidator.Apply(configuration));
 

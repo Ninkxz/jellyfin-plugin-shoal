@@ -40,6 +40,7 @@ public class AdminPeerSettingsController : ControllerBase
     private readonly IPairingGate? _gate;
     private readonly ISyncActivity? _sync;
     private readonly CatalogStore? _catalogs;
+    private readonly StubEnricher? _enricher;
     private readonly ILogger<AdminPeerSettingsController> _logger;
 
     /// <summary>
@@ -57,10 +58,12 @@ public class AdminPeerSettingsController : ControllerBase
     /// <param name="gate">Tells whether a pairing is live for a server, or null.</param>
     /// <param name="sync">Tells whether a catalog sync of a server is running, or null.</param>
     /// <param name="catalogs">The catalogs (to find a removed server's title folders in shared libraries), or null.</param>
-    public AdminPeerSettingsController(IStateStore state, IPeerEndpoints peers, PeerClient client, PeerRegistry registry, PeerAddressService addresses, ISecretStore secrets, ShoalLibraryService libraries, ShoalPaths paths, ILogger<AdminPeerSettingsController> logger, IPairingGate? gate = null, ISyncActivity? sync = null, CatalogStore? catalogs = null)
+    /// <param name="enricher">Relabels the database items at once after an alias rename (2.9.2 K7), or null.</param>
+    public AdminPeerSettingsController(IStateStore state, IPeerEndpoints peers, PeerClient client, PeerRegistry registry, PeerAddressService addresses, ISecretStore secrets, ShoalLibraryService libraries, ShoalPaths paths, ILogger<AdminPeerSettingsController> logger, IPairingGate? gate = null, ISyncActivity? sync = null, CatalogStore? catalogs = null, StubEnricher? enricher = null)
     {
         _sync = sync;
         _catalogs = catalogs;
+        _enricher = enricher;
         _libraries = libraries;
         _paths = paths;
         _addresses = addresses;
@@ -72,6 +75,11 @@ public class AdminPeerSettingsController : ControllerBase
         _registry = registry;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Gets the database relabel an alias rename started (2.9.2 K7), or null; it runs after the reply, so tests await it here.
+    /// </summary>
+    internal Task? Relabelling { get; private set; }
 
     /// <summary>
     /// Shows the key a server presents right now, so the admin can compare its fingerprint with the friend before trusting it (Warden 11 H1).
@@ -232,6 +240,7 @@ public class AdminPeerSettingsController : ControllerBase
             return AdminReply.Error(StatusCodes.Status400BadRequest, "invalid");
         }
 
+        var shownBefore = peer.ShownName();
         var url = string.IsNullOrWhiteSpace(body.Url) ? peer.BaseUrl : body.Url.Trim();
         var proxy = body.ProxyUrl.ValueKind switch
         {
@@ -362,6 +371,14 @@ public class AdminPeerSettingsController : ControllerBase
             _registry.BeginRetrust(handle);
         }
 
+        // 2.9.2 K7: a rename relabels the database items now (overview and the "Shared by" studios, also of grouped titles naming this friend);
+        // the NFOs follow at the next sync (SyncRun sees the catalog's LabelName differ). It runs after the reply: thousands of items take a while.
+        var shownAfter = _state.Current.Home.Peers.FirstOrDefault(p => string.Equals(p.PeerKey, handle, StringComparison.Ordinal))?.ShownName();
+        if (_enricher is { } enricher && shownAfter is not null && !string.Equals(shownBefore, shownAfter, StringComparison.Ordinal))
+        {
+            Relabelling = Task.Run(() => RelabelAsync(enricher), CancellationToken.None);
+        }
+
         _logger.LogInformation("Admin changed the settings of peer {Peer} (host changed {Host}, proxy changed {Proxy}, pin changed {Pin})", Redact.Id(handle), hostChanged, proxyChanged, pinChanged);
         return AdminReply.Json(StatusCodes.Status200OK, new { needsPairing = hostChanged, signedOut });
     }
@@ -485,6 +502,19 @@ public class AdminPeerSettingsController : ControllerBase
         new(StatusCodes.Status409Conflict, new { error = word, pin = shown.Pin, fingerprint = TlsPin.Fingerprint(shown.Pin), chainValid = shown.ChainValid });
 
     // The endpoint with the token, also for a server that is paused or whose address the directory refuses: the session on it must end all the same.
+    private async Task RelabelAsync(StubEnricher enricher)
+    {
+        try
+        {
+            var saved = await enricher.ApplyLabelsAsync(CancellationToken.None).ConfigureAwait(false);
+            _logger.LogInformation("Relabelled {Count} items after a server rename", saved);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogWarning("The items could not be relabelled after a server rename ({Type}); the next library scan does it", ex.GetType().Name);
+        }
+    }
+
     private PeerEndpoint? EndpointForSignOut(PeerState peer)
     {
         if (_peers.Find(peer.PeerKey) is { } found)

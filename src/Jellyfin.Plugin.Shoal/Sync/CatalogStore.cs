@@ -19,6 +19,11 @@ namespace Jellyfin.Plugin.Shoal.Sync;
 /// <param name="Dropped">How many entries were dropped because they failed validation.</param>
 public sealed record CatalogLoad(CatalogDocument Document, bool Unreadable, int Dropped);
 
+/// <summary>A manual sync request that did not run (Pilot 24 SKIPPED-INVISIBLE). It never replaces the catalog's last real sync.</summary>
+/// <param name="AtUtc">When the request was turned away (the sync service's clock).</param>
+/// <param name="Reason">The sync service's skip word (tooSoon, scanRunning, busy, layoutJob, ...).</param>
+public sealed record SkippedSync(DateTime AtUtc, string Reason);
+
 /// <summary>
 /// Loads and saves <c>peers/&lt;peerKey&gt;/catalog.json</c> (DESIGN 3.3): atomically, with a <c>.bak</c>, mode 0600. Whatever is read is validated again,
 /// because the stub paths in it are used for deletions.
@@ -42,6 +47,7 @@ public sealed class CatalogStore
 
     private readonly ShoalPaths _paths;
     private readonly ILogger _logger;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SkippedSync> _skipped = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CatalogStore"/> class.
@@ -63,6 +69,29 @@ public sealed class CatalogStore
         _paths = paths;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Remembers, in memory only, how the last manual sync request of a peer went: skipped (it did not run) or null (it ran). The catalog file
+    /// is not touched, so a skip can never overwrite the last real result; the Overview and the library rows read it next to that result.
+    /// </summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="skipped">The skip, or null when the request ran.</param>
+    public void NoteManualRequest(string peerKey, SkippedSync? skipped)
+    {
+        if (skipped is null)
+        {
+            _skipped.TryRemove(peerKey, out _);
+        }
+        else
+        {
+            _skipped[peerKey] = skipped;
+        }
+    }
+
+    /// <summary>Gets the last manual sync request of a peer that was skipped, or null.</summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>The skip, or null.</returns>
+    public SkippedSync? LastSkipped(string peerKey) => _skipped.TryGetValue(peerKey, out var skipped) ? skipped : null;
 
     /// <summary>
     /// Whether a stub path from a catalog is safe to use: <c>folder/file.strm</c>, two plain segments.
@@ -213,6 +242,10 @@ public sealed class CatalogStore
     private static bool IsKey(string? value) =>
         value is { Length: >= 8 and <= 32 } && value.All(static c => c is (>= '0' and <= '9') or (>= 'a' and <= 'z'));
 
+    // A mapping key: letters, digits, '-' and '_' (the Add route's ValidKey), at most 64.
+    private static bool IsMappingKey(string? value) =>
+        value is { Length: >= 1 and <= 64 } && value.All(static c => c is (>= '0' and <= '9') or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '-' or '_');
+
     private static CatalogDocument Empty(string peerKey) => new() { PeerKey = peerKey };
 
     private string FilePath(string peerKey) => Path.Combine(_paths.PeerDir(peerKey), "catalog.json");
@@ -322,6 +355,18 @@ public sealed class CatalogStore
         document.ImagesPending = [.. document.ImagesPending.Where(IsKey).Distinct(StringComparer.Ordinal).Take(CatalogDocument.MaxEntries)];
         document.ImageFollowUps = Math.Clamp(document.ImageFollowUps, 0, TvLimits.MaxImageFollowUps);
         document.HeldAdditions = [.. document.HeldAdditions.Where(IsHex32).Distinct(StringComparer.Ordinal)];
+        var stillHeld = document.HeldAdditions.ToHashSet(StringComparer.Ordinal);
+        document.HeldAdditionInfo = [.. (document.HeldAdditionInfo ?? []).Where(h => h is not null && IsHex32(h.PeerItemId) && stillHeld.Contains(h.PeerItemId) && IsMappingKey(h.MappingKey) && Enum.IsDefined(h.Kind))
+            .DistinctBy(static h => h.MappingKey + "/" + h.PeerItemId, StringComparer.Ordinal)
+            .Take(CatalogDocument.MaxEntries + TvLimits.MaxSeriesPerPeer)];
+        foreach (var info in document.HeldAdditionInfo)
+        {
+            info.Title = PeerText.Clean(info.Title, HeldAddition.TitleMax);
+            info.Year = info.Year is >= 1870 and <= 2100 ? info.Year : null;
+        }
+
+        // K7: a stamp that is not a plausible shown name (40 characters) is treated as a different name, so the labels are rewritten once.
+        document.LabelName = document.LabelName is { Length: > 80 } ? string.Empty : document.LabelName;
         document.TvHeldAdditions = [.. document.TvHeldAdditions.Where(IsHex32).Distinct(StringComparer.Ordinal).Take(CatalogDocument.MaxEntries + TvLimits.MaxSeriesPerPeer)];
         document.HeldSeries = [.. document.HeldSeries.Where(static h => IsKey(h.Key) && IsHex32(h.PeerSeriesId) && h.MappingKey.Length is > 0 and <= 64 && h.Title.Length <= 300).DistinctBy(static h => h.Key, StringComparer.Ordinal).Take(TvLimits.MaxSeriesPerPeer)];
         foreach (var held in document.HeldSeries)

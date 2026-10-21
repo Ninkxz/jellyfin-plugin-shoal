@@ -463,6 +463,40 @@ public sealed class ClientOfflineNotice : IOfflineNotice
         }
     }
 
+    /// <inheritdoc />
+    public void Busy(Guid userId, string peerKey, string peerName, Jellyfin.Plugin.Shoal.Playback.BusyReason reason, int playing = 0)
+    {
+        // 2.9.2 K11: not behind the offline setting, like QualityRefused; without it the user reads only "rate limits". The same 30-second rule per user and peer.
+        if (Due(userId, "busy|" + peerKey))
+        {
+            _ = SendAsync(userId, Jellyfin.Plugin.Shoal.Playback.BusyNotice.Text(reason, MetadataSanitizer.DisplayName(peerName), playing));
+        }
+    }
+
+    private bool Due(Guid userId, string key)
+    {
+        var now = _time.GetUtcNow();
+        var due = false;
+        _last.AddOrUpdate(
+            (userId, key),
+            _ =>
+            {
+                due = true;
+                return now;
+            },
+            (_, last) =>
+            {
+                if (now - last < Every)
+                {
+                    return last;
+                }
+
+                due = true;
+                return now;
+            });
+        return due;
+    }
+
     private async Task SendAsync(Guid userId, string text)
     {
         try

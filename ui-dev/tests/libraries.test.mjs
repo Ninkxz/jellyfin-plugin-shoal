@@ -13,6 +13,17 @@ const buttonIn = (root, text) => [...root.querySelectorAll('button')].find((b) =
 const dialog = (p) => p.page.querySelector('dialog[open]');
 const putCalls = (p) => p.mock.calls.filter((c) => c.method === 'PUT' && /\/Access$/.test(c.path));
 
+test('SKIPPED-INVISIBLE: a library block shows a skipped Sync now with the reason and the real result', async () => {
+    const p = await libraries('default', { lastSyncSkipReason: 'scanRunning' });
+    try {
+        const b = block(p, 'Hops Movies');
+        assert.match(b.textContent, /last sync 12 min ago/);
+        assert.match(b.querySelector('[data-slot="skipped"]').textContent, /^Sync now skipped this time 1 min ago\. Jellyfin was scanning a library\. Shoal tries again in 10 min\. Last real sync: OK\.$/);
+    } finally {
+        p.close();
+    }
+});
+
 test('a new library starts as "Only selected users" with only the admin who added it (D3)', async () => {
     const p = await libraries('default');
     try {

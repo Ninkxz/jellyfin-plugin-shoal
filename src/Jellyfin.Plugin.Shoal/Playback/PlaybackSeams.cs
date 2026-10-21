@@ -63,6 +63,19 @@ public interface IOfflineNotice
     void QualityRefused(Guid userId, string peerKey)
     {
     }
+
+    /// <summary>
+    /// A play request was refused because a limit was reached (PLAN 2.9.2 K11): the user reads <see cref="BusyNotice.Text"/> for the reason. The error code the
+    /// client gets is unchanged (RateLimitExceeded). The default shows nothing.
+    /// </summary>
+    /// <param name="userId">The user who asked.</param>
+    /// <param name="peerKey">The peer.</param>
+    /// <param name="peerName">The name Home's users read for the peer (its alias, if any).</param>
+    /// <param name="reason">Which limit was reached.</param>
+    /// <param name="playing">How many titles the user plays now (read for <see cref="BusyReason.UserStreams"/> only).</param>
+    void Busy(Guid userId, string peerKey, string peerName, BusyReason reason, int playing = 0)
+    {
+    }
 }
 
 /// <summary>

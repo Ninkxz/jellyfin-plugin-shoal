@@ -141,7 +141,7 @@ public sealed class PluginSettingsAccessor : ISettingsAccessor
         TrickplayCacheGb = source.TrickplayCacheGb,
         AttachmentsEnabled = source.AttachmentsEnabled,
         ReencodeImages = source.ReencodeImages,
-        TvShowsEnabled = source.TvShowsEnabled,
+        TvShowsEnabled = true, // always on (v2.9.1); kept in the answer for an older page
         TvEpisodeThumbs = source.TvEpisodeThumbs,
         OfflineCardEnabled = source.OfflineCardEnabled,
         RequestServiceName = source.RequestServiceName,

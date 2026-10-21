@@ -233,6 +233,18 @@ public sealed class AdminSettingsControllerTests
     }
 
     [Fact]
+    public async Task Contract_GetSettings_MatchesTheGoldenJson()
+    {
+        using var rig = Create();
+        await rig.Store.UpdateAsync(s => s.StubRoot = "/data/shoal");
+
+        var rendered = AdminTestSupport.Render(rig.Controller.GetSettings());
+
+        Assert.Equal(200, rendered.Status);
+        ContractGolden.Match("settings.get", rendered.Text);
+    }
+
+    [Fact]
     public async Task PutSettings_SavesTheTogglesAndTheFolder_AndAnswersWithTheSavedValues()
     {
         using var rig = Create();
@@ -324,7 +336,7 @@ public sealed class AdminSettingsControllerTests
         Assert.NotNull(stream);
         using var reader = new StreamReader(stream);
         var script = reader.ReadToEnd();
-        var start = script.LastIndexOf("function collect() {", script.IndexOf("tvShowsEnabled: f.tvShows", StringComparison.Ordinal), StringComparison.Ordinal); // the settings page's own
+        var start = script.LastIndexOf("function collect() {", script.IndexOf("tvEpisodeThumbs: f.tvThumbs", StringComparison.Ordinal), StringComparison.Ordinal); // the settings page's own
         var body = script[start..script.IndexOf("function validate(", start, StringComparison.Ordinal)];
         var posted = System.Text.RegularExpressions.Regex.Matches(body, @"^\s{12}(\w+):", System.Text.RegularExpressions.RegexOptions.Multiline).Select(static m => m.Groups[1].Value).ToList();
         var known = typeof(SettingsDto).GetProperties().Select(static p => p.Name.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
@@ -334,15 +346,15 @@ public sealed class AdminSettingsControllerTests
     }
 
     [Fact]
-    public async Task TheTvSwitches_RoundTripThroughTheSettingsApi()
+    public async Task V291_TvIsAlwaysOn_AnOldPageSendingTvShowsEnabledFalseChangesNothing_ThumbsStillRoundTrip()
     {
         using var rig = Create();
         await rig.Store.UpdateAsync(s => s.StubRoot = "/data/shoal");
         var before = Body(rig.Controller.GetSettings());
-        Assert.False(before.GetProperty("tvShowsEnabled").GetBoolean());
+        Assert.True(before.GetProperty("tvShowsEnabled").GetBoolean());
         Assert.True(before.GetProperty("tvEpisodeThumbs").GetBoolean());
 
-        Send(rig.Controller, """{"tvShowsEnabled":true,"tvEpisodeThumbs":false}""");
+        Send(rig.Controller, """{"tvShowsEnabled":false,"tvEpisodeThumbs":false}""");
         var after = Body(await rig.Controller.PutSettings(default));
 
         Assert.True(after.GetProperty("tvShowsEnabled").GetBoolean());

@@ -228,6 +228,8 @@ public sealed class LayoutPresetService
         var shareUsers = VisibilityService.ShareUserIds(state);
         var now = DateTime.UtcNow;
         var created = plan.Where(static m => m.NewLibrary is not null).Select(static m => m.NewLibrary!).Distinct().ToList();
+        var jellyfinLibraries = _libraries?.List() ?? [];
+        Guid? MainOf(LayoutLibrary library) => _libraries is null ? null : MainAccess.MainIdOf(state, library, jellyfinLibraries);
 
         // Where each moved connection lands, and what its new library admits (the intersection of its sources for a new one).
         var afterAccess = new Dictionary<LibraryCreateRequest, LibraryAccess>();
@@ -251,16 +253,25 @@ public sealed class LayoutPresetService
             moves.Add(new PresetMove(peer.PeerKey, MetadataSanitizer.DisplayName(peer.ShownName()), move.Type, [.. sources.Select(static l => l.Name)], target?.Name ?? move.NewLibrary!.Name));
             fromKeys.UnionWith(sources.Select(static l => l.LibKey));
             newTarget[(move.PeerKey, move.Type)] = move.ToLibKey ?? "new:" + move.NewLibrary!.Name;
+
+            // Warden 13 L3 / Warden 14: titles in the admin's main library reach only accounts that can open that library in core (MainAccess). The target's
+            // main library is the one resolved for this preview (never the stored id, which can be null or stale); a source's is found by its folder.
+            var targetMain = move.NewLibrary?.MainLibraryId ?? (target is { Placement: LibraryPlacement.Main } ? mainTargets.GetValueOrDefault(move.Type)?.Id ?? MainOf(target) : null);
+            var sourceMains = sources.Select(MainOf).ToList();
             foreach (var account in accounts)
             {
                 var user = account.ToCallerUser();
-                if (sources.Any(l => AccessPolicy.Admitted(user, LibraryFolders.AccessOf(state, l), shareUsers)) && !AccessPolicy.Admitted(user, access, shareUsers))
+                var before = sources.Where((l, i) => AccessPolicy.Admitted(user, LibraryFolders.AccessOf(state, l), shareUsers) && MainAccess.Opens(state, account, sourceMains[i])).Any();
+                var after = AccessPolicy.Admitted(user, access, shareUsers) && MainAccess.Opens(state, account, targetMain);
+                if (before && !after)
                 {
                     losing.Add(account.Id);
                 }
+                else if (after && !before)
+                {
+                    gaining.Add(account); // AccessGain.Gaining's rule plus the main library
+                }
             }
-
-            gaining.AddRange(AccessGain.Gaining(accounts, access, [.. sources.Select(l => LibraryFolders.AccessOf(state, l))], shareUsers));
         }
 
         // A library goes when every connection that writes into it moves out.
