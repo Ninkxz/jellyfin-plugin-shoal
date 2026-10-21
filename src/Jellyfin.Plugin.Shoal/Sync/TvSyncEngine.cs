@@ -792,6 +792,7 @@ public sealed class TvSyncEngine
             // ---- additions
             await AddAsync(mapping, target, libraryFolder, plan, details, ct).ConfigureAwait(false);
             ApplyHidden(mapping, plan, listedSeries);
+            SweepLeftoverCopies(mapping, target, libraryFolder);
 
             // ---- what is still without details waits for the next run
             var stillPending = new List<string>();
@@ -1034,6 +1035,121 @@ public sealed class TvSyncEngine
                         Changed(libraryFolder, series.FolderRel);
                     }
                 }
+            }
+        }
+
+        // 2.9.3: the extra "[shoal-...]" copies of a live series that 2.9.0 to 2.9.2 wrote every sync (CreateSeriesAsync) go. Only a folder TvDuplicateSweep
+        // calls a leftover (the series' own name, only stub files, sentinels no catalog or group knows) is deleted; when any catalog cannot be read, nothing is.
+        private void SweepLeftoverCopies(LibraryMapping mapping, StubTarget target, string libraryFolder)
+        {
+            if (!Report.Complete || !_listingComplete)
+            {
+                return; // Warden 19 L1: only after a complete sync so far (whole listing, every details call answered)
+            }
+
+            var live = _doc.Entries.Where(e => e.MappingKey == mapping.MappingKey && e.Kind == EntryKind.Series && e.State == EntryState.Active && e.FolderRel is not null).Select(static e => e.FolderRel!).ToList();
+            List<string> candidates;
+            try
+            {
+                candidates = TvDuplicateSweep.Candidates(libraryFolder, live);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            if (candidates.Count == 0)
+            {
+                return;
+            }
+
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var folders = new HashSet<string>(StringComparer.Ordinal);
+            void Know(IEnumerable<CatalogEntry> entries)
+            {
+                foreach (var e in entries)
+                {
+                    keys.Add(e.StubKey);
+                    foreach (var path in new[] { e.FolderRel, e.StubRelPath }.Concat(e.Sources.Select(static s => s.StubRelPath)))
+                    {
+                        if (path is { Length: > 0 })
+                        {
+                            folders.Add(PathSanitizer.CollisionKey(path.Split('/')[0]));
+                        }
+                    }
+                }
+            }
+
+            // Warden 19 M1: every catalog must be whole. Our own read from the .bak or with dropped entries, or another friend's catalog missing, unreadable,
+            // read from the .bak or with dropped entries, means some stubs are unknown: nothing is deleted this time.
+            if (_doc.LoadedWithLoss)
+            {
+                return;
+            }
+
+            Know(_doc.Entries);
+            foreach (var other in _state.Home.Peers.Where(p => p.PeerKey != _peer.PeerKey))
+            {
+                if (_d.Store.Stamp(other.PeerKey) is null)
+                {
+                    if (other.Libraries.Count > 0)
+                    {
+                        return; // a friend with libraries and no catalog file: lost or never synced, its stubs are unknown
+                    }
+
+                    continue;
+                }
+
+                var load = _d.Store.Load(other.PeerKey);
+                if (load.Unreadable || load.Dropped > 0 || load.Document.LoadedWithLoss)
+                {
+                    return;
+                }
+
+                Know(load.Document.Entries);
+            }
+
+            if (_d.Groups is { } groups)
+            {
+                foreach (var copy in groups.All().SelectMany(static g => g.Copies).Concat(groups.RetiredCopies()))
+                {
+                    keys.Add(copy.StubKey);
+                    if (copy.FolderRel.Length > 0)
+                    {
+                        folders.Add(PathSanitizer.CollisionKey(copy.FolderRel.Split('/')[0]));
+                    }
+                }
+            }
+
+            var removed = 0;
+            foreach (var name in candidates)
+            {
+                if (folders.Contains(PathSanitizer.CollisionKey(name)) || TvStubWriter.Confine(target, name) is not { } path)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (!TvDuplicateSweep.IsLeftover(path, keys, out var bytes))
+                    {
+                        continue;
+                    }
+
+                    Directory.Delete(path, recursive: true);
+                    _quota.Add(-bytes);
+                    Changed(libraryFolder, name);
+                    removed++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _d.Logger.LogWarning("A leftover copy of a TV series folder could not be removed ({Error}); the next sync tries again", ex.GetType().Name);
+                }
+            }
+
+            if (removed > 0)
+            {
+                _d.Logger.LogInformation("Removed {Count} leftover copies of TV series folders for peer {Peer}", removed, Redact.Id(_peer.PeerKey));
             }
         }
 
@@ -1307,16 +1423,18 @@ public sealed class TvSyncEngine
         private async Task<CatalogEntry?> CreateSeriesAsync(LibraryMapping mapping, StubTarget target, HashSet<string> taken, SanitizedSeries detailed, CatalogEntry? promoted)
         {
             await Task.CompletedTask.ConfigureAwait(false);
+
+            // 2.9.3: one key for every attempt, and a promoted record stays the entry. Dropping it here wrote a second entry for the same peer series; the next
+            // catalog load kept the record and dropped the new entry, so every sync wrote another "[shoal-...]" copy of the series (friend report, 19 Oct).
+            var stubKey = promoted?.StubKey ?? NewKey();
             for (var attempt = 0; attempt < 3; attempt++)
             {
-                var stubKey = promoted?.StubKey ?? NewKey();
                 var scratch = new HashSet<string>(taken, StringComparer.Ordinal);
                 var folderName = _e._layout.SeriesFolder(detailed, stubKey, scratch);
                 var result = _e._writer.WriteSeries(target, folderName, _e._nfo.Series(Facets(detailed, target), TagsOf(target), target.FriendName), _quota);
                 if (result.Outcome == StubWriteOutcome.Exists)
                 {
-                    taken.Add(PathSanitizer.CollisionKey(folderName)); // something unknown is on disk under that name: another name
-                    promoted = null;
+                    taken.Add(PathSanitizer.CollisionKey(folderName)); // something unknown is on disk under that name (another server's copy): the tagged name next
                     continue;
                 }
 

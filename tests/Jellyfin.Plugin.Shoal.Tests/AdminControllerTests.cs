@@ -61,13 +61,13 @@ public sealed class AdminControllerTests
         public bool StartSync(string peerKey) => true;
     }
 
-    private static (AdminController Controller, StateStore Store, ManualTimeProvider Time, TempDirectory Dir) Create(Action<TempDirectory>? beforeOpen = null, IPeerLiveStatus? live = null, FakeSecrets? secrets = null, Jellyfin.Plugin.Shoal.Visibility.IAccountSource? accounts = null, Jellyfin.Plugin.Shoal.Playback.InterceptCounters? intercept = null, Jellyfin.Plugin.Shoal.Sync.IImageSandboxStatus? sandbox = null, Jellyfin.Plugin.Shoal.Sync.PeerCatalogReader? reader = null)
+    private static (AdminController Controller, StateStore Store, ManualTimeProvider Time, TempDirectory Dir) Create(Action<TempDirectory>? beforeOpen = null, IPeerLiveStatus? live = null, FakeSecrets? secrets = null, Jellyfin.Plugin.Shoal.Visibility.IAccountSource? accounts = null, Jellyfin.Plugin.Shoal.Playback.InterceptCounters? intercept = null, Jellyfin.Plugin.Shoal.Sync.IImageSandboxStatus? sandbox = null, Jellyfin.Plugin.Shoal.Sync.PeerCatalogReader? reader = null, Func<StateStore, ILibraryView>? view = null)
     {
         var dir = new TempDirectory();
         beforeOpen?.Invoke(dir);
         var time = new ManualTimeProvider();
         var store = new StateStore(new Jellyfin.Plugin.Shoal.Storage.ShoalPaths(dir.Path), NullLogger.Instance, time, null);
-        var controller = new AdminController(store, secrets ?? new FakeSecrets(), live ?? new UnknownPeerLiveStatus(), new FixedName(), new AdminCooldowns(time), new NoGuardCounters(), new NoLibraryView(), NullLogger<AdminController>.Instance, accounts, intercept, null, sandbox, reader)
+        var controller = new AdminController(store, secrets ?? new FakeSecrets(), live ?? new UnknownPeerLiveStatus(), new FixedName(), new AdminCooldowns(time), new NoGuardCounters(), view?.Invoke(store) ?? new NoLibraryView(), NullLogger<AdminController>.Instance, accounts, intercept, null, sandbox, reader)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
@@ -291,6 +291,25 @@ public sealed class AdminControllerTests
             Assert.DoesNotContain("0123456789abcdef0123456789abcdef", json.GetRawText(), StringComparison.Ordinal);
             Assert.Equal("qc", json.GetProperty("pairingMethod").GetString());
             Assert.Equal(4, json.GetProperty("settings").GetProperty("maxConcurrentStreams").GetInt32());
+        }
+    }
+
+    [Fact]
+    public async Task Contract_PeerDetail_Libraries_MatchesTheGoldenJson()
+    {
+        LibraryViewFixture? fixture = null;
+        var (controller, store, _, dir) = Create(view: s => (fixture = new LibraryViewFixture(s)).View);
+        using (dir)
+        using (store)
+        using (fixture)
+        {
+            await fixture!.SeedAsync();
+
+            var rendered = AdminTestSupport.Render(controller.GetPeer(LibraryViewFixture.Hops));
+
+            Assert.Equal(200, rendered.Status);
+            var libraries = System.Text.Json.Nodes.JsonNode.Parse(rendered.Text)!["libraries"]!.DeepClone(); // 2.9.3 K3: the libraries part of GET Peers/{handle}
+            ContractGolden.Match("peers.detail", new System.Text.Json.Nodes.JsonObject { ["libraries"] = libraries }.ToJsonString());
         }
     }
 

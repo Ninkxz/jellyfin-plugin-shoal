@@ -434,7 +434,7 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 .shoalPage .shoal-tag--in  { color: var(--shoal-in);  background: var(--shoal-in-bg); }
 .shoalPage .shoal-tag--out { color: var(--shoal-out); background: var(--shoal-out-bg); }
 .shoalPage .shoal-prio { background: var(--shoal-surface); border: 1px solid var(--shoal-line); border-radius: var(--shoal-radius-lg); overflow: hidden; }
-.shoalPage .shoal-prio > li { display: grid; grid-template-columns: 40px 104px minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--shoal-line); }
+.shoalPage .shoal-prio > li { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--shoal-line); }
 .shoalPage .shoal-prio > li:first-child { border-top: 0; }
 .shoalPage .shoal-rank { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--shoal-in-bg); color: var(--shoal-in); font-variant-numeric: tabular-nums; }
 .shoalPage .shoal-prio .shoal-row__art { height: 52px; }
@@ -541,6 +541,13 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 .shoalPage .shoal-collapse > summary .shoal-icon { transition: transform var(--shoal-dur) var(--shoal-ease); color: var(--shoal-muted); }
 .shoalPage .shoal-collapse[open] > summary .shoal-icon { transform: rotate(180deg); }
 .shoalPage .shoal-collapse__body { padding-top: 12px; padding-bottom: 8px; }
+/* Which server plays first (2.9.3 U6): closed under the rows, so the Overview names each server once. The tag icon in the heading does not turn. */
+.shoalPage .shoal-playorder > summary .shoal-tag .shoal-icon, .shoalPage .shoal-playorder[open] > summary .shoal-tag .shoal-icon { transform: none; transition: none; color: inherit; }
+.shoalPage .shoal-playorder > summary .shoal-h2 { margin: 0; }
+/* Server page (2.9.3 U6): the libraries of one friend added together, then grouped by type. */
+.shoalPage .shoal-libtotals { font-weight: 700; }
+.shoalPage .shoal-libgroup + .shoal-libgroup { margin-top: 16px; }
+.shoalPage .shoal-libgroup__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 4px; }
 .shoalPage .shoal-collapse__body > * + * { margin-top: 12px; }
 .shoalPage .shoal-panel > .shoal-collapse, .shoalPage .shoal-panel__body > .shoal-collapse { border-top: 1px solid var(--shoal-line); }
 

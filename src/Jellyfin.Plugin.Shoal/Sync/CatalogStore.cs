@@ -171,6 +171,7 @@ public sealed class CatalogStore
             var loaded = TryRead(candidate, peerKey);
             if (loaded is not null)
             {
+                loaded.Document.LoadedWithLoss = loaded.Dropped > 0 || !string.Equals(candidate, path, StringComparison.Ordinal);
                 if (loaded.Dropped > 0)
                 {
                     _logger.LogWarning("The catalog of peer {Peer} dropped {Count} entries that failed validation or passed a cap; their stubs stay on disk until the next sync removes them", Redact.Id(peerKey), loaded.Dropped);
@@ -319,13 +320,29 @@ public sealed class CatalogStore
         var playable = 0;
         var containers = 0;
         var kept = new List<CatalogEntry>();
+        static bool Plausible(CatalogEntry e) =>
+            Enum.IsDefined(e.Kind) && IsKey(e.StubKey) && IsHex32(e.PeerItemId)
+            && (e.PeerMediaSourceId.Length == 0 || IsHex32(e.PeerMediaSourceId))
+            && e.State is not EntryState.Removed
+            && ValidShape(e);
+
+        // 2.9.3: two series entries for one peer series (2.9.0 to 2.9.2 wrote one when a hidden record was promoted): the one with a folder is kept, so its
+        // episodes stay; the first one won before, which dropped the stubs just written and made the next sync write another copy of the series.
+        var seriesKept = new Dictionary<string, CatalogEntry>(StringComparer.Ordinal);
+        foreach (var e in document.Entries.Where(static e => e.Kind == EntryKind.Series && Plausible(e)))
+        {
+            var item = e.MappingKey + "/" + e.PeerItemId;
+            if (!seriesKept.TryGetValue(item, out var have) || (have.FolderRel is null && e.FolderRel is not null && e.State is EntryState.Active or EntryState.HeldRemoval))
+            {
+                seriesKept[item] = e;
+            }
+        }
+
         foreach (var e in document.Entries)
         {
             var isContainer = e.Kind is EntryKind.Series or EntryKind.Season;
-            if (!Enum.IsDefined(e.Kind) || !IsKey(e.StubKey) || !IsHex32(e.PeerItemId)
-                || (e.PeerMediaSourceId.Length != 0 && !IsHex32(e.PeerMediaSourceId))
-                || e.State is EntryState.Removed
-                || !ValidShape(e)
+            if (!Plausible(e)
+                || (e.Kind == EntryKind.Series && !ReferenceEquals(seriesKept.GetValueOrDefault(e.MappingKey + "/" + e.PeerItemId), e))
                 || !seenKeys.Add(e.StubKey)
                 || !seenItems.Add(e.MappingKey + "/" + e.PeerItemId))
             {

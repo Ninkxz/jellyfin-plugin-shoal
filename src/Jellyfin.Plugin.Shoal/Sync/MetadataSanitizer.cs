@@ -43,7 +43,7 @@ public sealed class JellyfinRatingTable : IRatingTable
 /// Turns peer JSON into values Home may store (DESIGN 5.5). Every peer string is hostile input; nothing else touches the raw DTO. A field
 /// that fails its rule is dropped (null or empty), never repaired by guessing; only a missing or malformed item id rejects the item.
 /// </summary>
-public sealed class MetadataSanitizer
+public sealed partial class MetadataSanitizer
 {
     /// <summary>The longest title, original title or sort title.</summary>
     public const int TitleMax = 300;
@@ -74,6 +74,7 @@ public sealed class MetadataSanitizer
     private const int MaxBitrate = 1_000_000_000;
     private const int MaxDimension = 16_384;
     private const int ContainerMax = 40;
+    private static readonly char[] LinkPunctuation = ['(', ')', '[', ']', '{', '}', '<', '>', '"', (char)0x27, ',', ';', ':', '!', '?', '.', '*', '_', '~'];
 
     private readonly IRatingTable _ratings;
     private readonly ISourceSanitizer _sourceHook;
@@ -98,6 +99,25 @@ public sealed class MetadataSanitizer
     /// <param name="value">The raw name.</param>
     /// <returns>The cleaned name, possibly empty.</returns>
     public static string DisplayName(string? value) => PeerText.Clean(value, NameMax);
+
+    /// <summary>
+    /// Sanitizes a friend's server name for text users read (plot label, studio, toasts, offline card, the admin's link label) (2.9.3 K6, Warden 17/18 L2):
+    /// the <see cref="DisplayName"/> rules, then every token that looks like a link is dropped: one holding <c>://</c>, one starting with <c>www.</c>, or a
+    /// domain (<c>label(.label)*.tld</c>, an alphabetic ASCII TLD of 2 to 24 letters, an optional port or path). Spaces left behind are collapsed. "Dr. Who"
+    /// and "St. Louis" survive (a TLD needs a dot with no space before it); "Dr.Who" does not (a known false positive).
+    /// </summary>
+    /// <param name="value">The raw name.</param>
+    /// <returns>The cleaned name; empty when nothing is left (the caller uses its "no name" form).</returns>
+    public static string FriendName(string? value)
+    {
+        var clean = DisplayName(value);
+        if (clean.Length == 0)
+        {
+            return clean;
+        }
+
+        return string.Join(' ', clean.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Where(static t => !IsLinkToken(t)));
+    }
 
     /// <summary>
     /// Parses a peer id: 32 hex digits, or a GUID with hyphens, and not the empty GUID.
@@ -430,4 +450,19 @@ public sealed class MetadataSanitizer
 
         return [.. result];
     }
+
+    private static bool IsLinkToken(string token)
+    {
+        if (token.Contains("://", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Full-width and ideographic dots read as a dot; punctuation around a domain ("(evil.example)," or a final full stop) does not hide it.
+        var core = token.Replace((char)0xFF0E, '.').Replace((char)0x3002, '.').Replace((char)0xFF61, '.').Trim(LinkPunctuation);
+        return core.StartsWith("www.", StringComparison.OrdinalIgnoreCase) || DomainRegex().IsMatch(core);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.[A-Za-z]{2,24}(?:[:/].*)?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant, 1000)]
+    private static partial System.Text.RegularExpressions.Regex DomainRegex();
 }

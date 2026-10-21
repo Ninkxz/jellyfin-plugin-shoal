@@ -121,7 +121,7 @@ internal static class AdminStatusBuilder
                 used.Add(s);
             }
 
-            result.Add(Entry(peers[p].PeerKey, servers[p], s >= 0 ? shares[s].ShareId : null, s >= 0 ? friends[s] : null));
+            result.Add(Entry(peers[p], servers[p], s >= 0 ? shares[s].ShareId : null, s >= 0 ? friends[s] : null));
         }
 
         for (var s = 0; s < shares.Count; s++)
@@ -180,13 +180,16 @@ internal static class AdminStatusBuilder
             info.TranscodingNow);
     }
 
-    private static FriendLinkDto Entry(string? peerKey, ServerDto? server, string? shareId, FriendDto? friend)
+    private static FriendLinkDto Entry(PeerState? peer, ServerDto? server, string? shareId, FriendDto? friend)
     {
         var watch = server is null ? null : new WatchSideDto(server.Handle, server.Status, server.TitleCount, server.ActiveStreams.N);
         var share = friend is null ? null : new ShareSideDto(friend.Handle, friend.Status, friend.LibraryCount, friend.DeviceCount, friend.UnexpectedDeviceCount, friend.PlayingNow, friend.TranscodingNow, friend.LastSeenUtc);
-        var handle = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes((peerKey ?? string.Empty) + "|" + (shareId ?? string.Empty))))[..16];
+        var handle = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes((peer?.PeerKey ?? string.Empty) + "|" + (shareId ?? string.Empty))))[..16];
         var status = RollUp(watch is null ? null : WatchWord(watch.Status), share is null ? null : ShareWord(share.Status));
-        return new FriendLinkDto(handle, server?.DisplayName ?? friend?.Name ?? string.Empty, status, watch is not null && share is not null, watch, share);
+
+        // 2.9.3 K6: the name the admin reads is the alias (else the friend's name) without links; an empty result falls back to the friend's own name.
+        var name = peer is null ? string.Empty : Sync.MetadataSanitizer.FriendName(peer.ShownName());
+        return new FriendLinkDto(handle, name.Length > 0 ? name : friend?.Name ?? string.Empty, status, watch is not null && share is not null, watch, share);
     }
 
     // A server card's word as the roll-up knows it: Disabled is Paused, a pairing that has not finished is Degraded.

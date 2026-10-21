@@ -28,11 +28,24 @@ test('T-TWO-1 (v2): a linked friend shows in both lanes and each row says the ot
     const p = await page({ view: 'overview' });
     try {
         assert.equal(p.page.querySelectorAll('.shoal-twoway, .shoal-twoway__card').length, 0, 'no separate two-way card');
-        assert.match(serverRow(p, 'Hops').textContent, /Also watches your server/);
+        assert.match(serverRow(p, 'Hops').textContent, /Watches your server too/);
         assert.match(serverRow(p, 'Hops').textContent, /1,204 titles/);
-        assert.doesNotMatch(serverRow(p, 'Fernwood').textContent, /Also watches your server/);
-        assert.match(friendRow(p, 'Sam').textContent, /Also your server: Hops/);
-        assert.doesNotMatch(friendRow(p, 'Jo').textContent, /Also your server/);
+        assert.doesNotMatch(serverRow(p, 'Fernwood').textContent, /Watches your server too/);
+        assert.match(friendRow(p, 'Sam').textContent, /You watch their server too: Hops/);
+        assert.doesNotMatch(friendRow(p, 'Jo').textContent, /You watch their server too/);
+    } finally {
+        p.close();
+    }
+});
+
+// 2.9.3 U7 (NOTES-2.9.3 item 2): the friend Sam runs the server Hops. "Also your server: Hops" on Sam's row read as if Hops were this server.
+test('ui.overview.linkedFriend.wordsBothWays: each lane says plainly that the same person is on the other side', async () => {
+    const p = await page({ view: 'overview' });
+    try {
+        assert.equal(serverRow(p, 'Hops').querySelector('.shoal-row__also').textContent, 'Watches your server too');
+        assert.equal(friendRow(p, 'Sam').querySelector('.shoal-row__also').textContent, 'You watch their server too: Hops');
+        assert.doesNotMatch(p.text(), /Also your server|Also watches your server/);
+        assert.doesNotMatch(friendRow(p, 'Sam').textContent + serverRow(p, 'Hops').textContent, /[‐-―-]/, 'no dashes');
     } finally {
         p.close();
     }
@@ -79,7 +92,7 @@ test('T-TWO-2: the roll-up order, worst first', async () => {
 test('with no link there is no "also" note in either lane', async () => {
     const p = await page({ view: 'overview' }, { twoWay: false });
     try {
-        assert.doesNotMatch(p.text(), /Also your server|Also watches your server/);
+        assert.doesNotMatch(p.text(), /Also your server|Also watches your server|You watch their server too|Watches your server too/);
     } finally {
         p.close();
     }

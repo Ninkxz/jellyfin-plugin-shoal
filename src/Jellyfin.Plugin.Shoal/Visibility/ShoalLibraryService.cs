@@ -124,7 +124,7 @@ public sealed class ShoalLibraryService
             return new LibraryCreateResult(LibraryCreateError.AlreadyExists, shoal.Id);
         }
 
-        var name = MetadataSanitizer.DisplayName(string.IsNullOrWhiteSpace(mapping.LocalLibraryName) ? LibraryNames.FromFriend(MetadataSanitizer.DisplayName(peer.DisplayName), "Friend") + (mapping.CollectionType == "tvshows" ? " TV shows" : " Movies") : mapping.LocalLibraryName);
+        var name = MetadataSanitizer.DisplayName(string.IsNullOrWhiteSpace(mapping.LocalLibraryName) ? LibraryNames.FromFriend(MetadataSanitizer.FriendName(peer.DisplayName), "Friend") + (mapping.CollectionType == "tvshows" ? " TV shows" : " Movies") : mapping.LocalLibraryName);
         if (name.Length == 0 || existing.Any(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return new LibraryCreateResult(LibraryCreateError.NameInUse, null);

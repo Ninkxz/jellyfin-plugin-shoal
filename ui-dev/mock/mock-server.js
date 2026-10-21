@@ -218,6 +218,25 @@ export function createMock(options) {
         }
     }
 
+    // opt.libraryRows (2.9.3 U5/U6): rows built by the test from the golden files tests/contracts/peers.detail.json and libraries.get.json (the mock has
+    // no fs). They replace that server's mappings in GET Peers/{handle} and GET Libraries, and the server's titleCount is their localCount sum, as in
+    // the backend (AdminStatusTests.TitleCount_EqualsSumOfLibraryLocalCounts).
+    if (Array.isArray(opt.libraryRows)) {
+        const handles = new Set(opt.libraryRows.map((r) => r.serverHandle));
+        for (let i = mappings.length - 1; i >= 0; i--) {
+            if (handles.has(mappings[i].serverHandle)) {
+                mappings.splice(i, 1);
+            }
+        }
+
+        mappings.push(...clone(opt.libraryRows));
+        for (const h of handles) {
+            if (servers.has(h)) {
+                servers.get(h).titleCount = opt.libraryRows.filter((r) => r.serverHandle === h).reduce((n, r) => n + (r.localCount || 0), 0);
+            }
+        }
+    }
+
     /* ---------------- friends (sharing side) ---------------- */
     const shares = new Map();
     function addShare(def) {
