@@ -92,6 +92,12 @@ public sealed class TvSyncEngine
     public Func<bool> EpisodeThumbs { get; set; } = static () => true;
 
     /// <summary>
+    /// Gets or sets whether the Jellyfin library holding a folder merges series with the same ids (<c>EnableAutomaticSeriesGrouping</c>), or null when no
+    /// library holds it. 2.9.4: a series another server shows in the same folder is joined (a second folder with the same ids) only when this is not false.
+    /// </summary>
+    public Func<string, bool?> SeriesGrouping { get; set; } = static _ => null;
+
+    /// <summary>
     /// Runs the TV part of a sync for one peer.
     /// </summary>
     /// <param name="d">The services.</param>
@@ -397,13 +403,23 @@ public sealed class TvSyncEngine
             return keys;
         }
 
-        // K43: the series a higher-ranked server that can be reached shows now, by dedup key, with its episodes; such a series is grouped instead of hidden whole.
+        // K43: the series a higher-ranked server that can be reached shows now, by dedup key, with its episodes (2.9.4: those of every such server); such a
+        // series is grouped instead of hidden whole.
         private Dictionary<string, TvOwnedSeries> PeerOwned(string? folder)
         {
             var owned = new Dictionary<string, TvOwnedSeries>(StringComparer.Ordinal);
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            var others = _state.Home.Peers.Where(p => p.Enabled && p.PeerKey != _peer.PeerKey && _d.IsUp(p.PeerKey) && CatalogSyncService.Outranks(p, _peer)).ToList();
+
+            // 2.9.5: a higher-ranked server that is down still owns the series it holds the group copy of (as K42 does for movies): a play falls over to
+            // this server, a member of the group, so nothing on disk changes; before, this server wrote a second copy of every such series for one sync.
+            var groups = _d.Groups;
+            bool Reachable(PeerState p) => p.Enabled && _d.IsUp(p.PeerKey);
+            var others = _state.Home.Peers.Where(p => p.PeerKey != _peer.PeerKey && (Reachable(p) || groups is not null) && CatalogSyncService.Outranks(p, _peer)).ToList();
             others.Sort(static (a, b) => CatalogSyncService.Outranks(a, b) ? -1 : CatalogSyncService.Outranks(b, a) ? 1 : 0);
+
+            // 2.9.4: joining writes a second folder with the same ids; only a library that merges series shows it as one entry. Without that, the extra
+            // episodes stay hidden sources (one entry, fewer episodes, never a duplicate entry). No library holding the folder: as before.
+            var merges = others.Count == 0 || folder is null || _e.SeriesGrouping(folder) != false;
             foreach (var other in others)
             {
                 var load = _d.Store.Load(other.PeerKey);
@@ -412,16 +428,24 @@ public sealed class TvSyncEngine
                     continue;
                 }
 
+                var reachable = Reachable(other);
                 var episodes = load.Document.Entries.Where(static e => e.Kind == EntryKind.Episode && IsLive(e) && e.ParentKey is not null).ToLookup(static e => e.ParentKey!, StringComparer.Ordinal);
                 foreach (var entry in load.Document.Entries.Where(static e => e.Kind == EntryKind.Series && e.State == EntryState.Active))
                 {
+                    if (!reachable && !(groups?.ByCopy(entry.StubKey) is { } group && string.Equals(group.MetaOwner, other.PeerKey, StringComparison.Ordinal)))
+                    {
+                        continue;
+                    }
+
                     var mapping = other.Libraries.FirstOrDefault(m => m.MappingKey == entry.MappingKey);
                     var otherFolder = mapping is null ? null : LibraryFolders.FolderOf(_state, other.PeerKey, mapping);
-                    var same = folder is not null && otherFolder is not null && string.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(otherFolder).TrimEnd(Path.DirectorySeparatorChar), comparison);
+                    var same = merges && folder is not null && otherFolder is not null && string.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(otherFolder).TrimEnd(Path.DirectorySeparatorChar), comparison);
                     var series = new TvOwnedSeries(other.PeerKey, entry.StubKey, same, [.. episodes[entry.StubKey].Where(static e => e.Season is not null && e.Episode is not null).Select(static e => new TvOwnedEpisode(e.Season!.Value, e.Episode!.Value, e.EpisodeEnd ?? e.Episode!.Value, e.StubKey))]);
                     foreach (var key in TvPlanner.SeriesKeys(MetadataSanitizer.CanonicalProviderIds(entry.ProviderIds), entry.Title, entry.Year))
                     {
-                        owned.TryAdd(key, series); // the higher-ranked server first (the peers are in rank order below)
+                        // 2.9.4: every reachable higher-ranked owner counts, in rank order (the peers are sorted above): an episode overlapping any of
+                        // them is hidden, and Overlap names the first owner that has it. The series link and SameFolder stay the first owner's.
+                        owned[key] = owned.TryGetValue(key, out var first) ? first with { Episodes = [.. first.Episodes, .. series.Episodes] } : series;
                     }
                 }
             }

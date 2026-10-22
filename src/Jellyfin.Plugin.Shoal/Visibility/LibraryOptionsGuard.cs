@@ -107,6 +107,27 @@ public sealed class LibraryOptionsGuard
     }
 
     /// <summary>
+    /// 2.9.4: the main TV libraries holding Shoal folders (placement Main) whose series merging (<c>EnableAutomaticSeriesGrouping</c>) is off: there a series
+    /// two friends share shows only the higher-ranked friend's episodes; with it on, the other friends' extra episodes join the same entry.
+    /// </summary>
+    /// <returns>Their names.</returns>
+    public IReadOnlyList<string> MainLibrariesNotMergingSeries()
+    {
+        if (_state.Status != StateStatus.Ready)
+        {
+            return [];
+        }
+
+        var state = _state.Current;
+        var all = _libraries.List();
+        return [.. state.Home.Libraries.Where(static l => !l.IsLegacy && l.Placement == LibraryPlacement.Main && string.Equals(l.Type, "tvshows", StringComparison.OrdinalIgnoreCase))
+            .Select(l => Holding(state, l, all))
+            .Where(static j => j is { GroupsSeries: false })
+            .Select(static j => j!.Name)
+            .Distinct(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
     /// The Jellyfin libraries that hold the folder of a placement-Shoal library beside other folders (Warden 12 L2): they may be the admin's own, so Shoal does not
     /// lock them; the admin status names them.
     /// </summary>

@@ -157,6 +157,22 @@ public sealed class Pilot15FixTests
     }
 
     [Fact]
+    public async Task V294_AMainTvLibraryWithSeriesMergingOff_IsNamedInTheStatus()
+    {
+        using var rig = new LayoutRig();
+        var key = (await rig.Layout.CreateAsync(new LibraryCreateRequest("Friends in Shows", "movies", LibraryPlacement.Main, rig.Main.Id), rig.Admin.Id)).LibKey!;
+        rig.Libraries.Change(rig.Main.Id, static l => l with { GroupsSeries = false });
+        var guard = new LibraryOptionsGuard(rig.State, rig.Libraries, NullLogger.Instance);
+        Assert.Empty(guard.MainLibrariesNotMergingSeries()); // movies never merge series
+
+        await rig.State.UpdateAsync(s => s.Home.Libraries.First(l => l.LibKey == key).Type = "tvshows");
+        Assert.Equal([rig.Main.Name], guard.MainLibrariesNotMergingSeries());
+
+        rig.Libraries.Change(rig.Main.Id, static l => l with { GroupsSeries = true });
+        Assert.Empty(guard.MainLibrariesNotMergingSeries());
+    }
+
+    [Fact]
     public async Task R6_AShoalLibraryWithoutAStoredId_IsLockedAgain_ByItsFolder()
     {
         using var rig = new LayoutRig();

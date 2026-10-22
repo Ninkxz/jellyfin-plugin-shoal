@@ -194,7 +194,9 @@ public interface IAccountSource
 /// <param name="CollectionType">The library's collection type in lower case (<c>movies</c>, <c>tvshows</c>, ...), or empty when core does not say.</param>
 /// <param name="SavesNfo">Whether the library's NFO metadata saver is on (Pilot 14: a main library holding Shoal stubs must have it off).</param>
 /// <param name="FetchesMetadata">Whether the library fetches internet metadata (Warden 13 L6: in a main library it can rewrite friends' titles).</param>
-public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Locations, string CollectionType = "", bool SavesNfo = false, bool FetchesMetadata = false);
+/// <param name="GroupsSeries">Whether the library merges series with the same ids into one (<c>EnableAutomaticSeriesGrouping</c>; 2.9.4: two friends' copies
+/// of a series in one library folder show as one entry only with it on).</param>
+public sealed record LibraryInfo(Guid Id, string Name, IReadOnlyList<string> Locations, string CollectionType = "", bool SavesNfo = false, bool FetchesMetadata = false, bool GroupsSeries = true);
 
 /// <summary>
 /// A Jellyfin account, as the visibility rules see it.

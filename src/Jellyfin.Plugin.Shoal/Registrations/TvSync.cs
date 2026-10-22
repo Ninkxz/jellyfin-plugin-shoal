@@ -1,5 +1,8 @@
+using System.Linq;
 using Jellyfin.Plugin.Shoal.Playback;
+using Jellyfin.Plugin.Shoal.State;
 using Jellyfin.Plugin.Shoal.Sync;
+using Jellyfin.Plugin.Shoal.Visibility;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -38,6 +41,7 @@ public static class TvSync
             EpisodeThumbs = static () => Plugin.Instance?.Configuration.TvEpisodeThumbs ?? true,
             ImageWork = sp.GetRequiredService<ITvImageWork>(),
             Images = sp.GetRequiredService<TvImageRunner>(),
+            SeriesGrouping = path => sp.GetService<ILibrarySource>()?.List().FirstOrDefault(l => l.Locations.Any(location => LibraryFolders.SamePath(location, path)))?.GroupsSeries,
         });
         return services;
     }

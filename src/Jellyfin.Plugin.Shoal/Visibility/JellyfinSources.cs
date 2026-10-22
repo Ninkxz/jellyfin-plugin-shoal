@@ -59,7 +59,8 @@ public sealed class JellyfinLibrarySource : ILibrarySource
 #pragma warning disable CS0618 // Obsolete in 12.1; still set by older servers.
                 var fetches = folder.LibraryOptions is { } options && (options.EnableInternetProviders || (options.TypeOptions ?? []).Any(static t => t.MetadataFetchers is { Length: > 0 }));
 #pragma warning restore CS0618
-                result.Add(new LibraryInfo(id, folder.Name ?? string.Empty, folder.Locations ?? [], folder.CollectionType?.ToString().ToLowerInvariant() ?? string.Empty, savesNfo, fetches));
+                var groups = folder.LibraryOptions?.EnableAutomaticSeriesGrouping ?? false;
+                result.Add(new LibraryInfo(id, folder.Name ?? string.Empty, folder.Locations ?? [], folder.CollectionType?.ToString().ToLowerInvariant() ?? string.Empty, savesNfo, fetches, groups));
             }
         }
 

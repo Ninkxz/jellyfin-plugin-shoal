@@ -40,6 +40,18 @@ public static partial class FriendLabel
     public static string Text(IReadOnlyList<string>? names)
     {
         var clean = (names ?? []).Select(Clean).Where(static n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        if (clean.Any(NamesAServer))
+        {
+            // 2.9.4: a name that already ends in "server" is not given a second one ("From A's Server and B's server.").
+            static string Owner(string name) => NamesAServer(name) ? name : name + "'s server";
+            return clean.Count switch
+            {
+                1 => "From " + Owner(clean[0]) + ". " + Tail,
+                2 => "From " + Owner(clean[0]) + " and " + Owner(clean[1]) + ". " + Tail,
+                _ => "From " + Owner(clean[0]) + ", " + Owner(clean[1]) + " and " + (clean.Count - 2).ToString(CultureInfo.InvariantCulture) + " more servers. " + Tail,
+            };
+        }
+
         return clean.Count switch
         {
             0 => Generic,
@@ -105,6 +117,8 @@ public static partial class FriendLabel
         return clean.Length > NameMax ? clean[..NameMax].TrimEnd() : clean;
     }
 
-    [GeneratedRegex(@"^From .{1,200}? servers?\. May buffer or be unavailable sometimes\. If it won't play, try again later\.", RegexOptions.CultureInvariant, 1000)]
+    private static bool NamesAServer(string name) => name.EndsWith("server", StringComparison.OrdinalIgnoreCase);
+
+    [GeneratedRegex(@"^From .{1,200}?(?i:servers?)\. May buffer or be unavailable sometimes\. If it won't play, try again later\.", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex LeadingLabel();
 }

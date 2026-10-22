@@ -13,6 +13,9 @@ namespace Jellyfin.Plugin.Shoal.Sync;
 /// </summary>
 public sealed class TvPlanner : ITvPlanner
 {
+    /// <summary>The prefix of the weak <c>title|year</c> key among <see cref="SeriesKeys"/>.</summary>
+    public const string TitleKeyPrefix = "title:";
+
     private readonly ITvLayout _layout;
 
     /// <summary>
@@ -45,7 +48,7 @@ public sealed class TvPlanner : ITvPlanner
         var keys = new List<string>(ids.DedupKeys());
         if (TitleKey.Weak(title, year) is { } weak)
         {
-            keys.Add("title:" + weak);
+            keys.Add(TitleKeyPrefix + weak);
         }
 
         return keys;
@@ -90,7 +93,9 @@ public sealed class TvPlanner : ITvPlanner
             {
                 if (input.PeerOwned?.GetValueOrDefault(key) is { } owned)
                 {
-                    ownedBySeries[s.PeerItemId] = owned;
+                    // 2.9.5: a library merges series by provider id only; a series matched by title and year alone would show as a second entry, so its
+                    // extra episodes stay hidden sources instead of joining.
+                    ownedBySeries[s.PeerItemId] = key.StartsWith(TitleKeyPrefix, StringComparison.Ordinal) ? owned with { SameFolder = false } : owned;
                     break;
                 }
             }

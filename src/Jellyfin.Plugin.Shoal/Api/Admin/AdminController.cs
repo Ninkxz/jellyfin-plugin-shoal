@@ -198,7 +198,7 @@ public class AdminController : ControllerBase
         var status = AdminStatusBuilder.Build(_state, _secrets, _live, _homeName.Name, _cooldowns.SyncAllUntilUtc, _guard);
         if (_libraryOptions is not null)
         {
-            status = status with { MainLibrariesSavingNfo = _libraryOptions.MainLibrariesSavingNfo(), ShoalLibrariesNotLocked = _libraryOptions.ShoalLibrariesNotLocked(), MainLibrariesMissing = _libraryOptions.MainLibrariesMissing() };
+            status = status with { MainLibrariesSavingNfo = _libraryOptions.MainLibrariesSavingNfo(), MainLibrariesNotMergingSeries = _libraryOptions.MainLibrariesNotMergingSeries(), ShoalLibrariesNotLocked = _libraryOptions.ShoalLibrariesNotLocked(), MainLibrariesMissing = _libraryOptions.MainLibrariesMissing() };
         }
 
         if (_accounts is not null)
