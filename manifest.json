@@ -9,6 +9,14 @@
         "imageUrl":  "https://raw.githubusercontent.com/Ninkxz/jellyfin-plugin-shoal/main/docs/brand/shoal-plugin.png",
         "versions":  [
                          {
+                             "version":  "2.9.4.0",
+                             "changelog":  "Shoal 2.9.4: fixes a series that several friends share showing up two or three times, and episodes listed twice. A friend\u0027s extra episodes now join another friend\u0027s series only when the library you combined into has Automatically merge series turned on, and each friend\u0027s episodes are checked against every higher ranked friend, not just the first. Also fixes a series matched only by title showing twice, a second copy of every series while the top friend is offline, and a label that said Server twice. Servers with copies already on disk may show a removals on hold box after the upgrade: press Remove them now.",
+                             "targetAbi":  "12.0.0.0",
+                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.4/shoal_2.9.4.0.zip",
+                             "checksum":  "9de4a30e0d59d46f0edf86bc8f270ed4",
+                             "timestamp":  "2026-10-22T18:35:24Z"
+                         },
+                         {
                              "version":  "2.9.3.0",
                              "changelog":  "Shoal 2.9.3: fixes a bug where a series shared by more than one friend got a new duplicate folder on every sync; Shoal now cleans up the old copies on the second sync after you upgrade. The Overview no longer repeats the server list after you open a friend and go back. A friend is one entry with its libraries added together, library rows show who can really see them, and a friend name can no longer carry a link into descriptions.",
                              "targetAbi":  "12.0.0.0",
