@@ -289,6 +289,9 @@ internal sealed record StatusDto
     /// <summary>Gets the main libraries holding friends' titles whose NFO saver is on (Pilot 14: turn it off for them, or "Replace all metadata" overwrites friends' titles).</summary>
     public IReadOnlyList<string> MainLibrariesSavingNfo { get; init; } = [];
 
+    /// <summary>Gets the main TV libraries holding friends' titles whose series merging is off (2.9.4): a series two friends share shows only one friend's episodes there.</summary>
+    public IReadOnlyList<string> MainLibrariesNotMergingSeries { get; init; } = [];
+
     /// <summary>Gets the libraries that hold a Shoal library folder beside other folders (Warden 12 L2): Shoal does not lock their options, so the admin should.</summary>
     public IReadOnlyList<string> ShoalLibrariesNotLocked { get; init; } = [];
 

@@ -405,4 +405,27 @@ public sealed class FriendLabelTests
         Assert.Equal(["Drama", "Shoal", "Shoal: Hops"], StubEnricher.WantedTags(["Drama"], "Hops"));
         Assert.Equal(["Shoal"], StubEnricher.WantedTags([], string.Empty));
     }
+
+    // 2.9.4 friend report: a friend named "... Server" gave "From A's Server's and B's Server's servers."
+    [Theory]
+    [InlineData(new[] { "Friend A's Server" }, "From Friend A's Server. ")]
+    [InlineData(new[] { "Friend A's Server", "Friend B's server" }, "From Friend A's Server and Friend B's server. ")]
+    [InlineData(new[] { "Friend A's Server", "Friend B" }, "From Friend A's Server and Friend B's server. ")]
+    [InlineData(new[] { "Friend B", "FriendCSERVER" }, "From Friend B's server and FriendCSERVER. ")]
+    [InlineData(new[] { "Friend A's Server", "Friend B", "Friend C" }, "From Friend A's Server, Friend B's server and 1 more servers. ")]
+    public void ANameEndingInServer_GetsNoSecondServerWord(string[] names, string start)
+    {
+        var label = FriendLabel.Text(names);
+        Assert.Equal(start + FriendLabel.Tail, label);
+        Assert.DoesNotContain("Server's", label, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain('-', label);
+        Assert.Equal("Plot.", FriendLabel.Strip(FriendLabel.Apply("Plot.", names))); // the label is still found and replaced
+        Assert.Equal(FriendLabel.Apply("Plot.", names), FriendLabel.Apply(FriendLabel.Apply("Plot.", ["Friend B"]), names));
+    }
+
+    [Fact]
+    public void ANameEndingInServer_IsStillSanitized()
+    {
+        Assert.Equal("From Friend A Server. " + FriendLabel.Tail, FriendLabel.Text(["Friend A https://evil.example Server"]));
+    }
 }

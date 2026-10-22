@@ -139,6 +139,9 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
     /// <summary>Replaces the answer to an image request for a TV item: (peer item id, image type) to (status, content type, body), or null for the normal JPEG.</summary>
     public Func<Guid, string, (int Status, string ContentType, byte[] Body)?>? TvImageOverride { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the peer is offline: every connection drops.</summary>
+    public bool Down { get; set; }
+
     /// <summary>Delay before each answer.</summary>
     public int DelayMs { get; set; }
 
@@ -273,6 +276,12 @@ internal sealed class FakeLibraryPeer : IAsyncDisposable
     {
         var path = ctx.Request.Path.Value ?? string.Empty;
         Requests.Enqueue(path + ctx.Request.QueryString.Value);
+        if (Down)
+        {
+            ctx.Abort(); // the server is offline: the connection drops
+            return;
+        }
+
         if (DelayMs > 0)
         {
             await Task.Delay(DelayMs);

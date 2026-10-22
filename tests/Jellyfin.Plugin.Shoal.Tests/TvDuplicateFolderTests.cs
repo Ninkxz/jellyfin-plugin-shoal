@@ -17,11 +17,11 @@ namespace Jellyfin.Plugin.Shoal.Tests;
 /// </summary>
 public sealed class TvDuplicateFolderTests
 {
-    private const string Other = "cccccccccccccccccccccccccccccccc";
-    private const string LibKey = "0123456789abcdef";
-    private const string Plain = "Show 0 (2010) [tvdbid-100000]";
+    internal const string Other = "cccccccccccccccccccccccccccccccc";
+    internal const string LibKey = "0123456789abcdef";
+    internal const string Plain = "Show 0 (2010) [tvdbid-100000]";
 
-    private static async Task<(SyncRig Rig, string Folder)> SharedLibraryRigAsync()
+    internal static async Task<(SyncRig Rig, string Folder)> SharedLibraryRigAsync()
     {
         var rig = await SyncRig.CreateAsync(null, realTv: true);
         rig.Peer.Tv = FakeTvTree.Generate(series: 1, seasonsPerSeries: 1, episodesPerSeason: 3);
@@ -50,7 +50,7 @@ public sealed class TvDuplicateFolderTests
         return (rig, folder);
     }
 
-    private static void AddSeason2(SyncRig rig)
+    internal static void AddSeason2(SyncRig rig)
     {
         var tree = rig.Peer.Tv!;
         var show = tree.Series[0];
@@ -62,7 +62,7 @@ public sealed class TvDuplicateFolderTests
         }
     }
 
-    private static List<string> SeriesFolders(string folder) =>
+    internal static List<string> SeriesFolders(string folder) =>
         [.. Directory.EnumerateDirectories(folder).Select(Path.GetFileName).Where(static n => n!.StartsWith("Show 0", System.StringComparison.Ordinal)).Select(static n => n!).Order(System.StringComparer.Ordinal)];
 
     [Fact]
