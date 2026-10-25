@@ -1,85 +1,93 @@
 [
-    {
-        "guid":  "b3d48170-08c3-4272-8042-efb38df9bb24",
-        "name":  "Shoal",
-        "description":  "Shoal for Jellyfin: a friend\u0027s titles show up in your library as lightweight .strm/.nfo entries and play through an authenticated plugin proxy, with the friend\u0027s server deciding between direct play and transcoding for your client. Nothing is copied and nothing is exposed.",
-        "overview":  "Share libraries between friends\u0027 Jellyfin servers. Nothing copied, nothing exposed.",
-        "owner":  "Ninkxz",
-        "category":  "General",
-        "imageUrl":  "https://raw.githubusercontent.com/Ninkxz/jellyfin-plugin-shoal/main/docs/brand/shoal-plugin.png",
-        "versions":  [
-                         {
-                             "version":  "2.9.4.0",
-                             "changelog":  "Shoal 2.9.4: fixes a series that several friends share showing up two or three times, and episodes listed twice. A friend\u0027s extra episodes now join another friend\u0027s series only when the library you combined into has Automatically merge series turned on, and each friend\u0027s episodes are checked against every higher ranked friend, not just the first. Also fixes a series matched only by title showing twice, a second copy of every series while the top friend is offline, and a label that said Server twice. Servers with copies already on disk may show a removals on hold box after the upgrade: press Remove them now.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.4/shoal_2.9.4.0.zip",
-                             "checksum":  "9de4a30e0d59d46f0edf86bc8f270ed4",
-                             "timestamp":  "2026-10-22T18:35:24Z"
-                         },
-                         {
-                             "version":  "2.9.3.0",
-                             "changelog":  "Shoal 2.9.3: fixes a bug where a series shared by more than one friend got a new duplicate folder on every sync; Shoal now cleans up the old copies on the second sync after you upgrade. The Overview no longer repeats the server list after you open a friend and go back. A friend is one entry with its libraries added together, library rows show who can really see them, and a friend name can no longer carry a link into descriptions.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.3/shoal_2.9.3.0.zip",
-                             "checksum":  "67fffd42f0fc9aea7ce6b6d57ce37198",
-                             "timestamp":  "2026-10-21T20:22:35Z"
-                         },
-                         {
-                             "version":  "2.9.2.0",
-                             "changelog":  "Shoal 2.9.2 (includes 2.9.1): friend titles now say which friend hosts them and carry a Shared by entry in the Studios filter. A friend server only lists libraries it shares with you, and a picked library can no longer be swapped for another with the same name. TV shows from friends are always on (servers that had TV off start syncing their mapped TV libraries on the next sync). Held titles show real examples, a stopped play frees its stream slot at once, a refused play says why, and removing a server or library clears its empty library. Fixes Remove library. The first sync after upgrading rewrites friend titles once. Back up the shoal data folder first.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.2/shoal_2.9.2.0.zip",
-                             "checksum":  "90343fd9924e1362a86210932f7ccb4e",
-                             "timestamp":  "2026-10-21T10:02:26Z"
-                         },
-                         {
-                             "version":  "2.9.0.0",
-                             "changelog":  "What is new: library layouts and presets (including Combine into my libraries, so friends titles appear inside your own libraries); one title with backup servers, and a priority order that decides which friend plays first; a quality limit per friend with a speed-test suggestion; a plain-words label so people know why a title is where it is; an inbox message for your users; new admin pages (Overview, Library layouts, Priority, Quality). Upgrading: the first sync rewrites movie descriptions once. Shoal state moves to schema 3 on the next change. To go back to 1.2.x you must restore a state backup first, otherwise 1.2.x opens in recovery mode. Safety fixes: Remove everything never deletes a library that holds your own folders, and Combine into my libraries works when you have no library of a type. Back up the shoal data folder before upgrading. Moonfin is recommended as the client.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.0/shoal_2.9.0.0.zip",
-                             "checksum":  "b0286a4fa6efe7b824725ffc1bf0ad0a",
-                             "timestamp":  "2026-10-18T17:35:17Z"
-                         },
-                         {
-                             "version":  "1.2.1.0",
-                             "changelog":  "Hotfix: safety code no longer shows undefined on the pairing step; wizard advances when the friend approves; readable error bar; no duplicate titles when an older server returns; steadier quality after a link drop.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.2.1/shoal_1.2.1.0.zip",
-                             "checksum":  "ddbbb55d15b7078b512c81fb645e238e",
-                             "timestamp":  "2026-10-16T20:39:24Z"
-                         },
-                         {
-                             "version":  "1.2.0.0",
-                             "changelog":  "Spike: PlaybackInfo interception + authenticated stream proxy.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.2.0/shoal_1.2.0.0.zip",
-                             "checksum":  "6555032cc2972278c10a48ef03ee9ed3",
-                             "timestamp":  "2026-10-16T18:54:55Z"
-                         },
-                         {
-                             "version":  "1.0.2.0",
-                             "changelog":  "Pairing guidance (ask for an invite, home network address warning), certificate trust shows the fingerprint before pinning, edit and remove friend servers, Overlap report.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.2/shoal_1.0.2.0.zip",
-                             "checksum":  "da55e7d1d43ae14ba18a993ecacebf4f",
-                             "timestamp":  "2026-10-15T20:06:24Z"
-                         },
-                         {
-                             "version":  "1.0.1.0",
-                             "changelog":  "Fixes: the Add and start syncing button did nothing; a fresh install now picks its library folder automatically; add errors show next to the button.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.1/shoal_1.0.1.0.zip",
-                             "checksum":  "9238a407a5b8aea19ef3cd2c987aa127",
-                             "timestamp":  "2026-10-15T19:08:02Z"
-                         },
-                         {
-                             "version":  "1.0.0.0",
-                             "changelog":  "First public release.",
-                             "targetAbi":  "12.0.0.0",
-                             "sourceUrl":  "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.0/shoal_1.0.0.0.zip",
-                             "checksum":  "cb4af02efd6ca744d01fc0bfc20c676b",
-                             "timestamp":  "2026-10-15T18:22:06Z"
-                         }
-                     ]
-    }
+  {
+    "guid": "b3d48170-08c3-4272-8042-efb38df9bb24",
+    "name": "Shoal",
+    "description": "Shoal for Jellyfin: a friend's titles show up in your library as lightweight .strm/.nfo entries and play through an authenticated plugin proxy, with the friend's server deciding between direct play and transcoding for your client. Media stays on its original server.",
+    "overview": "Share libraries between friends' Jellyfin servers. Media stays on its original server.",
+    "owner": "Ninkxz",
+    "category": "General",
+    "imageUrl": "https://raw.githubusercontent.com/Ninkxz/jellyfin-plugin-shoal/main/docs/brand/shoal-plugin.png",
+    "versions": [
+      {
+        "version": "2.10.0.4",
+        "changelog": "Keep My Place is enabled by default: compatible watched status and resume positions follow shared titles to local media for the same local user. Existing local history and saved off settings are preserved. Safer catalog recovery pauses library-changing syncs across friends when an established saved catalog is unreadable, preventing duplicate episodes; conflicting TV identity and overlapping episode handling; clearer admin settings and recovery guidance; protective image and request failure handling. Requires Jellyfin 12.1 or newer. Recovery status accurately reports pending work. Back up Shoal's data folder before upgrading. Uncertain catalogs or episode ranges pause affected changes for review.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.10.0.4/shoal_2.10.0.4.zip",
+        "checksum": "719660ab5cae2872d3eeffc615576918",
+        "timestamp": "2026-10-25T02:33:08Z"
+      },
+      {
+        "version": "2.9.4.0",
+        "changelog": "Shoal 2.9.4: fixes a series that several friends share showing up two or three times, and episodes listed twice. A friend's extra episodes now join another friend's series only when the library you combined into has Automatically merge series turned on, and each friend's episodes are checked against every higher ranked friend, not just the first. Also fixes a series matched only by title showing twice, a second copy of every series while the top friend is offline, and a label that said Server twice. Servers with copies already on disk may show a removals on hold box after the upgrade: press Remove them now.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.4/shoal_2.9.4.0.zip",
+        "checksum": "9de4a30e0d59d46f0edf86bc8f270ed4",
+        "timestamp": "2026-10-22T18:35:24Z"
+      },
+      {
+        "version": "2.9.3.0",
+        "changelog": "Shoal 2.9.3: fixes a bug where a series shared by more than one friend got a new duplicate folder on every sync; Shoal now cleans up the old copies on the second sync after you upgrade. The Overview no longer repeats the server list after you open a friend and go back. A friend is one entry with its libraries added together, library rows show who can really see them, and a friend name can no longer carry a link into descriptions.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.3/shoal_2.9.3.0.zip",
+        "checksum": "67fffd42f0fc9aea7ce6b6d57ce37198",
+        "timestamp": "2026-10-21T20:22:35Z"
+      },
+      {
+        "version": "2.9.2.0",
+        "changelog": "Shoal 2.9.2 (includes 2.9.1): friend titles now say which friend hosts them and carry a Shared by entry in the Studios filter. A friend server only lists libraries it shares with you, and a picked library can no longer be swapped for another with the same name. TV shows from friends are always on (servers that had TV off start syncing their mapped TV libraries on the next sync). Held titles show real examples, a stopped play frees its stream slot at once, a refused play says why, and removing a server or library clears its empty library. Fixes Remove library. The first sync after upgrading rewrites friend titles once. Back up the shoal data folder first.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.2/shoal_2.9.2.0.zip",
+        "checksum": "90343fd9924e1362a86210932f7ccb4e",
+        "timestamp": "2026-10-21T10:02:26Z"
+      },
+      {
+        "version": "2.9.0.0",
+        "changelog": "What is new: library layouts and presets (including Combine into my libraries, so friends titles appear inside your own libraries); one title with backup servers, and a priority order that decides which friend plays first; a quality limit per friend with a speed-test suggestion; a plain-words label so people know why a title is where it is; an inbox message for your users; new admin pages (Overview, Library layouts, Priority, Quality). Upgrading: the first sync rewrites movie descriptions once. Shoal state moves to schema 3 on the next change. To go back to 1.2.x you must restore a state backup first, otherwise 1.2.x opens in recovery mode. Safety fixes: Remove everything never deletes a library that holds your own folders, and Combine into my libraries works when you have no library of a type. Back up the shoal data folder before upgrading. Moonfin is recommended as the client.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v2.9.0/shoal_2.9.0.0.zip",
+        "checksum": "b0286a4fa6efe7b824725ffc1bf0ad0a",
+        "timestamp": "2026-10-18T17:35:17Z"
+      },
+      {
+        "version": "1.2.1.0",
+        "changelog": "Hotfix: safety code no longer shows undefined on the pairing step; wizard advances when the friend approves; readable error bar; no duplicate titles when an older server returns; steadier quality after a link drop.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.2.1/shoal_1.2.1.0.zip",
+        "checksum": "ddbbb55d15b7078b512c81fb645e238e",
+        "timestamp": "2026-10-16T20:39:24Z"
+      },
+      {
+        "version": "1.2.0.0",
+        "changelog": "Spike: PlaybackInfo interception + authenticated stream proxy.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.2.0/shoal_1.2.0.0.zip",
+        "checksum": "6555032cc2972278c10a48ef03ee9ed3",
+        "timestamp": "2026-10-16T18:54:55Z"
+      },
+      {
+        "version": "1.0.2.0",
+        "changelog": "Pairing guidance (ask for an invite, home network address warning), certificate trust shows the fingerprint before pinning, edit and remove friend servers, Overlap report.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.2/shoal_1.0.2.0.zip",
+        "checksum": "da55e7d1d43ae14ba18a993ecacebf4f",
+        "timestamp": "2026-10-15T20:06:24Z"
+      },
+      {
+        "version": "1.0.1.0",
+        "changelog": "Fixes: the Add and start syncing button did nothing; a fresh install now picks its library folder automatically; add errors show next to the button.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.1/shoal_1.0.1.0.zip",
+        "checksum": "9238a407a5b8aea19ef3cd2c987aa127",
+        "timestamp": "2026-10-15T19:08:02Z"
+      },
+      {
+        "version": "1.0.0.0",
+        "changelog": "First public release.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/Ninkxz/jellyfin-plugin-shoal/releases/download/v1.0.0/shoal_1.0.0.0.zip",
+        "checksum": "cb4af02efd6ca744d01fc0bfc20c676b",
+        "timestamp": "2026-10-15T18:22:06Z"
+      }
+    ]
+  }
 ]
