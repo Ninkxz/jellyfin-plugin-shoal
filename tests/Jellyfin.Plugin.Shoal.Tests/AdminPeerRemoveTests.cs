@@ -74,7 +74,7 @@ public sealed class AdminPeerRemoveTests
         public void Dispose() => Pairing.Dispose();
     }
 
-    private static async Task<Rig> SetUpAsync(bool pairingLive = false, ISyncActivity? sync = null, string? baseUrl = null, bool withCredential = true, bool cancellablePairing = false)
+    private static async Task<Rig> SetUpAsync(bool pairingLive = false, ISyncActivity? sync = null, string? baseUrl = null, bool withCredential = true, bool cancellablePairing = false, bool withCatalog = false)
     {
         var rig = new PairingRig();
         var stubRoot = Path.Combine(rig.Dir.Path, "stubs");
@@ -115,7 +115,8 @@ public sealed class AdminPeerRemoveTests
             rig.Paths,
             NullLogger<AdminPeerSettingsController>.Instance,
             gate,
-            sync)
+            sync,
+            withCatalog ? new CatalogStore(rig.Paths, NullLogger<CatalogStore>.Instance) : null)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -127,6 +128,21 @@ public sealed class AdminPeerRemoveTests
         rig.Controller.Request.ContentType = "application/json";
         rig.Controller.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(json));
         return await rig.Controller.Remove(handle, deleteLibrary, default);
+    }
+
+    [Fact]
+    public async Task LostCatalog_RemovalRefusesBeforeDisablingOrCancelling()
+    {
+        var sync = new Activity(false);
+        using var rig = await SetUpAsync(pairingLive: true, sync: sync, cancellablePairing: true, withCatalog: true);
+        var before = System.Text.Json.JsonSerializer.Serialize(rig.Pairing.State.Current);
+        var body = AdminTestSupport.Body(await RemoveAsync(rig, """{"confirmName":"Hops"}""", deleteLibrary: true), 409);
+        Assert.Equal("catalogUnreadable", body.GetProperty("error").GetString());
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(rig.Pairing.State.Current));
+        Assert.True(rig.Pairing.State.Current.Home.Peers.Single(p => p.PeerKey == StateSamples.PeerKeyA).Enabled);
+        Assert.Equal(0, rig.Gate.Cancels);
+        Assert.Equal(0, sync.Stops);
+        Assert.True(Directory.Exists(rig.StubFolder));
     }
 
     [Fact]

@@ -413,6 +413,11 @@ public class AdminPeerSettingsController : ControllerBase
             return AdminReply.Error(StatusCodes.Status400BadRequest, "confirmName");
         }
 
+        if (deleteLibrary && _catalogs?.Load(handle).Unreadable == true)
+        {
+            return AdminReply.Error(StatusCodes.Status409Conflict, "catalogUnreadable");
+        }
+
         // Removing a server ends its pairing: a live session is cancelled instead of refusing the removal.
         if (_gate?.IsLive(handle) == true)
         {

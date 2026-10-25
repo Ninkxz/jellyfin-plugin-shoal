@@ -120,6 +120,7 @@ public sealed class PluginSettingsAccessor : ISettingsAccessor
     {
         SchemaVersion = source.SchemaVersion,
         AutoFitQualityToLink = source.AutoFitQualityToLink,
+        KeepMyPlaceEnabled = source.KeepMyPlaceEnabled,
         MaxStreamsPerUser = source.MaxStreamsPerUser,
         HlsBufferAhead = source.HlsBufferAhead,
         SyncIntervalHours = source.SyncIntervalHours,

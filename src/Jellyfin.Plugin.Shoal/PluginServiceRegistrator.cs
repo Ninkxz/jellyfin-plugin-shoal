@@ -6,6 +6,7 @@ using Jellyfin.Plugin.Shoal.Guard;
 using Jellyfin.Plugin.Shoal.Pairing;
 using Jellyfin.Plugin.Shoal.Peers;
 using Jellyfin.Plugin.Shoal.Playback;
+using Jellyfin.Plugin.Shoal.Progress;
 using Jellyfin.Plugin.Shoal.Registrations;
 using Jellyfin.Plugin.Shoal.Security;
 using Jellyfin.Plugin.Shoal.State;
@@ -109,11 +110,13 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new GroupCopyWriter(sp.GetRequiredService<IStateStore>(), sp.GetRequiredService<GroupBook>(), sp.GetRequiredService<StubCatalog>(), sp.GetRequiredService<ILibraryRefresh>(), sp.GetRequiredService<ILogger<GroupCopyWriter>>())
         {
             TagsFirst = async ct => (await sp.GetRequiredService<TagService>().ReconcileAsync(ct).ConfigureAwait(false)).AllHeld,
+            Retention = sp.GetRequiredService<IKeepMyPlaceRetention>(),
         });
         serviceCollection.AddSingleton(sp =>
         {
             var sync = ActivatorUtilities.CreateInstance<CatalogSyncService>(sp);
             sync.Copies = sp.GetRequiredService<GroupCopyWriter>();
+            sync.KeepMyPlace = sp.GetRequiredService<IKeepMyPlaceRetention>();
             sync.LayoutUnfinished = () => sp.GetService<LayoutJobService>()?.Unfinished == true; // resolved at call time: the job service needs this one
             return sync;
         });
@@ -162,6 +165,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
             job.Copies = sp.GetRequiredService<GroupCopyWriter>();
             job.Notifier = sp.GetRequiredService<IAdminNotifier>(); // Warden 11 L6
             job.Options = sp.GetRequiredService<LibraryOptionsGuard>(); // Pilot 15 R6
+            job.Retention = sp.GetRequiredService<IKeepMyPlaceRetention>();
             return job;
         });
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<LayoutJobService>());
@@ -294,6 +298,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddShoalTrickplay();
         serviceCollection.AddShoalAttachments();
         serviceCollection.AddShoalImageSandbox();
+        serviceCollection.AddShoalKeepMyPlace();
         serviceCollection.Configure<MvcOptions>(options => options.Filters.Add<ShoalInterceptFilter>());
     }
 }

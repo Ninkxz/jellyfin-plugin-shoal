@@ -82,26 +82,26 @@ public sealed class TvPlanner : ITvPlanner
             listedSeries.Add(s);
         }
 
-        var duplicateLocal = listedSeries.Where(s => SeriesKeys(s.ProviderIds, s.Title, s.Year).Any(input.LocalSeriesKeys.Contains)).Select(static s => s.PeerItemId).ToHashSet();
-
-        // ---- K43: a series another server already shows: its episodes that overlap that server's are hidden sources; the others join the series (same library
-        // folder, merged by the library's series grouping) or, in another folder, stay hidden too
+        var localIndex = new TvIdentityIndex<LocalSeries>(input.LocalSeries, static s => s);
+        var duplicateLocal = listedSeries.Where(s => localIndex.Match(s.ProviderIds, s.Title, s.Year).Count > 0).Select(static s => s.PeerItemId).ToHashSet();
+        var peerIndex = new TvIdentityIndex<TvOwnedSeries>(input.PeerOwned ?? [], static s => s.Identity);
         var ownedBySeries = new Dictionary<Guid, TvOwnedSeries>();
-        foreach (var s in listedSeries.Where(s => !duplicateLocal.Contains(s.PeerItemId)))
+        foreach (var series in listedSeries.Where(s => !duplicateLocal.Contains(s.PeerItemId)))
         {
-            foreach (var key in SeriesKeys(s.ProviderIds, s.Title, s.Year))
+            var matches = peerIndex.Match(series.ProviderIds, series.Title, series.Year);
+            if (matches.Count > 0)
             {
-                if (input.PeerOwned?.GetValueOrDefault(key) is { } owned)
+                var first = matches[0];
+                ownedBySeries[series.PeerItemId] = first with
                 {
-                    // 2.9.5: a library merges series by provider id only; a series matched by title and year alone would show as a second entry, so its
-                    // extra episodes stay hidden sources instead of joining.
-                    ownedBySeries[s.PeerItemId] = key.StartsWith(TitleKeyPrefix, StringComparison.Ordinal) ? owned with { SameFolder = false } : owned;
-                    break;
-                }
+                    SameFolder = first.SameFolder && TvIdentityIndex<TvOwnedSeries>.SharesStrong(series.ProviderIds, first.Identity.ProviderIds),
+                    Episodes = [.. matches.SelectMany(static m => m.Episodes)],
+                };
             }
         }
 
         var hidden = new List<TvHiddenEpisode>();
+        var rangeConflicts = new List<SanitizedEpisode>();
 
         // ---- episodes: orphans, overlaps, caps
         var existingSeries = input.Existing.Where(static e => e.Kind == EntryKind.Series).ToList();
@@ -118,18 +118,24 @@ public sealed class TvPlanner : ITvPlanner
 
             var resolved = _layout.Resolve([.. group.DistinctBy(static e => e.PeerItemId)]);
             duplicatePeer += resolved.DuplicatePeer;
+            rangeConflicts.AddRange(resolved.Held ?? []);
             var visibleEpisodes = resolved.Accepted;
             if (ownedBySeries.TryGetValue(group.Key, out var ownedSeries))
             {
                 var visible = new List<SanitizedEpisode>();
+                var coverage = new TvCoverageIndex(ownedSeries.Episodes);
                 foreach (var episode in resolved.Accepted)
                 {
-                    var over = ownedSeries.Overlap(episode.Season, episode.Number, episode.NumberEnd);
-                    if (over is not null || !ownedSeries.SameFolder)
+                    var over = coverage.Overlaps(episode);
+                    if (over && !coverage.Covers(episode))
+                    {
+                        rangeConflicts.Add(episode);
+                    }
+                    else if (coverage.Covers(episode) || !ownedSeries.SameFolder)
                     {
                         if (hidden.Count < CatalogDocument.MaxEntries)
                         {
-                            hidden.Add(new TvHiddenEpisode(episode, over?.StubKey));
+                            hidden.Add(new TvHiddenEpisode(episode, coverage.Exact(episode)));
                         }
                     }
                     else
@@ -389,6 +395,57 @@ public sealed class TvPlanner : ITvPlanner
         {
             addSeries = [.. releasedAddSeries, .. addSeries];
             addEpisodes = [.. releasedAddEpisodes, .. addEpisodes];
+        }
+
+        if (rangeConflicts.Count > 0)
+        {
+            var conflictingIds = rangeConflicts.Select(static e => e.PeerItemId.ToString("N")).ToHashSet(StringComparer.Ordinal);
+            var oldConflicts = existingEpisodes.Where(e => conflictingIds.Contains(e.PeerItemId)).Select(static e => e.StubKey).ToHashSet(StringComparer.Ordinal);
+            removeKeys.RemoveAll(oldConflicts.Contains);
+            heldRemovals.AddRange(oldConflicts);
+            var retainedRanges = existingEpisodes.Where(e => oldConflicts.Contains(e.StubKey) && e.Season is not null && e.Episode is not null)
+                .GroupBy(static e => (e.PeerSeriesId, e.Season))
+                .ToDictionary(static g => g.Key, static g =>
+                {
+                    var ranges = g.OrderBy(static e => e.Episode).Select(static e => (Start: e.Episode!.Value, End: e.EpisodeEnd ?? e.Episode.Value)).ToArray();
+                    for (var i = 1; i < ranges.Length; i++)
+                    {
+                        ranges[i].End = Math.Max(ranges[i].End, ranges[i - 1].End);
+                    }
+
+                    return ranges;
+                });
+            var newlyBlocked = addEpisodes.Where(e =>
+            {
+                if (!retainedRanges.TryGetValue((e.PeerSeriesId.ToString("N"), (int?)e.Season), out var ranges))
+                {
+                    return false;
+                }
+
+                var lo = 0;
+                var hi = ranges.Length;
+                while (lo < hi)
+                {
+                    var mid = lo + ((hi - lo) / 2);
+                    if (ranges[mid].Start <= (e.NumberEnd ?? e.Number))
+                    {
+                        lo = mid + 1;
+                    }
+                    else
+                    {
+                        hi = mid;
+                    }
+                }
+
+                return lo > 0 && ranges[lo - 1].End >= e.Number;
+            }).ToList();
+            rangeConflicts.AddRange(newlyBlocked);
+            var newlyBlockedIds = newlyBlocked.Select(static e => e.PeerItemId).ToHashSet();
+            addEpisodes = [.. addEpisodes.Where(e => !newlyBlockedIds.Contains(e.PeerItemId))];
+            conflictingIds.UnionWith(newlyBlocked.Select(static e => e.PeerItemId.ToString("N")));
+            heldAdditions.AddRange(conflictingIds);
+            heldGroups.AddRange(rangeConflicts.GroupBy(static e => e.PeerSeriesId).Select(g => new TvHeldGroup(g.Key, listedById.TryGetValue(g.Key, out var named) ? named.Title : string.Empty, listedById.TryGetValue(g.Key, out var dated) ? dated.Year : null, g.Count())));
+            alerts.Add(nameof(SyncAlert.EpisodeRangeConflict));
         }
 
         // a renumbered episode is only added when its old stub goes this run

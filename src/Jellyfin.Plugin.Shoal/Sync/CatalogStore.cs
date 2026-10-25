@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Jellyfin.Plugin.Shoal.Security;
+using Jellyfin.Plugin.Shoal.State;
 using Jellyfin.Plugin.Shoal.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -46,6 +47,8 @@ public sealed class CatalogStore
     };
 
     private readonly ShoalPaths _paths;
+    private readonly IStateStore? _state;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _recovery = new(StringComparer.Ordinal);
     private readonly ILogger _logger;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SkippedSync> _skipped = new(StringComparer.Ordinal);
 
@@ -57,6 +60,16 @@ public sealed class CatalogStore
     public CatalogStore(ShoalPaths paths, ILogger<CatalogStore> logger)
         : this(paths, (ILogger)logger)
     {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="CatalogStore"/> class with topology for detecting unrecorded stubs.</summary>
+    /// <param name="paths">Private data paths.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="state">Current topology.</param>
+    public CatalogStore(ShoalPaths paths, ILogger<CatalogStore> logger, IStateStore state)
+        : this(paths, (ILogger)logger)
+    {
+        _state = state;
     }
 
     /// <summary>
@@ -161,11 +174,6 @@ public sealed class CatalogStore
     public CatalogLoad Load(string peerKey)
     {
         var path = FilePath(peerKey);
-        if (!File.Exists(path))
-        {
-            return new CatalogLoad(Empty(peerKey), false, 0);
-        }
-
         foreach (var candidate in new[] { path, path + ".bak" })
         {
             var loaded = TryRead(candidate, peerKey);
@@ -177,10 +185,24 @@ public sealed class CatalogStore
                     _logger.LogWarning("The catalog of peer {Peer} dropped {Count} entries that failed validation or passed a cap; their stubs stay on disk until the next sync removes them", Redact.Id(peerKey), loaded.Dropped);
                 }
 
+                if (!string.Equals(candidate, path, StringComparison.Ordinal) && HasPriorEvidence(peerKey, loaded.Document))
+                {
+                    _recovery[peerKey] = true;
+                    return loaded with { Unreadable = true };
+                }
+
+                Establish(peerKey);
+                _recovery.TryRemove(peerKey, out _);
                 return loaded;
             }
         }
 
+        if (!File.Exists(path) && !File.Exists(path + ".bak") && !HasPriorEvidence(peerKey))
+        {
+            return new CatalogLoad(Empty(peerKey), false, 0);
+        }
+
+        _recovery[peerKey] = true;
         _logger.LogWarning("The catalog of peer {Peer} could not be read; the sync waits for the admin", Redact.Id(peerKey));
         return new CatalogLoad(Empty(peerKey), true, 0);
     }
@@ -193,6 +215,16 @@ public sealed class CatalogStore
     {
         ArgumentNullException.ThrowIfNull(document);
         var path = FilePath(document.PeerKey);
+        var current = TryRead(path, document.PeerKey);
+        var backup = current is null ? TryRead(path + ".bak", document.PeerKey) : null;
+        if (_recovery.ContainsKey(document.PeerKey)
+            || (File.Exists(MarkerPath(document.PeerKey)) && current is null && backup is null)
+            || (current is null && backup is not null && HasPriorEvidence(document.PeerKey, backup.Document)))
+        {
+            throw new InvalidOperationException("catalogUnreadable");
+        }
+
+        Establish(document.PeerKey);
         SecureDirectory.Ensure(Path.GetDirectoryName(path)!);
         document.Schema = CatalogDocument.CurrentSchema;
         document.Usage.People = document.Names.People.Count;
@@ -203,6 +235,155 @@ public sealed class CatalogStore
         if (outcome != AtomicWriteOutcome.Normal)
         {
             _logger.LogInformation("The catalog of peer {Peer} was saved without a normal replace ({Outcome})", Redact.Id(document.PeerKey), outcome);
+        }
+    }
+
+    private string MarkerPath(string peerKey) => Path.Combine(_paths.PeerDir(peerKey), "catalog-established");
+
+    private void Establish(string peerKey)
+    {
+        var marker = MarkerPath(peerKey);
+        if (!File.Exists(marker))
+        {
+            SecureDirectory.Ensure(Path.GetDirectoryName(marker)!);
+            AtomicFile.Write(marker, "1"u8.ToArray());
+        }
+    }
+
+    private bool HasPriorEvidence(string peerKey, CatalogDocument? recovered = null)
+    {
+        try
+        {
+            if (recovered is null && File.Exists(MarkerPath(peerKey)))
+            {
+                return true;
+            }
+
+            var state = _state?.Current;
+            var root = state?.StubRoot ?? _paths.DefaultStubRoot;
+            var folders = state is null ? new[] { Path.Combine(root, peerKey) } : new[] { root };
+
+            // Only a recorded path AND its sentinel key can explain an artifact. Reused keys at new paths remain uncertain.
+            var comparison = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+            var known = new Dictionary<string, string>(comparison);
+            void Know(CatalogDocument document, string owner)
+            {
+                foreach (var entry in document.Entries)
+                {
+                    var mapping = state?.Home.Peers.FirstOrDefault(p => p.PeerKey == owner)?.Libraries.FirstOrDefault(m => m.MappingKey == entry.MappingKey);
+                    var folder = mapping is null ? null : LibraryFolders.FolderOf(state!, owner, mapping);
+                    if (folder is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var source in entry.Sources.Select(static s => (s.StubKey, s.StubRelPath)).Append((entry.StubKey, entry.StubRelPath)))
+                    {
+                        if (source.StubRelPath is not null)
+                        {
+                            known[Path.GetFullPath(Path.Combine(folder, source.StubRelPath))] = source.StubKey;
+                        }
+                    }
+                }
+            }
+
+            if (recovered is not null)
+            {
+                Know(recovered, peerKey);
+            }
+
+            foreach (var other in state?.Home.Peers.Where(p => p.PeerKey != peerKey) ?? [])
+            {
+                var path = FilePath(other.PeerKey);
+                var doc = (TryRead(path, other.PeerKey) ?? TryRead(path + ".bak", other.PeerKey))?.Document;
+                if (doc is not null)
+                {
+                    Know(doc, other.PeerKey);
+                }
+            }
+
+            if (state is not null && Path.IsPathRooted(root))
+            {
+                var groups = new GroupStore(() => root, _logger).Load();
+                var recoveredItems = recovered?.Entries.Select(static e => e.PeerItemId).ToHashSet(StringComparer.Ordinal);
+                if (groups.Groups.Any(g => g.Members.Any(m => m.PeerKey == peerKey && (recoveredItems is null || !recoveredItems.Contains(m.PeerItemId)))))
+                {
+                    return true;
+                }
+
+                foreach (var copy in groups.Groups.SelectMany(static g => g.Copies).Concat(groups.Retired))
+                {
+                    var library = state.Home.Libraries.FirstOrDefault(l => l.LibKey == copy.LibKey);
+                    var folder = library is null ? null : LibraryFolders.PathOf(root, library);
+                    if (folder is not null && IsSafeFolder(copy.FolderRel, 1))
+                    {
+                        known[Path.GetFullPath(Path.Combine(folder, copy.FolderRel, copy.FolderRel + ".strm"))] = copy.StubKey;
+                    }
+                }
+            }
+
+            var inspected = 0;
+            foreach (var folder in folders.Distinct(StringComparer.Ordinal))
+            {
+                if (folder is null)
+                {
+                    return true;
+                }
+
+                for (var ancestor = new DirectoryInfo(folder); ancestor is not null; ancestor = ancestor.Parent)
+                {
+                    if (ancestor.Exists && (ancestor.Attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        return true;
+                    }
+                }
+
+                var pending = new Stack<(string Path, int Depth)>();
+                pending.Push((folder, 0));
+                while (pending.TryPop(out var next))
+                {
+                    try
+                    {
+                        _ = File.GetAttributes(next.Path);
+                    }
+                    catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException)
+                    {
+                        continue;
+                    }
+
+                    foreach (var item in new DirectoryInfo(next.Path).EnumerateFileSystemInfos())
+                    {
+                        if (++inspected > 100_000 || (item.Attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            return true;
+                        }
+
+                        if (item is DirectoryInfo)
+                        {
+                            if (next.Depth >= 4)
+                            {
+                                return true;
+                            }
+
+                            pending.Push((item.FullName, next.Depth + 1));
+                        }
+                        else if (item.Extension.Equals(".strm", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var file = (FileInfo)item;
+                            if (file.Length > 1024 || !StubSentinel.TryParse(File.ReadAllText(file.FullName), out var key) || !known.TryGetValue(Path.GetFullPath(file.FullName), out var recorded) || !string.Equals(recorded, key, StringComparison.Ordinal))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return true;
         }
     }
 

@@ -20,7 +20,7 @@ namespace Jellyfin.Plugin.Shoal.Guard;
 /// <summary>
 /// The Peer-side guard (DESIGN 8.4): one global resource filter, inert unless a share exists, with four jobs. (a) sign-in for shared media
 /// (<c>LogOnly</c>, <c>Enforce</c>, <c>Off</c>), (b) a placeholder kept for the numbering, (c) a best-effort per-share transcode limit, (d) no
-/// self-minting by sharing accounts. Jobs (a) to (c) fail open (a bug here must never break the friend's own server); job (d) fails closed.
+/// self-minting by sharing accounts. Enforced anonymous media protection and job (d) fail closed; transcode accounting stays best effort.
 /// It only adds requirements and never relaxes core's authorization.
 /// </summary>
 public sealed partial class PeerGuardFilter : IAsyncResourceFilter
@@ -133,6 +133,7 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
             return;
         }
 
+        // Accounting errors must not skip the separate anonymous-media protection below.
         try
         {
             if (isShareUser && user is { } shareUser && TranscodeStart(http, path) && TranscodeGate(shareUser, snapshot, http) is { } gate)
@@ -140,9 +141,22 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
                 context.Result = gate;
                 return;
             }
+        }
+#pragma warning disable CA1031 // Best-effort transcode accounting must not break ordinary requests or bypass media protection.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            RecordError(ex, false);
+        }
 
+        var protectedRoute = false;
+        var mode = _shares.LastKnownMode;
+        try
+        {
             if (AnonymousItemRoute(context) is { } itemId)
             {
+                protectedRoute = GuardRoutes.KindOf(path) != "image";
+                mode = _shares.Mode;
                 var refusal = Anonymous(http, path, itemId, snapshot, user);
                 if (refusal is not null)
                 {
@@ -151,20 +165,31 @@ public sealed partial class PeerGuardFilter : IAsyncResourceFilter
                 }
             }
         }
-#pragma warning disable CA1031 // Jobs (a) to (c) fail open: one request goes through, a counter goes up, one warning an hour.
+#pragma warning disable CA1031 // Enforced media checks refuse on failure; unrelated routes and LogOnly/Off stay available.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            _counters.Error();
-            var now = _time.GetUtcNow();
-            if (now - _lastWarning >= TimeSpan.FromHours(1))
+            var refused = protectedRoute && mode == HardeningMode.Enforce;
+            RecordError(ex, refused);
+            if (refused)
             {
-                _lastWarning = now;
-                _logger.LogWarning("The guard failed on a request and let it through: {Error}", ex.GetType().Name);
+                context.Result = new ShoalResult(StatusCodes.Status503ServiceUnavailable);
+                return;
             }
         }
 
         await next().ConfigureAwait(false);
+    }
+
+    private void RecordError(Exception exception, bool refused)
+    {
+        _counters.Error();
+        var now = _time.GetUtcNow();
+        if (now - _lastWarning >= TimeSpan.FromHours(1))
+        {
+            _lastWarning = now;
+            _logger.LogWarning("The guard failed on a request (refused: {Refused}): {Error}", refused, exception.GetType().Name);
+        }
     }
 
     private static Guid? UserOf(HttpContext http) =>

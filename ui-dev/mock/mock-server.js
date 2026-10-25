@@ -351,6 +351,7 @@ export function createMock(options) {
         stubRoot: '/var/lib/jellyfin/shoal/library', stubRootCheck: 'ok', syncIntervalHours: 6,
         massDeletionMinCount: 25, massDeletionPercent: 10, newItemsMinCount: 500, newItemsPercent: 20,
         diskQuotaGbPerPeer: 2, artQuality: 'Standard', autoFitQualityToLink: true, maxStreamsPerUser: 4, hlsSubtitlesEnabled: true,
+        keepMyPlaceEnabled: opt.keepMyPlaceEnabled !== false,
         speedTestIntervalHours: 6, notifyClientsWhenOffline: true, parkOfflinePeers: false, parkAfterHours: 0.5,
         tailscaleSocket: 'auto', tailscaleDetected: true, keySource: 'file', secretsVolumeUnsafe: false,
         hlsBufferAhead: 6, offlineCardEnabled: true, requestServiceName: 'Seerr', requestServiceUrl: '', alternateVersionsEnabled: false, tvShowsEnabled: true, tvEpisodeThumbs: true, trickplayEnabled: true, trickplayCacheGb: 1, trickplayCacheBytes: opt.trickplayBytes ?? 312 * 1024 * 1024, attachmentsEnabled: true, reencodeImages: true,
@@ -416,6 +417,13 @@ export function createMock(options) {
 
     /* ---------------- derived: alerts and server detail ---------------- */
     function alertsFor(s) {
+        if (opt.episodeRangeConflict && s.handle === 'h-fern') {
+            return [{ kind: 'episodeRangeConflict', severity: 'warn' }];
+        }
+        if (opt.catalogRecovery && s.handle === 'h-fern') {
+            return [{ kind: 'catalogRecovery', severity: 'bad' }];
+        }
+
         const a = [];
         const ex = opt.noExamples ? [] : [X('Sintel'), X('Spring'), X('Hero')];
         if (s.heldRemovals) {
@@ -680,6 +688,7 @@ export function createMock(options) {
             orphanAccounts: Array.from(orphans.values()).map(clone),
             // opt.nfoMains: main libraries holding friends' titles whose NFO saver is on (Pilot 15 R6, docs/kiro-v2.9-09.md item 4)
             mainLibrariesSavingNfo: Array.isArray(opt.nfoMains) ? opt.nfoMains.slice() : [],
+            mainLibrariesNotMergingSeries: Array.isArray(opt.notMergingSeries) ? opt.notMergingSeries.slice() : [],
             // opt.notLocked: Jellyfin libraries holding a Shoal folder beside other folders (Warden 12 L2)
             shoalLibrariesNotLocked: Array.isArray(opt.notLocked) ? opt.notLocked.slice() : [],
             mainLibrariesMissing: Array.isArray(opt.mainsMissing) ? opt.mainsMissing.slice() : [],

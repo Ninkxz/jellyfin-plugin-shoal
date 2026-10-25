@@ -123,10 +123,26 @@ public sealed partial class SyncScenarioMatrixTests
     [Fact]
     public async Task Bug3_AnOfflineTopFriend_KeepsItsSeries_AndTheOthersStandIn() => await RunAsync(3, Layout.SharedMerges, Fault.Offline, syncs: 3);
 
-    [Theory(Skip = "Bug 2.9.5 #2 (docs/NOTES-2.9.5.md): a friend whose catalog.json and .bak are lost gets a second [shoal-xxxx] copy of every title; the old stubs stay with keys no catalog knows")]
+    [Theory]
     [MemberData(nameof(KnownBugCases))]
-    public async Task Bug2_AFriendsLostCatalog_WritesASecondCopyOfEveryTitle(int friends, Layout layout, Fault fault) =>
-        await RunAsync(friends, layout, fault, syncs: 3);
+    public async Task Bug2_AFriendsLostCatalog_HoldsWithoutChangingAnyStub(int friends, Layout layout, Fault fault)
+    {
+        await using var home = await ScenarioHome.CreateAsync(friends, layout);
+        foreach (var friend in home.Friends)
+        {
+            await home.Sync.SyncAsync(friend.Key, SyncTrigger.Scheduled);
+        }
+
+        var before = home.Look();
+        home.ApplyFault(fault, 2);
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var result = await home.Sync.ReleaseAsync(home.Friends[0].Key, ReleaseKind.Both);
+            Assert.Equal("catalogUnreadable", result.Error);
+            Assert.Equal(before.Files, home.Look().Files);
+            Assert.True(home.Catalogs.Load(home.Friends[0].Key).Unreadable);
+        }
+    }
 
     /// <summary>The cases of the admin's own TV library without series merging.</summary>
     public sealed class MainNoMerge

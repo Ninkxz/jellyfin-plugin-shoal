@@ -21,7 +21,7 @@ public sealed class TvScaleTests
     private static TvPlanner Planner() => new(new TvLayout());
 
     private static TvPlanInput Input(IReadOnlyList<CatalogEntry> existing, IReadOnlyList<SanitizedSeries> series, IReadOnlyList<SanitizedEpisode> episodes) =>
-        new("tv-1", existing, series, [], episodes, true, false, new HashSet<string>(), new TvGuardSettings(25, 10, 500, 20), true, true);
+        new("tv-1", existing, series, [], episodes, true, false, [], new TvGuardSettings(25, 10, 500, 20), true, true);
 
     [Fact]
     public void FiftyThousandEpisodes_WithRotatingEtags_PlanInSeconds()

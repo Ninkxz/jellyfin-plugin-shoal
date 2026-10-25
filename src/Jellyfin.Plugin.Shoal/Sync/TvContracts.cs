@@ -72,8 +72,9 @@ public interface ITvSanitizer
 /// The episodes that survive the overlap rule (sort by season, episode, end, peer id; accept one only if its range overlaps no accepted one).
 /// </summary>
 /// <param name="Accepted">The accepted episodes, in that order.</param>
+/// <param name="Held">Crossing episode ranges requiring corrected numbering.</param>
 /// <param name="DuplicatePeer">How many were skipped as <c>duplicate-peer</c>.</param>
-public sealed record TvEpisodeSet(IReadOnlyList<SanitizedEpisode> Accepted, int DuplicatePeer);
+public sealed record TvEpisodeSet(IReadOnlyList<SanitizedEpisode> Accepted, int DuplicatePeer, IReadOnlyList<SanitizedEpisode>? Held = null);
 
 /// <summary>
 /// A series (or an episode inside a moved series) that the peer re-imported under a new id: the stub, the local id and the watch state stay.
@@ -206,7 +207,7 @@ public sealed record TvGuardSettings(int MassDeletionMinCount, int MassDeletionP
 /// <param name="Episodes">The sanitized episodes (before the overlap rule).</param>
 /// <param name="Complete">Whether all three listings were complete.</param>
 /// <param name="FirstSyncOfMapping">Whether this mapping has never completed a sync (exempt from the additions guard).</param>
-/// <param name="LocalSeriesKeys">The dedup keys (<c>tvdb:81189</c>, <c>title|year</c>) of Home's own series outside the stub root.</param>
+/// <param name="LocalSeries">The complete identities of Home's own series outside the stub root.</param>
 /// <param name="Guards">The guard settings.</param>
 /// <param name="BypassRemovals">Whether held removals are released now.</param>
 /// <param name="BypassAdditions">Whether held additions are released now.</param>
@@ -222,14 +223,14 @@ public sealed record TvPlanInput(
     IReadOnlyList<SanitizedEpisode> Episodes,
     bool Complete,
     bool FirstSyncOfMapping,
-    IReadOnlySet<string> LocalSeriesKeys,
+    IReadOnlyList<LocalSeries> LocalSeries,
     TvGuardSettings Guards,
     bool BypassRemovals,
     bool BypassAdditions,
     IReadOnlySet<string>? HeldAdditionIds = null,
     int OtherPlayable = 0,
     IReadOnlySet<Guid>? ReleasedSeries = null,
-    IReadOnlyDictionary<string, TvOwnedSeries>? PeerOwned = null);
+    IReadOnlyList<TvOwnedSeries>? PeerOwned = null);
 
 /// <summary>A series whose additions are held back by the new-items guard, so the admin can release it alone.</summary>
 /// <param name="PeerSeriesId">The peer's series id.</param>
@@ -352,7 +353,8 @@ public interface ITvImageWork
 /// <param name="SameFolder">Whether the owner writes into the same library folder as this mapping (then this server's other episodes join the series through
 /// the library's series grouping; otherwise they stay hidden).</param>
 /// <param name="Episodes">The owner's episodes.</param>
-public sealed record TvOwnedSeries(string OwnerPeerKey, string OwnerSeriesStubKey, bool SameFolder, IReadOnlyList<TvOwnedEpisode> Episodes)
+/// <param name="Identity">The complete provider identity of this candidate.</param>
+public sealed record TvOwnedSeries(string OwnerPeerKey, string OwnerSeriesStubKey, bool SameFolder, IReadOnlyList<TvOwnedEpisode> Episodes, LocalSeries Identity)
 {
     /// <summary>
     /// The owner's episode an episode overlaps (same season, number ranges meet), or null. Overlapping ranges keep the owner's numbering.

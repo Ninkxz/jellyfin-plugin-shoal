@@ -61,7 +61,9 @@ public sealed class PeerGuardFilterTests
     {
         public HashSet<string> Active { get; } = [];
 
-        public bool IsTranscoding(string playSessionId) => Active.Contains(playSessionId);
+        public bool Throw { get; set; }
+
+        public bool IsTranscoding(string playSessionId) => Throw ? throw new InvalidOperationException("probe unavailable") : Active.Contains(playSessionId);
     }
 
     private sealed class Rig : IDisposable
@@ -242,13 +244,41 @@ public sealed class PeerGuardFilterTests
         Assert.Equal(10_000, cache.Count);
     }
 
+    [Theory]
+    [InlineData(HardeningMode.Enforce, 503, false)]
+    [InlineData(HardeningMode.LogOnly, 0, true)]
+    [InlineData(HardeningMode.Off, 0, true)]
+    public async Task AFailedMediaCheck_RespectsTheSelectedProtectionMode(HardeningMode mode, int status, bool reached)
+    {
+        using var rig = new Rig(mode);
+        rig.Items.Throw = true;
+
+        Assert.Equal((status, reached), await rig.Stream(SharedItem));
+        Assert.Equal(mode == HardeningMode.Off ? 0 : 1, rig.Counters.GuardErrors);
+    }
+
     [Fact]
-    public async Task FailOpen_AnExceptionInJobA_LetsTheRequestThroughAndCountsIt()
+    public async Task AFailedMediaCheck_DoesNotDenyImagesOrUnrelatedAuthorizedRoutes()
     {
         using var rig = new Rig(HardeningMode.Enforce);
         rig.Items.Throw = true;
 
-        Assert.Equal((0, true), await rig.Stream(SharedItem));
+        Assert.Equal((0, true), await rig.RunAsync("Items/{itemId}/Images/{imageType}", route: new() { ["itemId"] = SharedItem }));
+        Assert.Equal((0, true), await rig.RunAsync("Items/{itemId}", route: new() { ["itemId"] = SharedItem }, authorized: true));
+        Assert.Equal((0, true), await rig.RunAsync("System/Ping"));
+    }
+
+    [Fact]
+    public async Task FailedTranscodeAccounting_CannotSkipTheMediaVisibilityCheck()
+    {
+        using var rig = new Rig(HardeningMode.Enforce);
+        const string Template = "Videos/{itemId}/master.m3u8";
+        var route = new Dictionary<string, object?> { ["itemId"] = SharedItem };
+        Assert.Equal((404, false), await rig.RunAsync(Template, user: ShareUser, route: route, query: "?PlaySessionId=first"));
+        rig.Time.Advance(TimeSpan.FromSeconds(21));
+        rig.Transcodes.Throw = true;
+
+        Assert.Equal((404, false), await rig.RunAsync(Template, user: ShareUser, route: route, query: "?PlaySessionId=second"));
         Assert.Equal(1, rig.Counters.GuardErrors);
     }
 

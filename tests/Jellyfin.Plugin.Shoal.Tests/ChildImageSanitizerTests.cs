@@ -217,7 +217,7 @@ public sealed class ChildImageSanitizerTests
     }
 
     [Fact]
-    public async Task T_IMG_1_TwoFailedSelfTestsInARow_MakeTheSandboxUnavailable_AndImagesThenPassThrough()
+    public async Task T_IMG_1_TwoFailedSelfTestsInARow_MakeTheSandboxUnavailable_AndImagesStayRefused()
     {
         using var rig = new SandboxRig { Mode = ["exit1"] };
         using var sanitizer = rig.Make();
@@ -227,11 +227,11 @@ public sealed class ChildImageSanitizerTests
         var second = await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
 
         Assert.False(first.Ok); // waits for the next sync; never stored unsanitized
-        Assert.True(second.Ok);
-        Assert.True(second.Bytes.Span.SequenceEqual(Poster));
+        Assert.False(second.Ok);
+        Assert.True(second.Bytes.IsEmpty);
         var status = sanitizer.GetStatus();
         Assert.Equal(("unavailable", "selfTestFailed"), (status.State, status.Reason));
-        Assert.Equal(1, status.Rejected);
+        Assert.Equal(2, status.Rejected);
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public sealed class ChildImageSanitizerTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("missing")]
-    public async Task T_IMG_1_FfmpegMissing_IsUnavailable_AndSyncContinuesAsInV1(string? encoderPath)
+    public async Task T_IMG_1_FfmpegMissing_IsUnavailable_AndNeverReturnsRawPeerBytes(string? encoderPath)
     {
         using var rig = new SandboxRig();
         rig.Encoder.EncoderPath = encoderPath == "missing" ? Path.Combine(rig.Temp.Path, "no", "ffmpeg") : encoderPath;
@@ -287,8 +287,8 @@ public sealed class ChildImageSanitizerTests
         await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
         var result = await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
 
-        Assert.True(result.Ok);
-        Assert.True(result.Bytes.Span.SequenceEqual(Poster));
+        Assert.False(result.Ok);
+        Assert.True(result.Bytes.IsEmpty);
         Assert.Equal(("unavailable", "ffmpegMissing"), (sanitizer.GetStatus().State, sanitizer.GetStatus().Reason));
     }
 
@@ -320,7 +320,8 @@ public sealed class ChildImageSanitizerTests
         rig.Mode = ["jpeg", "32", "32"];
         clock.Advance(TimeSpan.FromSeconds(30));
         var early = await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
-        Assert.True(early.Bytes.Span.SequenceEqual(Poster)); // still unavailable, no new test yet
+        Assert.False(early.Ok); // still unavailable, no new test yet and no raw bytes accepted
+        Assert.True(early.Bytes.IsEmpty);
 
         clock.Advance(TimeSpan.FromSeconds(31));
         var later = await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
@@ -574,8 +575,10 @@ public sealed class ChildImageSanitizerTests
         Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(1500), $"the tile waited {watch.Elapsed}");
     }
 
-    [Fact]
-    public async Task Warden10_L3_AKnownUnavailableSandbox_PassesATileThrough_WithoutAnInlineRetest()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(300)]
+    public async Task Warden10_L3_AKnownUnavailableSandbox_RefusesATile_WithoutAnInlineRetest(int elapsedSeconds)
     {
         using var rig = new SandboxRig { Mode = ["exit1"] };
         var clock = new ManualTimeProvider();
@@ -583,15 +586,15 @@ public sealed class ChildImageSanitizerTests
         await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
         await sanitizer.SanitizeAsync(Poster, SandboxRig.Poster(), CancellationToken.None);
         Assert.Equal("unavailable", sanitizer.GetStatus().State);
-        clock.Advance(TimeSpan.FromMinutes(5)); // a retest is due
+        clock.Advance(TimeSpan.FromSeconds(elapsedSeconds)); // test both the cooldown and a due background retest
         rig.Mode = ["pid", Path.Combine(Path.GetTempPath(), "shoal-lane-" + Guid.NewGuid().ToString("N"))]; // a retest would hang until the clock
 
         var watch = Stopwatch.StartNew();
         var tile = await sanitizer.SanitizeAsync(Poster, TileSpec, CancellationToken.None);
         watch.Stop();
 
-        Assert.True(tile.Ok);
-        Assert.True(tile.Bytes.Span.SequenceEqual(Poster));
+        Assert.False(tile.Ok);
+        Assert.True(tile.Bytes.IsEmpty);
         Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(1500), $"the tile waited {watch.Elapsed}");
     }
 

@@ -50,6 +50,9 @@ public enum SyncAlert
 
     /// <summary>Episodes were skipped: no usable number, a virtual episode, an overlap, or a series that was not listed.</summary>
     TvSkipped,
+
+    /// <summary>Overlapping episode ranges require corrected numbering; ordinary release cannot override this hold.</summary>
+    EpisodeRangeConflict,
 }
 
 /// <summary>

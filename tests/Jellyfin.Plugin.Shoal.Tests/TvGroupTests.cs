@@ -34,10 +34,10 @@ public sealed class TvGroupTests
         new() { PeerItemId = Ep(id == 0 ? (season * 100) + number : id), PeerSeriesId = SeriesId, Season = season, Number = number, NumberEnd = end, Etag = "e", ContentHash = "h" };
 
     private static TvOwnedSeries Owned(bool sameFolder, params (int Season, int Number, int End)[] episodes) =>
-        new("ownerpeer", "ownerseries00001", sameFolder, [.. episodes.Select(static (e, i) => new TvOwnedEpisode(e.Season, e.Number, e.End, "ownerep" + i.ToString("D9", System.Globalization.CultureInfo.InvariantCulture)))]);
+        new("ownerpeer", "ownerseries00001", sameFolder, [.. episodes.Select(static (e, i) => new TvOwnedEpisode(e.Season, e.Number, e.End, "ownerep" + i.ToString("D9", System.Globalization.CultureInfo.InvariantCulture)))], new LocalSeries(new CanonicalIds(null, 81189, null), "Show", 2008));
 
     private static TvPlanInput Input(TvOwnedSeries owned, IReadOnlyList<CatalogEntry> existing, params SanitizedEpisode[] episodes) =>
-        new("tv-1", existing, [Series()], [], episodes, true, true, new HashSet<string>(), new TvGuardSettings(25, 10, 500, 20), true, true, PeerOwned: new Dictionary<string, TvOwnedSeries> { ["tvdb:81189"] = owned });
+        new("tv-1", existing, [Series()], [], episodes, true, true, [], new TvGuardSettings(25, 10, 500, 20), true, true, PeerOwned: [owned]);
 
     [Fact]
     public void InASharedLibrary_OverlappingEpisodesAreHiddenSources_AndTheOthersJoinTheSeries()
@@ -47,7 +47,7 @@ public sealed class TvGroupTests
         var plan = Planner().Plan(Input(owned, [], Episode(1, 1), Episode(1, 3), Episode(1, 4), Episode(2, 1)));
 
         Assert.Equal([(1, 4), (2, 1)], plan.AddEpisodes.Select(static e => (e.Season, e.Number)).OrderBy(static x => x));
-        Assert.Equal([(1, 1, "ownerep000000000"), (1, 3, "ownerep000000001")], plan.HiddenEpisodes!.Select(static h => (h.Episode.Season, h.Episode.Number, h.DuplicateOf!)).OrderBy(static x => x)); // E03 overlaps the owner's E02-E03
+        Assert.Equal([(1, 1, "ownerep000000000"), (1, 3, (string)null!)], plan.HiddenEpisodes!.Select(static h => (h.Episode.Season, h.Episode.Number, h.DuplicateOf!)).OrderBy(static x => x)); // E03 overlaps the owner's E02-E03
         Assert.Equal("ownerseries00001", plan.PeerOwnedSeries![SeriesId.ToString("N")]);
         Assert.Empty(plan.DuplicateLocalSeriesKeys);
     }

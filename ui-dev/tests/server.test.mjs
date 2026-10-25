@@ -171,7 +171,7 @@ test('access removed and different server put Pair again first', async () => {
 test('Pause is one click with its help line and a polite result; Resume is then primary', async () => {
     const p = await server('h-hops');
     try {
-        assert.match(header(p).textContent, /Titles stay listed here but won't play until you resume\./);
+        assert.match(header(p).textContent, /Pausing keeps titles listed here but stops playback until you resume\./);
         buttonIn(header(p), 'Pause').click();
         await p.wait(150);
         assert.equal(dialog(p), null);
@@ -332,7 +332,7 @@ test('M2: opening Server detail loads the link speed and shows its KPIs; a redra
     try {
         await p.wait(300);
         assert.ok(calls(p, 'GET', /Peers\/h-hops\/Speed/).length >= 1, 'the speed was requested');
-        assert.match(p.text(), /Speed now/);
+        assert.match(p.text(), /Last measured/);
         const before = p.handle.screen().state().speed;
         p.mock.stores.servers.get('h-hops').mbps = 44;
         await p.handle.screen().refresh();
@@ -436,7 +436,7 @@ test('S2/S3: the fix comes first; the pause help sits under Pause and is describ
     try {
         const pause = buttonIn(hops.page.querySelector('.shoal-detail__actions'), 'Pause');
         const note = hops.page.ownerDocument.getElementById(pause.getAttribute('aria-describedby'));
-        assert.match(note.textContent, /Titles stay listed here but won't play until you resume\./);
+        assert.match(note.textContent, /Pausing keeps titles listed here but stops playback until you resume\./);
         assert.ok(pause.closest('.shoal-action').contains(note));
         const items = [...hops.page.querySelectorAll('.shoal-detail__meta > .shoal-detail__metaitem')].map((i) => i.textContent.replace(/\s+/g, ' ').trim());
         assert.ok(items.some((i) => /^Server ID [0-9a-f]{8}$/.test(i)), 'Server ID alone: ' + JSON.stringify(items));
@@ -519,6 +519,23 @@ const SYNC_RESULTS = (() => {
     const block = src.slice(src.indexOf('public enum SyncResultKind'));
     return [...block.slice(0, block.indexOf('}')).matchAll(/JsonStringEnumMemberName\("([a-z]+)"\)/g)].map((m) => m[1]);
 })();
+
+test('recovery rows with no last sync omit empty result punctuation in both count layouts', async () => {
+    for (const split of [false, true]) {
+        const p = await server('h-hops');
+        try {
+            // Actual recovery response: the mapping survives, but no readable catalog supplies lastSync.
+            const mapping = p.mock.stores.mappings.find((m) => m.serverHandle === 'h-hops');
+            Object.assign(mapping, { lastSync: null, count: 0, remoteCount: split ? 4 : 0, localCount: 0 });
+            await p.handle.screen().refresh();
+            const meta = p.page.querySelector('[data-shoal-view="server"] .shoal-row--library .shoal-row__meta').textContent;
+            assert.match(meta, /last sync never$/, split ? 'split counts' : 'matching counts');
+            assert.doesNotMatch(meta, /\(\s*\)/);
+        } finally {
+            p.close();
+        }
+    }
+});
 
 test('K3: the library row has plain words for every sync result the backend produces (held, skipped ...)', async () => {
     assert.ok(SYNC_RESULTS.includes('held') && SYNC_RESULTS.includes('skipped'), 'parsed ' + JSON.stringify(SYNC_RESULTS));

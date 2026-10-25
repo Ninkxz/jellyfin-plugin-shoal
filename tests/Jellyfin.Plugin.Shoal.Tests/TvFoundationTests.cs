@@ -360,7 +360,7 @@ public sealed class TvFoundationTests
         using var provider = services.BuildServiceProvider();
 
         var planner = provider.GetRequiredService<ITvPlanner>();
-        Assert.Same(TvPlan.Empty, planner.Plan(new TvPlanInput(Mapping, [], [], [], [], true, true, new HashSet<string>(), new TvGuardSettings(25, 10, 500, 20), false, false)));
+        Assert.Same(TvPlan.Empty, planner.Plan(new TvPlanInput(Mapping, [], [], [], [], true, true, [], new TvGuardSettings(25, 10, 500, 20), false, false)));
         Assert.Empty(provider.GetRequiredService<ITvImageWork>().Queue([], [], true));
         Assert.Equal("S01E02-E03", provider.GetRequiredService<ITvLayout>().EpisodeStem(1, 2, 3));
         Assert.Equal("Season 00", provider.GetRequiredService<ITvLayout>().SeasonFolder(0));

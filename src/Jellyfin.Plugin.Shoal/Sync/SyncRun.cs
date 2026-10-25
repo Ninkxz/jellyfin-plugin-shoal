@@ -765,7 +765,7 @@ internal sealed class SyncRun
             {
                 if (libraryOf.TryGetValue(entry.MappingKey, out var extrasLibrary) && !gone.Contains(entry))
                 {
-                    RemoveExtras(extrasLibrary, entry);
+                    await RemoveExtrasAsync(extrasLibrary, entry, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -776,7 +776,7 @@ internal sealed class SyncRun
             {
                 if (libraryOf.TryGetValue(entry.MappingKey, out var hiddenLibrary) && !gone.Contains(entry))
                 {
-                    HideExtras(hiddenLibrary, entry);
+                    await HideExtrasAsync(hiddenLibrary, entry, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -801,6 +801,13 @@ internal sealed class SyncRun
                 continue;
             }
 
+            if (entry.StubRelPath is not null && !await RetentionGuard.BeforeFolderAsync(_d.Retention, _state.StubRoot, Path.GetDirectoryName(Path.Combine(library.Folder, entry.StubRelPath))!, ct).ConfigureAwait(false))
+            {
+                entry.State = EntryState.HeldRemoval;
+                _alerts.Add(nameof(SyncAlert.WriteFailures));
+                continue;
+            }
+
             if (entry.StubRelPath is null || _d.Writer.Remove(TargetOf(library), entry.StubRelPath, _quota))
             {
                 MarkFolderChanged(library, entry.StubRelPath);
@@ -819,6 +826,13 @@ internal sealed class SyncRun
             if (holdRemovals)
             {
                 entry.State = EntryState.HeldRemoval;
+                continue;
+            }
+
+            if (entry.StubRelPath is not null && !await RetentionGuard.BeforeFolderAsync(_d.Retention, _state.StubRoot, Path.GetDirectoryName(Path.Combine(library.Folder, entry.StubRelPath))!, ct).ConfigureAwait(false))
+            {
+                entry.State = EntryState.HeldRemoval;
+                _alerts.Add(nameof(SyncAlert.WriteFailures));
                 continue;
             }
 
@@ -913,7 +927,7 @@ internal sealed class SyncRun
                 entry.LastSeenUtc = _now;
                 if (_settings.AlternateVersions)
                 {
-                    ReconcileOrHide(library, entry, movie);
+                    await ReconcileOrHideAsync(library, entry, movie, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -992,7 +1006,7 @@ internal sealed class SyncRun
 
             if (_settings.AlternateVersions)
             {
-                ReconcileOrHide(add.Library, entry, movie);
+                await ReconcileOrHideAsync(add.Library, entry, movie, ct).ConfigureAwait(false);
             }
 
             _report.Added++;
@@ -1053,7 +1067,7 @@ internal sealed class SyncRun
 
     // Brings the extra versions of a title in line with what the peer lists now (DESIGN v2.6.4): the primary stays, extras the peer no longer lists
     // (or that became the primary) are deleted, new ones are written. A label is never renamed once written.
-    private void ReconcileVersions(LibraryRun library, CatalogEntry entry, SanitizedMovie movie)
+    private async Task ReconcileVersionsAsync(LibraryRun library, CatalogEntry entry, SanitizedMovie movie, CancellationToken ct)
     {
         if (entry.StubRelPath is null || !IsActiveWithStub(entry))
         {
@@ -1066,6 +1080,12 @@ internal sealed class SyncRun
         var wantedIds = wanted.Select(static s => s.Id.ToString("N")).ToHashSet(StringComparer.Ordinal);
         foreach (var extra in entry.Sources.Skip(1).Where(e => !wantedIds.Contains(e.PeerMediaSourceId)).ToList())
         {
+            if (!await RetentionGuard.BeforeFileAsync(_d.Retention, _state.StubRoot, library.Folder, extra.StubRelPath, ct).ConfigureAwait(false))
+            {
+                _alerts.Add(nameof(SyncAlert.WriteFailures));
+                continue;
+            }
+
             if (extra.StubRelPath is null || _d.Writer.RemoveFile(target, extra.StubRelPath, _quota))
             {
                 entry.Sources.Remove(extra);
@@ -1118,33 +1138,39 @@ internal sealed class SyncRun
         }
     }
 
-    private void ReconcileOrHide(LibraryRun library, CatalogEntry entry, SanitizedMovie movie)
+    private async Task ReconcileOrHideAsync(LibraryRun library, CatalogEntry entry, SanitizedMovie movie, CancellationToken ct)
     {
         if (HidesExtras(entry))
         {
-            HideExtras(library, entry);
+            await HideExtrasAsync(library, entry, ct).ConfigureAwait(false);
             return;
         }
 
-        ReconcileVersions(library, entry, movie);
+        await ReconcileVersionsAsync(library, entry, movie, ct).ConfigureAwait(false);
         entry.ExtrasHidden = false;
     }
 
-    private void HideExtras(LibraryRun library, CatalogEntry entry)
+    private async Task HideExtrasAsync(LibraryRun library, CatalogEntry entry, CancellationToken ct)
     {
         if (entry.Sources.Count > 1)
         {
-            RemoveExtras(library, entry);
+            await RemoveExtrasAsync(library, entry, ct).ConfigureAwait(false);
         }
 
-        entry.ExtrasHidden = true;
+        entry.ExtrasHidden = entry.Sources.Count <= 1;
     }
 
-    private void RemoveExtras(LibraryRun library, CatalogEntry entry)
+    private async Task RemoveExtrasAsync(LibraryRun library, CatalogEntry entry, CancellationToken ct)
     {
         var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping), FriendName = _peer.ShownName() };
         foreach (var extra in entry.Sources.Skip(1).ToList())
         {
+            if (!await RetentionGuard.BeforeFileAsync(_d.Retention, _state.StubRoot, library.Folder, extra.StubRelPath, ct).ConfigureAwait(false))
+            {
+                _alerts.Add(nameof(SyncAlert.WriteFailures));
+                continue;
+            }
+
             if (extra.StubRelPath is null || _d.Writer.RemoveFile(target, extra.StubRelPath, _quota))
             {
                 entry.Sources.Remove(extra);

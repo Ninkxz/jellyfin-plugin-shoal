@@ -119,6 +119,22 @@ public sealed class AdminSettingsControllerTests
     private static JsonElement Body(IActionResult result, int expectedStatus = 200) => AdminTestSupport.Body(result, expectedStatus);
 
     [Fact]
+    public async Task KeepMyPlace_IsOnByDefaultAndMissingPutPreservesExplicitOff()
+    {
+        using var rig = Create();
+        await rig.Store.UpdateAsync(s => s.StubRoot = "/data/shoal");
+        Assert.True(Body(rig.Controller.GetSettings()).GetProperty("keepMyPlaceEnabled").GetBoolean());
+        Send(rig.Controller, "{}");
+        Assert.True(Body(await rig.Controller.PutSettings(default)).GetProperty("keepMyPlaceEnabled").GetBoolean());
+        Send(rig.Controller, """{"keepMyPlaceEnabled":false}""");
+        Assert.False(Body(await rig.Controller.PutSettings(default)).GetProperty("keepMyPlaceEnabled").GetBoolean());
+        Send(rig.Controller, "{}");
+        Assert.False(Body(await rig.Controller.PutSettings(default)).GetProperty("keepMyPlaceEnabled").GetBoolean());
+        Send(rig.Controller, """{"keepMyPlaceEnabled":true}""");
+        Assert.True(Body(await rig.Controller.PutSettings(default)).GetProperty("keepMyPlaceEnabled").GetBoolean());
+    }
+
+    [Fact]
     public async Task K33_TheFeatureSwitches_RoundTrip_WithTheirDefaults()
     {
         using var rig = Create();

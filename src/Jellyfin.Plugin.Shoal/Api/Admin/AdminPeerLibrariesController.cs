@@ -306,6 +306,11 @@ public class AdminPeerLibrariesController : ControllerBase
             return AdminReply.Error(StatusCodes.Status404NotFound, "notFound");
         }
 
+        if (_catalogs.Load(handle).Unreadable)
+        {
+            return AdminReply.Error(StatusCodes.Status409Conflict, "catalogUnreadable");
+        }
+
         var state = _state.Current;
         var shared = LibraryFolders.FedBy(state, handle, mapping.CollectionType);
         if (shared is not null)

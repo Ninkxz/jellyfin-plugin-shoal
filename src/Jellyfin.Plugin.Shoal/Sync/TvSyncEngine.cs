@@ -392,22 +392,11 @@ public sealed class TvSyncEngine
             }
         }
 
-        private HashSet<string> LocalKeys()
-        {
-            var keys = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var local in _e._local.List(_state.StubRoot))
-            {
-                keys.UnionWith(TvPlanner.SeriesKeys(local.ProviderIds, local.Title, local.Year));
-            }
-
-            return keys;
-        }
-
         // K43: the series a higher-ranked server that can be reached shows now, by dedup key, with its episodes (2.9.4: those of every such server); such a
         // series is grouped instead of hidden whole.
-        private Dictionary<string, TvOwnedSeries> PeerOwned(string? folder)
+        private List<TvOwnedSeries> PeerOwned(string? folder)
         {
-            var owned = new Dictionary<string, TvOwnedSeries>(StringComparer.Ordinal);
+            var owned = new List<TvOwnedSeries>();
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
             // 2.9.5: a higher-ranked server that is down still owns the series it holds the group copy of (as K42 does for movies): a play falls over to
@@ -440,13 +429,8 @@ public sealed class TvSyncEngine
                     var mapping = other.Libraries.FirstOrDefault(m => m.MappingKey == entry.MappingKey);
                     var otherFolder = mapping is null ? null : LibraryFolders.FolderOf(_state, other.PeerKey, mapping);
                     var same = merges && folder is not null && otherFolder is not null && string.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(otherFolder).TrimEnd(Path.DirectorySeparatorChar), comparison);
-                    var series = new TvOwnedSeries(other.PeerKey, entry.StubKey, same, [.. episodes[entry.StubKey].Where(static e => e.Season is not null && e.Episode is not null).Select(static e => new TvOwnedEpisode(e.Season!.Value, e.Episode!.Value, e.EpisodeEnd ?? e.Episode!.Value, e.StubKey))]);
-                    foreach (var key in TvPlanner.SeriesKeys(MetadataSanitizer.CanonicalProviderIds(entry.ProviderIds), entry.Title, entry.Year))
-                    {
-                        // 2.9.4: every reachable higher-ranked owner counts, in rank order (the peers are sorted above): an episode overlapping any of
-                        // them is hidden, and Overlap names the first owner that has it. The series link and SameFolder stay the first owner's.
-                        owned[key] = owned.TryGetValue(key, out var first) ? first with { Episodes = [.. first.Episodes, .. series.Episodes] } : series;
-                    }
+                    var series = new TvOwnedSeries(other.PeerKey, entry.StubKey, same, [.. episodes[entry.StubKey].Where(static e => e.Season is not null && e.Episode is not null).Select(static e => new TvOwnedEpisode(e.Season!.Value, e.Episode!.Value, e.EpisodeEnd ?? e.Episode!.Value, e.StubKey))], new LocalSeries(MetadataSanitizer.CanonicalProviderIds(entry.ProviderIds), entry.Title, entry.Year));
+                    owned.Add(series);
                 }
             }
 
@@ -559,7 +543,7 @@ public sealed class TvSyncEngine
             // ---- plan
             var existing = _doc.Entries.Where(e => e.MappingKey == mapping.MappingKey).ToList();
             var guards = new TvGuardSettings(_settings.MassDeletionMinCount, _settings.MassDeletionPercent, _settings.NewItemsMinCount, _settings.NewItemsPercent);
-            var plan = _e._planner.Plan(new TvPlanInput(mapping.MappingKey, existing, series, seasons, episodes, listings.Complete, !known.CompletedOnce, LocalKeys(), guards, _bypassRemovals, _bypassAdditions, _doc.TvHeldAdditions.ToHashSet(StringComparer.Ordinal), _doc.Entries.Count(e => e.MappingKey != mapping.MappingKey && IsPlayable(e)), ReleaseSeries, PeerOwned(folder)));
+            var plan = _e._planner.Plan(new TvPlanInput(mapping.MappingKey, existing, series, seasons, episodes, listings.Complete, !known.CompletedOnce, _e._local.List(_state.StubRoot), guards, _bypassRemovals, _bypassAdditions, _doc.TvHeldAdditions.ToHashSet(StringComparer.Ordinal), _doc.Entries.Count(e => e.MappingKey != mapping.MappingKey && IsPlayable(e)), ReleaseSeries, PeerOwned(folder)));
             foreach (var name in plan.Alerts)
             {
                 if (Enum.TryParse<SyncAlert>(name, out var alert))
@@ -580,7 +564,7 @@ public sealed class TvSyncEngine
             // ---- removals: ask the peer before acting on a listing; held ones wait for the 3 complete syncs over 24 hours (or the admin)
             var removeKeys = plan.RemoveKeys.ToList();
             var heldKeys = plan.HeldRemovalKeys.ToList();
-            if (heldKeys.Count > 0 && TrackAndMaybeRelease(heldKeys))
+            if (heldKeys.Count > 0 && !plan.Alerts.Contains(nameof(SyncAlert.EpisodeRangeConflict)) && TrackAndMaybeRelease(heldKeys))
             {
                 removeKeys.AddRange(heldKeys);
                 heldKeys.Clear();
@@ -758,6 +742,13 @@ public sealed class TvSyncEngine
                     continue;
                 }
 
+                if (!await RetentionGuard.BeforeFileAsync(_d.Retention, _state.StubRoot, libraryFolder, entry.StubRelPath, ct).ConfigureAwait(false))
+                {
+                    entry.State = EntryState.HeldRemoval;
+                    _alerts.Add(SyncAlert.WriteFailures);
+                    continue;
+                }
+
                 if (entry.StubRelPath is null || _e._writer.RemoveEpisode(target, entry.StubRelPath, _quota))
                 {
                     _doc.Entries.Remove(entry);
@@ -783,7 +774,7 @@ public sealed class TvSyncEngine
                     _doc.Entries.Add(SeriesRecord(mapping, s, EntryState.DuplicateLocal, folder: null));
                     Report.Duplicates++;
                 }
-                else if (entry.State != EntryState.DuplicateLocal)
+                else if (entry.State != EntryState.DuplicateLocal && !_doc.Entries.Any(e => e.ParentKey == entry.StubKey && e.Kind == EntryKind.Episode && e.State == EntryState.HeldRemoval))
                 {
                     entry.State = EntryState.DuplicateLocal;
                     Report.Duplicates++;
@@ -814,9 +805,24 @@ public sealed class TvSyncEngine
             }
 
             // ---- additions
+            var survivingRanges = new TvRangeIndex(_doc.Entries.Where(e => e.MappingKey == mapping.MappingKey && e.Kind == EntryKind.Episode && IsLive(e) && e.StubRelPath is not null));
+            var unsafeAdditions = plan.AddEpisodes.Where(survivingRanges.Overlaps).ToList();
+            if (unsafeAdditions.Count > 0)
+            {
+                var unsafeIds = unsafeAdditions.Select(static e => e.PeerItemId).ToHashSet();
+                var extraGroups = unsafeAdditions.GroupBy(static e => e.PeerSeriesId).Select(g => new TvHeldGroup(g.Key, listedSeries.FirstOrDefault(s => s.PeerItemId == g.Key)?.Title ?? string.Empty, listedSeries.FirstOrDefault(s => s.PeerItemId == g.Key)?.Year, g.Count()));
+                plan = plan with
+                {
+                    AddEpisodes = [.. plan.AddEpisodes.Where(e => !unsafeIds.Contains(e.PeerItemId))],
+                    HeldAdditionPeerIds = [.. plan.HeldAdditionPeerIds, .. unsafeIds.Select(static id => id.ToString("N"))],
+                    HeldAdditionGroups = [.. plan.HeldAdditionGroups ?? [], .. extraGroups],
+                };
+                _alerts.Add(SyncAlert.EpisodeRangeConflict);
+            }
+
             await AddAsync(mapping, target, libraryFolder, plan, details, ct).ConfigureAwait(false);
             ApplyHidden(mapping, plan, listedSeries);
-            SweepLeftoverCopies(mapping, target, libraryFolder);
+            await SweepLeftoverCopiesAsync(mapping, target, libraryFolder, ct).ConfigureAwait(false);
 
             // ---- what is still without details waits for the next run
             var stillPending = new List<string>();
@@ -1064,7 +1070,7 @@ public sealed class TvSyncEngine
 
         // 2.9.3: the extra "[shoal-...]" copies of a live series that 2.9.0 to 2.9.2 wrote every sync (CreateSeriesAsync) go. Only a folder TvDuplicateSweep
         // calls a leftover (the series' own name, only stub files, sentinels no catalog or group knows) is deleted; when any catalog cannot be read, nothing is.
-        private void SweepLeftoverCopies(LibraryMapping mapping, StubTarget target, string libraryFolder)
+        private async Task SweepLeftoverCopiesAsync(LibraryMapping mapping, StubTarget target, string libraryFolder, CancellationToken ct)
         {
             if (!Report.Complete || !_listingComplete)
             {
@@ -1157,6 +1163,12 @@ public sealed class TvSyncEngine
                 {
                     if (!TvDuplicateSweep.IsLeftover(path, keys, out var bytes))
                     {
+                        continue;
+                    }
+
+                    if (!await RetentionGuard.BeforeFolderAsync(_d.Retention, _state.StubRoot, path, ct).ConfigureAwait(false))
+                    {
+                        _alerts.Add(SyncAlert.WriteFailures);
                         continue;
                     }
 

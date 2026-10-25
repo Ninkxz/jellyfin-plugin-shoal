@@ -164,6 +164,9 @@ public sealed class LayoutJobService : IHostedService, IDisposable
     /// <summary>Gets or sets what asks for a sync of a connection after its move (a deleted group copy is added again by its next sync), or null.</summary>
     public Action<string>? RequestSync { get; set; }
 
+    /// <summary>Gets or sets the local progress capture required before removing a layout copy.</summary>
+    public Jellyfin.Plugin.Shoal.Progress.IKeepMyPlaceRetention? Retention { get; set; }
+
     /// <summary>Gets or sets what tells the admins that a move stopped (Warden 11 L6: syncs wait until it is resumed or abandoned), or null.</summary>
     public Jellyfin.Plugin.Shoal.Pairing.IAdminNotifier? Notifier { get; set; }
 
@@ -523,6 +526,11 @@ public sealed class LayoutJobService : IHostedService, IDisposable
             return (LayoutJobError.Invalid, null);
         }
 
+        if (requests.Any(r => _catalogs.Load(r.PeerKey).Unreadable))
+        {
+            return (LayoutJobError.RecoveryMode, null);
+        }
+
         var accounts = _accounts.List();
         var shareUsers = VisibilityService.ShareUserIds(state);
         var now = _time.GetUtcNow().UtcDateTime;
@@ -729,11 +737,28 @@ public sealed class LayoutJobService : IHostedService, IDisposable
 
     private async Task ExecuteAsync(LayoutJournal journal)
     {
+        if (journal.Moves.Any(m => _catalogs.Load(m.PeerKey).Unreadable))
+        {
+            journal.Error = "catalogUnreadable";
+            throw new InvalidOperationException("catalogUnreadable");
+        }
+
         var steps = 0;
         foreach (var move in journal.Moves.Where(static m => !m.Done))
         {
             if (!move.StateApplied)
             {
+                foreach (var op in move.Ops)
+                {
+                    var source = move.Sources.First(source => source.LibKey == op.FromLibKey);
+                    var sourceFolder = LibraryFolders.PathOf(_state.Current.StubRoot, new LayoutLibrary { LibKey = source.LibKey, PathRel = source.PathRel });
+                    var folder = sourceFolder is null ? null : LibraryTree.Confine(_state.Current.StubRoot, sourceFolder, op.FromTop);
+                    if (folder is not null && Directory.Exists(folder) && !await RetentionGuard.BeforeFolderAsync(Retention, _state.Current.StubRoot, folder, CancellationToken.None).ConfigureAwait(false))
+                    {
+                        throw new IOException("progressCaptureHeld");
+                    }
+                }
+
                 await ApplyStateAsync(move).ConfigureAwait(false);
                 move.StateApplied = true;
                 _store.Save(journal);

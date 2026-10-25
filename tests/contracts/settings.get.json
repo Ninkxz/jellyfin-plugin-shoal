@@ -10,6 +10,7 @@
   "diskQuotaGbPerPeer": 2,
   "artQuality": "Standard",
   "autoFitQualityToLink": true,
+  "keepMyPlaceEnabled": true,
   "maxStreamsPerUser": 4,
   "hlsBufferAhead": 6,
   "tvShowsEnabled": true,

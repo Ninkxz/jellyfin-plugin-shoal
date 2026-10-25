@@ -121,6 +121,13 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
         _d = new Dependencies(trust, reader, store, writer, local, refresh, time, logger, isUp ?? (static _ => true));
     }
 
+    /// <summary>Gets or sets the local progress capture required before stub removal.</summary>
+    public Jellyfin.Plugin.Shoal.Progress.IKeepMyPlaceRetention? KeepMyPlace
+    {
+        get => _d.Retention;
+        set => _d.Retention = value;
+    }
+
     /// <summary>
     /// Gets or sets the overall budget of one sync (tests shorten it).
     /// </summary>
@@ -491,6 +498,8 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
 
         /// <summary>Gets or sets the global title groups (PLAN v2.9 K42), or null: then no group is read or written and dedup is the v1 rank rule alone.</summary>
         public GroupBook? Groups { get; set; }
+
+        public Jellyfin.Plugin.Shoal.Progress.IKeepMyPlaceRetention? Retention { get; set; }
 
         /// <summary>
         /// Says whether a library scan may be queued for this server now (once in five minutes at most), and notes it when it may.

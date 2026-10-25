@@ -72,7 +72,30 @@ public sealed class SettingsTests
         Assert.Equal(1, c.TrickplayCacheGb);
         Assert.True(c.AttachmentsEnabled);
         Assert.True(c.ReencodeImages);
+        Assert.True(c.KeepMyPlaceEnabled);
         Assert.Empty(SettingsValidator.Apply(c));
+    }
+
+    [Fact]
+    public void KeepMyPlace_MissingXmlElementUsesEnabledDefault()
+    {
+        var config = FromXml("<PluginConfiguration><SchemaVersion>2</SchemaVersion></PluginConfiguration>");
+
+        Assert.True(config.KeepMyPlaceEnabled);
+        Assert.True(FromXml(ToXml(config)).KeepMyPlaceEnabled);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void KeepMyPlace_ExplicitXmlValueSurvivesLoadValidationAndSave(bool enabled)
+    {
+        var config = FromXml($"<PluginConfiguration><KeepMyPlaceEnabled>{enabled.ToString().ToLowerInvariant()}</KeepMyPlaceEnabled></PluginConfiguration>");
+
+        SettingsValidator.Apply(config);
+
+        Assert.Equal(enabled, config.KeepMyPlaceEnabled);
+        Assert.Equal(enabled, FromXml(ToXml(config)).KeepMyPlaceEnabled);
     }
 
     [Fact]
@@ -87,7 +110,7 @@ public sealed class SettingsTests
         Assert.Equal(
             new[]
             {
-                "AlternateVersionsEnabled", "ArtQuality", "AttachmentsEnabled", "AutoFitQualityToLink", "DetectableByFriends", "DiskQuotaGbPerPeer", "HlsBufferAhead", "HlsSubtitlesEnabled", "MassDeletionMinCount", "MassDeletionPercent",
+                "AlternateVersionsEnabled", "ArtQuality", "AttachmentsEnabled", "AutoFitQualityToLink", "DetectableByFriends", "DiskQuotaGbPerPeer", "HlsBufferAhead", "HlsSubtitlesEnabled", "KeepMyPlaceEnabled", "MassDeletionMinCount", "MassDeletionPercent",
                 "MaxStreamsPerUser", "NewItemsMinCount", "NewItemsPercent", "NotifyClientsWhenOffline", "OfflineCardEnabled", "ParkAfterHours", "ParkOfflinePeers", "ReencodeImages",
                 "RequestServiceName", "RequestServiceUrl", "SchemaVersion", "SpeedTestIntervalHours", "SyncIntervalHours", "TailscaleSocket", "TrickplayCacheGb", "TrickplayEnabled", "TvEpisodeThumbs", "TvShowsEnabled"
             }.Order(StringComparer.Ordinal),

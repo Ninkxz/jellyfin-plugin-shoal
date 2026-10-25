@@ -101,7 +101,7 @@ public sealed record ImageSandboxStatus(string State, string Limits, string? Rea
 /// under a wall clock, an output cap and, on Linux where <c>prlimit</c> exists, an address-space, CPU and file-size limit; what is stored is a
 /// fresh baseline JPEG with the metadata stripped. This contains a decoder crash or a decompression bomb and keeps the decoder out of the
 /// Jellyfin process. It is not a privilege sandbox. One child runs at a time. When the switch is off, or the self-test shows that ffmpeg
-/// cannot be used, images pass through unchanged (v1).
+/// cannot be used while enabled, new images are refused until it recovers. Disabling it explicitly retains the original bytes.
 /// </summary>
 public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, IDisposable
 {
@@ -274,7 +274,12 @@ public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, 
     {
         ArgumentNullException.ThrowIfNull(spec);
         var passThrough = new ImageSanitizeResult(true, input);
-        if (!_enabled() || _disposed)
+        if (_disposed)
+        {
+            return Refuse();
+        }
+
+        if (!_enabled())
         {
             return passThrough;
         }
@@ -286,22 +291,17 @@ public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, 
         }
 
         // A tile is waited for by a person (DESIGN v2.6.5): it has its own lane, so it never queues behind a sync image, and it never runs the self-test on the
-        // request path. When the sandbox is not known to work, the test is started in the background; until it passes a tile is refused (undecided) or passed
-        // through as in v1 (known unavailable) (Warden 10 L3).
+        // request path. When the sandbox is not known to work, the test is started in the background; until it passes the tile is refused.
         var tile = spec.Kind == ImageKind.Tile;
         if (tile && _availability != 1)
         {
             if (_availability == 2 && _time.GetUtcNow().UtcTicks - Interlocked.Read(ref _unavailableAtTicks) < RetestAfter.Ticks)
             {
-                return passThrough;
+                Interlocked.Increment(ref _rejected);
+                return Refuse();
             }
 
             RequestSelfTest();
-            if (_availability == 2)
-            {
-                return passThrough;
-            }
-
             Interlocked.Increment(ref _rejected);
             return Refuse();
         }
@@ -315,7 +315,8 @@ public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, 
                 switch (await EnsureAvailableLockedAsync(cancellationToken).ConfigureAwait(false))
                 {
                     case false:
-                        return passThrough; // known unavailable: v1
+                        Interlocked.Increment(ref _rejected);
+                        return Refuse();
                     case null:
                         Interlocked.Increment(ref _rejected); // one failure is not yet proof: this image waits for the next sync, it is not stored unsanitized
                         return Refuse();
@@ -329,11 +330,7 @@ public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, 
                     _failures = 0;
                     return new ImageSanitizeResult(true, run.Output);
                 case ChildRunKind.CouldNotStart:
-                    if (NoteFailure("ffmpegMissing"))
-                    {
-                        return passThrough;
-                    }
-
+                    NoteFailure("ffmpegMissing");
                     Interlocked.Increment(ref _rejected);
                     return Refuse();
                 default:
@@ -473,7 +470,7 @@ public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, 
 
     private static ImageSanitizeResult Refuse() => new(false, ReadOnlyMemory<byte>.Empty);
 
-    // True: usable. False: known unavailable (images pass through as in v1). Null: not decided yet (one failure so far).
+    // True: usable. False: known unavailable (new images are refused). Null: not decided yet (one failure so far).
     private async Task<bool?> EnsureAvailableLockedAsync(CancellationToken cancellationToken)
     {
         if (_availability == 1)
@@ -535,7 +532,7 @@ public sealed class ChildImageSanitizer : IImageSanitizer, IImageSandboxStatus, 
         _reason = reason;
         Interlocked.Exchange(ref _unavailableAtTicks, _time.GetUtcNow().UtcTicks);
         _availability = 2;
-        _logger.LogWarning("The image sandbox is unavailable ({Reason}); images are stored as the peer sent them", reason);
+        _logger.LogWarning("The image sandbox is unavailable ({Reason}); new images are refused until it recovers", reason);
     }
 
     private async Task<ChildRunResult> RunAsync(ReadOnlyMemory<byte> input, IReadOnlyList<string> ffmpegArguments, ImageSpec spec, CancellationToken cancellationToken)

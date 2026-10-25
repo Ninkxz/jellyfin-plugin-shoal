@@ -417,8 +417,8 @@ public sealed class ReadAheadTests
 
         rig.Advance("g", 0);
         rig.Advance("g", 1);
-        await SettleAsync(() => rig.ReadAhead.HeldBytes >= 1000);
-        await Task.Delay(100);
+        await SettleAsync(() => rig.ReadAhead.Find("g", 4) is not null);
+        await rig.ReadAhead.Find("g", 4)!; // final accounting follows completion, not the in-flight reservation
 
         Assert.Equal([2, 3, 4], rig.Asked()); // 3 failed once and was left alone
         Assert.Null(rig.ReadAhead.Find("g", 3)); // so the client's own request goes to the Peer

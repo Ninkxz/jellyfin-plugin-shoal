@@ -88,16 +88,25 @@ public sealed class TvLayout : ITvLayout
         var accepted = new List<SanitizedEpisode>(episodes.Count);
         var lastEnd = new Dictionary<int, int>();
         var duplicates = 0;
+        var held = new List<SanitizedEpisode>();
         foreach (var episode in episodes
             .OrderBy(static e => e.Season)
             .ThenBy(static e => e.Number)
-            .ThenBy(static e => e.NumberEnd ?? e.Number)
+            .ThenByDescending(static e => e.NumberEnd ?? e.Number)
             .ThenBy(static e => e.PeerItemId))
         {
             // Sorted by start, so the accepted ranges of a season are disjoint and rising: one number says whether a new range overlaps any of them.
             if (lastEnd.TryGetValue(episode.Season, out var end) && episode.Number <= end)
             {
-                duplicates++;
+                if ((episode.NumberEnd ?? episode.Number) > end)
+                {
+                    held.Add(episode);
+                }
+                else
+                {
+                    duplicates++;
+                }
+
                 continue;
             }
 
@@ -105,7 +114,7 @@ public sealed class TvLayout : ITvLayout
             accepted.Add(episode);
         }
 
-        return new TvEpisodeSet(accepted, duplicates);
+        return new TvEpisodeSet(accepted, duplicates, held);
     }
 
     /// <inheritdoc />
@@ -145,7 +154,7 @@ public sealed class TvLayout : ITvLayout
                 {
                     if (byStrong.TryGetValue(key, out var list))
                     {
-                        candidates.AddRange(list.Where(c => seen.Add(c.PeerItemId)));
+                        candidates.AddRange(list.Where(c => !TvIdentityIndex<LocalSeries>.Conflicts(ids, c.ProviderIds) && seen.Add(c.PeerItemId)));
                     }
                 }
             }

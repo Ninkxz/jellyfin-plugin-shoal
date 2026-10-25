@@ -67,6 +67,9 @@ public sealed class GroupCopyWriter : IDisposable
     /// <summary>Gets or sets what writes the users' tags (the tag service's reconcile) and says whether every write held; it runs before any copy file is written.</summary>
     public Func<CancellationToken, Task<bool>>? TagsFirst { get; set; }
 
+    /// <summary>Gets or sets the local progress capture required before deleting a copy.</summary>
+    public Jellyfin.Plugin.Shoal.Progress.IKeepMyPlaceRetention? Retention { get; set; }
+
     /// <summary>
     /// The <c>shoal-alt-</c> tags of a copy: one for each other library holding a copy of the title that comes before it in the library order.
     /// </summary>
@@ -123,6 +126,28 @@ public sealed class GroupCopyWriter : IDisposable
             }
 
             var state = _state.Current;
+            if (state.Home.Peers.Any(p => !_catalog.IsReadable(p.PeerKey)))
+            {
+                return new GroupCopyResult(0, 0, 0);
+            }
+
+            // Capture while the old groups still classify their copies, before retirement changes ownership.
+            var retiring = _groups.All().SelectMany(g =>
+            {
+                var primary = g.Copies.FirstOrDefault(static c => !c.Extra)?.LibKey ?? string.Empty;
+                var wanted = WantedLibraries(state, g, primary);
+                return g.Copies.Where(c => c.Extra && !wanted.Contains(c.LibKey));
+            }).Concat(_groups.RetiredCopies()).ToList();
+            foreach (var copy in retiring)
+            {
+                var library = state.Home.Libraries.FirstOrDefault(l => l.LibKey == copy.LibKey);
+                var root = library is null ? null : LibraryFolders.PathOf(state.StubRoot, library);
+                var folder = root is null ? null : LibraryTree.Confine(state.StubRoot, root, copy.FolderRel);
+                if (folder is not null && Directory.Exists(folder) && !await RetentionGuard.BeforeFolderAsync(Retention, state.StubRoot, folder, cancellationToken).ConfigureAwait(false))
+                {
+                    return new GroupCopyResult(0, 0, 0);
+                }
+            }
 
             // 1. The plan, recorded before anything is written.
             var tagsChanged = new HashSet<string>(StringComparer.Ordinal);
@@ -169,7 +194,7 @@ public sealed class GroupCopyWriter : IDisposable
                 }
             }
 
-            var removed = RemoveRetired(state, retired, changedFolders);
+            var removed = await RemoveRetiredAsync(state, retired, changedFolders, cancellationToken).ConfigureAwait(false);
 
             // 4. A targeted scan of each library folder that changed.
             foreach (var folder in changedFolders)
@@ -331,7 +356,7 @@ public sealed class GroupCopyWriter : IDisposable
     }
 
     // Deletes the recorded folders of retired copies, then forgets them. A folder that a catalog records (a connection's own stub) is never deleted.
-    private int RemoveRetired(ShoalState state, List<GroupCopy> retired, HashSet<string> changedFolders)
+    private async Task<int> RemoveRetiredAsync(ShoalState state, List<GroupCopy> retired, HashSet<string> changedFolders, CancellationToken cancellationToken)
     {
         if (retired.Count == 0)
         {
@@ -353,7 +378,7 @@ public sealed class GroupCopyWriter : IDisposable
             if (LibraryTree.Confine(state.StubRoot, root, copy.FolderRel) is { } folder && Directory.Exists(folder))
             {
                 var sentinel = Path.Combine(folder, copy.FolderRel + ".strm");
-                var ours = File.Exists(sentinel) && StubSentinel.TryParse(File.ReadAllText(sentinel), out var key) && string.Equals(key, copy.StubKey, StringComparison.Ordinal);
+                var ours = File.Exists(sentinel) && StubSentinel.TryParse(await File.ReadAllTextAsync(sentinel, cancellationToken).ConfigureAwait(false), out var key) && string.Equals(key, copy.StubKey, StringComparison.Ordinal);
                 if (!ours || library!.Feeds.Any(peer => _catalog.Find(peer, copy.FolderRel) is not null))
                 {
                     done.Add(copy.StubKey); // not this copy's folder any more: never deleted

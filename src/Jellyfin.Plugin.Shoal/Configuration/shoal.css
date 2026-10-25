@@ -668,6 +668,7 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 .shoalPage .shoal-kpi dt { font-size: 0.8125rem; color: var(--shoal-muted); }
 .shoalPage .shoal-kpi dd { margin-top: 2px; font-size: 1.75rem; line-height: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .shoalPage .shoal-kpi__unit { font-size: 0.9375rem; line-height: 1.25rem; font-weight: 400; color: var(--shoal-muted); }
+.shoalPage .shoal-kpi .shoal-kpi__measured { font-size: 0.8125rem; line-height: 1.25rem; font-weight: 400; }
 .shoalPage .shoal-kpi__offline { font-size: 0.9375rem; font-weight: 400; color: var(--shoal-muted); }
 .shoalPage .shoal-kpi__word { font-size: 1.125rem; line-height: 2rem; }
 .shoalPage .shoal-kpi__word.is-warn { color: var(--shoal-warn); }

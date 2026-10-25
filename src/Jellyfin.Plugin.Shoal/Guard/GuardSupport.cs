@@ -113,6 +113,9 @@ public sealed class GuardShares
     /// <summary>Gets the last snapshot that was built, without looking at the state at all (what job d falls back on).</summary>
     public GuardSnapshot LastKnown => (_built ?? Empty).Snapshot;
 
+    /// <summary>Gets the last hardening mode without reading a possibly unavailable state store.</summary>
+    public HardeningMode LastKnownMode => (_built ?? Empty).Mode;
+
     private Built Resolve()
     {
         if (_state.Status == StateStatus.Ready)

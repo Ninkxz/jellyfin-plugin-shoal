@@ -249,7 +249,7 @@ public sealed class GroupPlayback : IGroupPlayback
             return null;
         }
 
-        var hidden = _catalog.FindHiddenEpisode(member.PeerKey, member.PeerItemId, season, number);
+        var hidden = _catalog.FindHiddenEpisode(member.PeerKey, member.PeerItemId, season, number, stubEntry.EpisodeEnd);
         return hidden is not null && (hidden.EpisodeEnd ?? number) == (stubEntry.EpisodeEnd ?? number) ? hidden : null;
     }
 }

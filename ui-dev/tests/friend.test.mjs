@@ -27,7 +27,7 @@ test('header: name, status chip, sharing account and the help under Pause', asyn
         const header = p.page.querySelector('.shoal-detail__header');
         assert.match(header.textContent, /Waiting for friend/);
         assert.match(header.textContent, /Sharing account shoal-sam · since /);
-        assert.match(header.textContent, /Signs Sam's server out at once\. Its titles stay listed on their side but won't play\./);
+        assert.match(header.textContent, /Pausing signs Sam's server out at once\. Its titles stay listed on their side but won't play until you resume\./);
         assert.ok(buttonIn(header, 'Pause'));
     } finally {
         p.close();

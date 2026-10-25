@@ -154,8 +154,8 @@ test('U-Q1: limit control Off/480p/720p/1080p/4K, speed cap field labelled, no c
         assert.equal(panel.hidden, false);
         assert.equal(panel.querySelector('h2').textContent, 'Quality limit');
         assert.match(visibleText(panel), /The highest quality Fernwood sends to your server\./);
-        assert.deepEqual(segButtons(panel).map((b) => b.textContent.trim()), ['Off', '480p', '720p', '1080p', '4K']);
-        assert.deepEqual(pressed(panel), ['Off']);
+        assert.deepEqual(segButtons(panel).map((b) => b.textContent.trim()), ['No limit', '480p', '720p', '1080p', '4K']);
+        assert.deepEqual(pressed(panel), ['No limit']);
         assert.equal(p.page.querySelector('#' + panel.querySelector('.shoal-seg').getAttribute('aria-labelledby')).textContent, 'Limit');
         const input = panel.querySelector('input');
         assert.equal(panel.querySelector('label[for="' + input.id + '"]').textContent, 'Speed cap (optional)');
@@ -184,7 +184,7 @@ test('U-Q1: choosing 1080p sends the class with the limit the admin saw, then sh
         assert.equal(visibleText(cost), "Titles above this quality will be converted by Fernwood. That uses their computer's power.");
         assert.equal(live(p), 'Quality limit for Fernwood: up to 1080p.');
         assert.equal(document.activeElement.textContent.trim(), '1080p');
-        buttonIn(qual(p), 'Off').click();
+        buttonIn(qual(p), 'No limit').click();
         await p.wait(120);
         assert.deepEqual(calls(p, 'PUT', 'Peers/h-fern/QualityLimit')[1].body.expectedCurrent, { maxClass: '1080', maxMbps: null });
         assert.equal(live(p), 'Quality limit for Fernwood is off.');

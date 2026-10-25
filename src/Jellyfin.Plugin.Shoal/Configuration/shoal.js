@@ -241,7 +241,18 @@ const STRINGS = {
     versionLine: "Shoal version {version}",
     versionNewer: "A newer Shoal is available: {latest}. Update it in Dashboard, Plugins, Shoal, then restart Jellyfin.",
     unreadableAnswer: "Your server answered in a way this page could not read. The action may have worked: reload the page to see.",
-    unexpectedError: "Something went wrong in this page. Reload it and try again. If it keeps happening, tell the developer: {detail}",
+    unexpectedError: "Shoal couldn't finish updating this page. If you were saving a change, check its current setting before trying again.",
+    technicalDetails: "Technical details",
+    retryRead: "Reload page data",
+    sectionLoadFailed: "Couldn't load {section}. Previously loaded information may be out of date.",
+    measurementUnknown: "Measurement time unknown",
+    fKeepMyPlace: "Keep My Place",
+    fKeepMyPlaceNote: "When a shared movie or episode becomes available locally, keep compatible watched status and resume position for the same user on this server. Existing local progress is kept. No watch history is sent to friends.",
+    seriesGroupingWarning: "Series grouping is off in {library}. When several friends share a matching series, extra episodes from friends can stay hidden. Review the series grouping setting in Jellyfin's library settings.",
+    catalogRecoveryTitle: "Saved library list needs recovery",
+    episodeRangeConflictTitle: "Episode numbering overlaps",
+    episodeRangeConflictBody: "Some shared episode files cover overlapping episode numbers. Shoal has held the affected changes. Ask the sharing server's admin to use matching episode ranges or correct the numbering, then sync again. Approving additions cannot override this check.",
+    catalogRecoveryBody: "Shoal cannot read this server's saved library list. Sync and library changes are paused to keep existing files safe. Restore a known-good Shoal backup before trying again.",
     removeBlockedSyncing: "Shoal is syncing {server} right now, so it can't be removed yet. Wait for the sync to finish, then press Remove server again.",
     removeBlockedPairing: "A pairing with {server} is in progress. Cancel it first (Pair a server, then Cancel pairing), then remove the server.",
     dedupNote: ["{count} title is also on {winner}. People see it once: it plays from the best server, and the other stays ready as a backup.", "{count} titles are also on {winner}. People see each once: they play from the best server, and the other stays ready as a backup."],
@@ -401,7 +412,7 @@ const STRINGS = {
     qlTitle: "Quality limit",
     qlLead: "The highest quality {server} sends to your server.",
     qlLimit: "Limit",
-    qlOff: "Off",
+    qlOff: "No limit",
     qlMbps: "Speed cap (optional)",
     qlMbpsPlaceholder: "No cap",
     qlMbpsUnit: "Mbps",
@@ -523,7 +534,7 @@ const STRINGS = {
     speedSub_24h: "Last 24 hours · {tests} {testWord} and {plays} {playWord}, measured from your server",
     speedSub_7d: "Last 7 days · {tests} {testWord} and {plays} {playWord}, measured from your server",
     speedSub_30d: "Last 30 days · {tests} {testWord} and {plays} {playWord}, measured from your server",
-    kpiNow: "Speed now",
+    kpiNow: "Last measured",
     kpiLatency: "Latency",
     kpiStability: "Stability",
     kpiLowest_24h: "Lowest in 24 h",
@@ -637,7 +648,7 @@ const STRINGS = {
     noLibrariesYet: "No libraries from friends yet.",
     noSharing: "You aren't sharing any libraries.",
     libraryMetaSplit: "{remote} on their server, {local} here · last sync {when}",
-    libraryFromMetaSplit: "From {name} · {remote} on their server, {local} here · last sync {when} ({result})",
+    libraryFromMetaSplit: "From {name} · {remote} on their server, {local} here · last sync {when}{resultSuffix}",
     libMetaRemote: "{type} · {count} on their server",
     libraryMeta: ["{count} title \u00b7 last sync {when}", "{count} titles \u00b7 last sync {when}"],
     shareMeta: "{k}: {names} \u00b7 highest quality {limit} \u00b7 {tc}",
@@ -957,14 +968,14 @@ const STRINGS = {
     fAttachments: "Use the fonts that come with a title's subtitles",
     fAttachmentsNote: "Styled subtitles (ASS) then look the way their maker intended. Only font files are used.",
     fReencode: "Check pictures before keeping them",
-    fReencodeNote: "Shoal re-saves every picture from a friend with a separate helper program before keeping it, so a damaged picture can't harm your server.",
+    fReencodeNote: "Shoal checks and re-saves pictures before keeping them, reducing risk from malformed images.",
     sandboxActiveFull: "The picture check is on.",
     sandboxActivePartial: "The picture check is on, with time and size limits only.",
     sandboxRejected: ["{n} picture was refused since the server started.", "{n} pictures were refused since the server started."],
     sandboxOff: "Turned off. Pictures are checked the usual way.",
-    sandboxUnavailable_ffmpegMissing: "Shoal could not find ffmpeg on this server. Pictures are checked the usual way.",
-    sandboxUnavailable_selfTestFailed: "The test run of the check failed. Pictures are checked the usual way.",
-    sandboxUnavailable_other: "Pictures are checked the usual way.",
+    sandboxUnavailable_ffmpegMissing: "Shoal could not find ffmpeg on this server. Existing pictures stay available. New pictures wait until picture checking works again.",
+    sandboxUnavailable_selfTestFailed: "The test run of the check failed. Existing pictures stay available. New pictures wait until picture checking works again.",
+    sandboxUnavailable_other: "Picture checking is unavailable. Existing pictures stay available. New pictures wait until picture checking works again.",
     sandboxAlertTitle: "The picture check is not available",
     countersTitle: "What Shoal turned away",
     countersIntro: "Counted since {when}, and reset when the server restarts. No addresses, titles or apps are kept.",
@@ -1279,7 +1290,7 @@ const STRINGS = {
     libGroupTotal: ["{count} title in {libs}", "{count} titles in {libs}"],
     accessInLibrary: "{access}, in {library}",
     accessInsideMain: "{access}, in {library}, inside {main}",
-    libraryFromMeta: ["From {remote} · {count} title · last sync {when} ({result})", "From {remote} · {count} titles · last sync {when} ({result})"],
+    libraryFromMeta: ["From {remote} · {count} title · last sync {when}{resultSuffix}", "From {remote} · {count} titles · last sync {when}{resultSuffix}"],
     syncResult_ok: "OK",
     syncResult_partial: "partly",
     syncResult_failed: "failed",
@@ -1323,7 +1334,8 @@ const STRINGS = {
     removeConfirm: "Remove server",
 
     checkCertificate: "Check certificate",
-    pausePeerHelp: "Titles stay listed here but won't play until you resume.",
+    pausePeerHelp: "Pausing keeps titles listed here but stops playback until you resume.",
+    resumePeerHelp: "This server is paused. Titles stay listed here but won't play until you resume.",
     announcePausedLong: "{server} paused. Its titles stay listed but won't play.",
     keepForNow: "Keep them for now",
     notNow: "Not now",
@@ -1412,7 +1424,7 @@ const STRINGS = {
     friendSharingAccount: "Sharing account {account} · since {date}",
     friendSharingSince: "Sharing since {date}",
     friendSharingAccountOnly: "Sharing account {account}",
-    pauseHelp: "Signs {friend}'s server out at once. Its titles stay listed on their side but won't play.",
+    pauseHelp: "Pausing signs {friend}'s server out at once. Its titles stay listed on their side but won't play until you resume.",
     resumeHelp: "Shoal first signs out any device that isn't {friend}'s server, then lets it back in.",
     friendAccessRemovedHint: "{friend}'s sharing account was turned off or deleted outside Shoal. Create an invite to share again, or stop sharing to clean up.",
     inviteSectionTitle: "Invite",
@@ -2801,9 +2813,10 @@ let activeReporter = null;
 
 /** An error nobody planned for becomes visible text with its name, not a button that does nothing. */
 function reportUnexpected(err) {
-    const detail = (err && (err.name ? err.name + ': ' : '') + (err.message || err)) || 'unknown';
+    // Exception messages may contain addresses, query strings or credentials. Only expose a known error type.
+    const detail = err && /^(Error|TypeError|RangeError|ReferenceError|SyntaxError|URIError|EvalError)$/.test(err.name) ? err.name : 'Error';
     if (activeReporter) {
-        activeReporter(t('unexpectedError', { detail: String(detail).slice(0, 200) }));
+        activeReporter(detail);
     }
 }
 
@@ -4306,7 +4319,7 @@ function createContext(page, params, deps) {
             ctx.later(() => node.remove(), 6000);
         },
         /** A failure of something the admin did: spoken like alertMessage, and kept on screen as a bar until it is dismissed (never a 5 second whisper). */
-        fail(message) {
+        fail(message, options) {
             ctx.alertMessage(message);
             let host = root.querySelector('.shoal-errors');
             if (!host) {
@@ -4321,7 +4334,11 @@ function createContext(page, params, deps) {
             }
 
             const bar = el('div', { class: 'shoal-errorbar shoal-hint shoal-hint--bad', role: 'alert', 'data-text': message }, icon('x', true),
-                el('div', { class: 'shoal-hint__body', text: message }),
+                el('div', { class: 'shoal-hint__body' }, el('p', { text: message }),
+                    options && options.detail ? el('details', {}, el('summary', { text: t('technicalDetails') }), el('p', { text: options.detail })) : null,
+                    options && options.onRetry ? button({ label: t('retryRead'), small: true, onClick: async (ev, btn) => {
+                        await runAction(ctx, btn, { busyText: t('loadingShoal'), run: options.onRetry, onDone: () => bar.remove() });
+                    } }) : null),
                 button({ label: t('dismiss'), small: true, onClick: () => bar.remove() }));
             host.prepend(bar);
         },
@@ -4472,6 +4489,10 @@ function createPoller(ctx, fn, ms) {
 
 /** Maps an API failure to the generic sentence the UI is allowed to show. */
 function failureMessage(err, fallbackKey) {
+    if (err && err.kind === 'catalogUnreadable') {
+        return t('catalogRecoveryBody');
+    }
+
     if (err && err.status === 429) {
         return t('tooManyTries');
     }
@@ -4867,14 +4888,19 @@ function createSpeedPanel(ctx, o) {
         sub.textContent = t('speedSub_' + rangeKey, { tests, plays: samples.length - tests, testWord: t('testWord', { n: tests }), playWord: t('playWord', { n: samples.length - tests }) });
         const k = data.kpis || {};
         const offline = model.key === 'offline';
-        // "Speed now" is the newest point of the chart, so the card and the chart never give two different latest speeds.
+        // Keep measurement age tied to the newest successful sample, never the poll time.
         const newest = samples.filter((x) => typeof x.mbps === 'number' && !x.error).reduce((m, x) => (!m || (toMs(x.t) || 0) >= (toMs(m.t) || 0) ? x : m), null);
         const nowMbps = newest ? newest.mbps : k.nowMbps;
         const nowValue = !offline && typeof nowMbps === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.mbpsValue(nowMbps) })] : [unknownValue(), offline ? el('span', { class: 'shoal-kpi__offline', text: t('offlineWord') }) : null];
+        const measuredMs = newest && toMs(newest.t);
+        const measuredAt = measuredMs !== null && measuredMs !== false && measuredMs !== undefined
+            ? el('time', { class: 'shoal-meta', datetime: new Date(measuredMs).toISOString(), title: ctx.fmt.date(measuredMs) + ' ' + ctx.fmt.time(measuredMs), text: ctx.fmt.relative(measuredMs) + ' · ' + ctx.fmt.date(measuredMs) + ' ' + ctx.fmt.time(measuredMs) })
+            : el('span', { class: 'shoal-meta', text: t('measurementUnknown') });
         const kpiNodes = [
             kpi(t('kpiNow'), nowValue, !offline && typeof nowMbps === 'number' ? t('unitMbpsShort') : null),
             kpi(t('kpiLatency'), !offline && typeof k.latencyMs === 'number' ? [el('span', { class: 'shoal-kpi__num', text: ctx.fmt.num(Math.round(k.latencyMs)) })] : unknownValue(), !offline && typeof k.latencyMs === 'number' ? t('unitMsShort') : null)
         ];
+        kpiNodes[0].append(el('dd', { class: 'shoal-kpi__measured shoal-meta' }, measuredAt));
         if (o.detail) {
             const unstable = (k.jitterMs || 0) > 30 || (k.lossPct || 0) > 2;
             kpiNodes.push(kpi(t('kpiStability'), offline ? unknownValue() : el('span', { class: 'shoal-kpi__word' + (unstable ? ' is-warn' : ''), text: unstable ? t('stabilityBad', { jitter: Math.round(k.jitterMs || 0), loss: k.lossPct || 0 }) : t('stabilityGood') })));
@@ -5960,7 +5986,7 @@ function overviewScreen(ctx) {
         }).catch(() => {});
     }
 
-    // The picture check could not start (DESIGN v2.6.7): a calm alert with the way to Settings; pictures go on the usual way meanwhile.
+    // The picture check could not start: existing pictures stay; enabled checking holds new pictures until it recovers.
     function renderSandboxNotice(data) {
         if (!sandboxHost) {
             sandboxHost = el('section', { class: 'shoal-sandboxalert' });
@@ -6407,7 +6433,7 @@ function openPicker(ctx, server, mapping, users, opts) {
 function librariesScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="libraries"]');
     const body = slot(view, 'body');
-    const st = { data: null, shares: null, servers: [], loaded: false, focusKey: null, busy: new Set(), errors: new Map() };
+    const st = { data: null, shares: null, servers: [], loaded: false, focusKey: null, busy: new Set(), errors: new Map(), readErrors: [], status: null };
 
     function youId() {
         return currentUserId(ctx, st.data);
@@ -6699,11 +6725,19 @@ function librariesScreen(ctx) {
         const data = st.data;
         clear(body);
         body.append(layoutLinkPanel(ctx, null));
+        for (const name of nfoSaverNames(st.status && st.status.mainLibrariesNotMergingSeries)) {
+            body.append(seriesGroupingWarning(name));
+        }
+        for (const label of st.readErrors) {
+            body.append(loadErrorBox(() => load(false), t('sectionLoadFailed', { section: label })));
+        }
         const incoming = section(t('sharedWithYou'), { intro: t('sharedWithYouIntro') });
         const layoutLibs = st.layout && Array.isArray(st.layout.libraries) ? st.layout.libraries.filter((l) => l && typeof l.libKey === 'string' && typeof l.name === 'string') : null;
         // With layouts (v2.9) the list is the real libraries; the old per-friend mappings would name libraries that a layout already removed.
-        const mappings = layoutLibs ? [] : data.mappings || [];
-        if (layoutLibs && layoutLibs.length) {
+        const mappings = layoutLibs || (!st.layout && st.readErrors.includes(t('layLinkTitle'))) ? [] : data.mappings || [];
+        if (!st.layout && st.readErrors.includes(t('layLinkTitle'))) {
+            incoming.body.append(el('p', { class: 'shoal-meta', text: t('sectionLoadFailed', { section: t('sharedWithYou') }) }));
+        } else if (layoutLibs && layoutLibs.length) {
             incoming.body.append(el('div', { class: 'shoal-libblocks' }, layoutLibs.map(layoutLibBlock)));
         } else if (!mappings.length) {
             incoming.body.append(el('div', { class: 'shoal-emptybox' },
@@ -6733,7 +6767,9 @@ function librariesScreen(ctx) {
 
         const outgoing = section(t('youShare'), { intro: t('youShareIntro') });
         const shares = (st.shares && st.shares.shares) || [];
-        if (!shares.length) {
+        if (!st.shares && st.readErrors.includes(t('youShare'))) {
+            outgoing.body.append(el('p', { class: 'shoal-meta', text: t('sectionLoadFailed', { section: t('youShare') }) }));
+        } else if (!shares.length) {
             outgoing.body.append(el('div', { class: 'shoal-emptybox' },
                 el('p', { class: 'shoal-lead', text: t('noSharing') }),
                 button({ label: t('shareWithFriend'), onClick: () => ctx.navigate('pair', { dir: 'share' }) })));
@@ -6775,26 +6811,49 @@ function librariesScreen(ctx) {
 
         try {
             // GET Layouts/Libraries answers on a v2.9 server; an older one (404) keeps the per-friend list.
-            const [data, shares, status, layout] = await Promise.all([ctx.api.libraries(), ctx.api.shares().catch(() => ({ shares: [] })), ctx.api.status().catch(() => null), ctx.api.layouts().catch(() => null)]);
+            const [data, ...reads] = await Promise.all([ctx.api.libraries(), ...[ctx.api.shares(), ctx.api.status(), ctx.api.layouts()].map((read) => read.then((value) => ({ value }), (error) => ({ error })))]);
             if (!ctx.alive) {
                 return;
             }
 
             // Sharing accounts Shoal made for friends are never listed or counted (ui-spec 8.4.3, DESIGN 5.6).
             st.data = Object.assign({}, data, { users: (data.users || []).filter((u) => !u.isShareUser) });
-            st.shares = shares;
-            st.layout = layout && typeof layout === 'object' ? layout : null;
-            st.servers = status ? status.servers || [] : st.servers;
+            st.readErrors = [];
+            const labels = [t('youShare'), t('navOverview'), t('layLinkTitle')];
+            reads.forEach((result, i) => {
+                if (result.error) {
+                    // Only a missing Layouts route means a genuinely older server.
+                    if (i === 2 && result.error.status === 404) {
+                        st.layout = null;
+                    } else {
+                        st.readErrors.push(labels[i]);
+                    }
+                } else if (i === 0) {
+                    st.shares = result.value;
+                } else if (i === 1) {
+                    st.status = result.value;
+                    st.servers = result.value ? result.value.servers || [] : st.servers;
+                } else {
+                    st.layout = result.value && typeof result.value === 'object' ? result.value : null;
+                }
+            });
             st.loaded = true;
             render();
         } catch {
-            if (!st.loaded && ctx.alive) {
-                replaceKids(body, loadErrorBox(() => load(true)));
+            if (ctx.alive) {
+                if (!st.loaded) {
+                    replaceKids(body, loadErrorBox(() => load(true)));
+                } else {
+                    const old = body.querySelector('.shoal-loaderror');
+                    if (old) old.remove();
+                    body.prepend(loadErrorBox(() => load(false), t('sectionLoadFailed', { section: t('navLibraries') })));
+                }
             }
         }
     }
 
     return {
+        retryRead: () => load(false),
         show() {
             load(!st.loaded);
         },
@@ -6804,10 +6863,10 @@ function librariesScreen(ctx) {
 }
 
 /** The standard "couldn't load" box (ui-spec 8.1.5): never shows a server error body. */
-function loadErrorBox(onRetry) {
+function loadErrorBox(onRetry, message) {
     return el('div', { class: 'shoal-hint shoal-hint--bad shoal-loaderror', role: 'alert' },
         icon('warn', true),
-        el('p', { class: 'shoal-loaderror__text', text: t('loadFailed') }),
+        el('p', { class: 'shoal-loaderror__text', text: message || t('loadFailed') }),
         button({ label: t('tryAgain'), small: true, onClick: onRetry }));
 }
 
@@ -6978,6 +7037,12 @@ function notLockedWarning(name) {
 function mainMissingWarning(name) {
     const box = warnBox(t('layMainMissing', { library: name }));
     box.classList.add('shoal-warnbox--missing');
+    return box;
+}
+
+function seriesGroupingWarning(name) {
+    const box = warnBox(t('seriesGroupingWarning', { library: name }));
+    box.classList.add('shoal-warnbox--seriesgrouping');
     return box;
 }
 
@@ -8564,7 +8629,8 @@ function settingsScreen(ctx) {
         f.maxStreams = numberField({ id: uid('shoal-f'), label: t('fMaxStreams'), help: t('fMaxStreamsHelp'), value: d.maxStreamsPerUser, min: 1, max: 4 });
         f.bufferAhead = numberField({ id: uid('shoal-f'), label: t('fBufferAhead'), help: t('fBufferAheadHelp'), value: d.hlsBufferAhead ?? 6, min: 2, max: 20 });
         f.hlsSubs = checkRow({ id: uid('shoal-f'), label: t('fHlsSubs'), note: t('fHlsSubsNote'), checked: d.hlsSubtitlesEnabled });
-        form.append(settingsPanel(t('sPlayback'), f.autoFit.root, f.maxStreams.root, f.bufferAhead.root, f.hlsSubs.root, ctx.features && ctx.features.appsWork ? appsWorkBlock(ctx, '') : null));
+        f.keepPlace = checkRow({ id: uid('shoal-f'), label: t('fKeepMyPlace'), note: t('fKeepMyPlaceNote'), checked: d.keepMyPlaceEnabled === true });
+        form.append(settingsPanel(t('sPlayback'), f.autoFit.root, f.maxStreams.root, f.bufferAhead.root, f.hlsSubs.root, f.keepPlace.root, ctx.features && ctx.features.appsWork ? appsWorkBlock(ctx, '') : null));
 
         // 3b. Extra features (alternate versions, preview pictures, fonts, picture check)
         f.altVersions = checkRow({ id: uid('shoal-f'), label: t('fAltVersions'), note: t('fAltVersionsNote'), checked: !!d.alternateVersionsEnabled });
@@ -8641,6 +8707,7 @@ function settingsScreen(ctx) {
             maxStreamsPerUser: Number(f.maxStreams.input.value),
             hlsBufferAhead: Number(f.bufferAhead.input.value),
             hlsSubtitlesEnabled: f.hlsSubs.input.checked,
+            keepMyPlaceEnabled: f.keepPlace.input.checked,
             speedTestIntervalHours: Number(f.speedEvery.select.value),
             notifyClientsWhenOffline: f.notify.input.checked,
             parkOfflinePeers: f.park.input.checked,
@@ -10943,7 +11010,7 @@ function joinAnd(items) {
 /* ---------- Server detail: priority, quality limit, speed-test suggestion (PLAN v2.9 U-P1, U-P2, U-Q1, U-Q2) ---------- */
 
 const QUALITY_CLASSES = ['Off', '480', '720', '1080', '2160'];
-const QUALITY_LABELS = { Off: 'Off', 480: '480p', 720: '720p', 1080: '1080p', 2160: '4K' };
+const QUALITY_LABELS = { Off: 'No limit', 480: '480p', 720: '720p', 1080: '1080p', 2160: '4K' };
 
 function qualityLabel(cls) {
     return cls === 'Off' ? t('qlOff') : QUALITY_LABELS[cls] || '';
@@ -11394,6 +11461,11 @@ function serverDetailScreen(ctx) {
         return st.data && st.data.link && st.data.link.share ? st.data.link : null;
     }
 
+    function activelyWatching() {
+        const linked = alsoWatching();
+        return !!linked && linked.share.status === 'Active';
+    }
+
     function removeDialog(s) {
         return async () => {
             const libs = (st.data.libraries || []).map((l) => l.localLibraryName);
@@ -11403,7 +11475,7 @@ function serverDetailScreen(ctx) {
                 items: [t('removeItem1', { server: s.displayName }), t('removeItem2', { server: s.displayName }), t('removeItem3', { server: s.displayName })],
                 after: [
                     el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('removeNoteInvite') })),
-                    alsoWatching() ? el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('removeStillWatches', { name: s.displayName }) })) : null
+                    activelyWatching() ? el('div', { class: 'shoal-hint shoal-hint--info', role: 'note' }, icon('info', true), el('div', { class: 'shoal-hint__body', text: t('removeStillWatches', { name: s.displayName }) })) : null
                 ],
                 checkbox: libs.length ? { label: t('removeAlsoDelete', { library: libs[0], count: ctx.fmt.num(entries), n: entries }), checked: true, whenUnchecked: t('removeKeepsLibrary') } : null,
                 typed: { label: t('typeToConfirm', { text: s.displayName }), expected: s.displayName },
@@ -11460,11 +11532,11 @@ function serverDetailScreen(ctx) {
         const locked = !!(ctx.status && ctx.status.secretsUnreadable);
         const pairAgain = button({ label: t('pairAgain'), variant: problem || locked ? 'primary' : 'quiet', onClick: () => pairAgainGo(s) });
         const paused = model.key === 'paused';
-        const pauseNote = el('span', { class: 'shoal-meta shoal-action__note', id: uid('shoal-note'), text: t('pausePeerHelp') + (alsoWatching() ? ' ' + t('pauseStillWatches', { name: s.displayName }) : '') });
+        const pauseNote = el('span', { class: 'shoal-meta shoal-action__note', id: uid('shoal-note'), text: t(paused ? 'resumePeerHelp' : 'pausePeerHelp') + (activelyWatching() ? ' ' + t('pauseStillWatches', { name: s.displayName }) : '') });
         const pauseBtn = button({
             label: t(paused ? 'resume' : 'pause'),
             variant: paused ? 'primary' : 'quiet',
-            describedby: paused ? null : pauseNote.id,
+            describedby: pauseNote.id,
             onClick: (ev, btn) => act(btn, { busy: t(paused ? 'resuming' : 'pausing'), run: () => (paused ? ctx.api.resumePeer(s.handle) : ctx.api.pausePeer(s.handle)), announce: t(paused ? 'announceResumed' : 'announcePausedLong', { server: s.displayName }) })
         });
         const blocked = s.repairBlockedByHttp === true;
@@ -11488,7 +11560,7 @@ function serverDetailScreen(ctx) {
         if (!locked && !needsRepair) {
             rest.push(el('span', { class: 'shoal-action' }, syncBtn, syncNote), el('span', { class: 'shoal-action' }, testBtn, testNote));
             if (fix !== pauseBtn) {
-                rest.push(el('span', { class: 'shoal-action' }, pauseBtn, paused ? null : pauseNote));
+                rest.push(el('span', { class: 'shoal-action' }, pauseBtn, pauseNote));
             }
         }
 
@@ -11500,7 +11572,7 @@ function serverDetailScreen(ctx) {
             rest.push(removeBtn);
         }
 
-        const actionsNode = el('div', { class: 'shoal-detail__actions' }, fix, rest);
+        const actionsNode = el('div', { class: 'shoal-detail__actions' }, fix === pauseBtn ? el('span', { class: 'shoal-action' }, fix, pauseNote) : fix, rest);
         cooldownNote(ctx, 'peersync:' + s.handle, syncNote, syncBtn);
         cooldownNote(ctx, 'test:' + s.handle, testNote, testBtn);
         return el('section', { class: 'shoal-panel shoal-detail__header' },
@@ -11539,6 +11611,12 @@ function serverDetailScreen(ctx) {
         for (const a of alerts) {
             const before = out.length;
             switch (a.kind) {
+                case 'catalogRecovery':
+                    out.push(alertBox('bad', t('catalogRecoveryTitle'), t('catalogRecoveryBody'), []));
+                    break;
+                case 'episodeRangeConflict':
+                    out.push(alertBox('warn', t('episodeRangeConflictTitle'), t('episodeRangeConflictBody'), []));
+                    break;
                 case 'heldRemovals':
                     out.push(alertBox('warn', t('alertRemovalTitle', { n: a.count, count: ctx.fmt.num(a.count) }), heldBody('alertRemovalBody', 'alertRemovalBodyNoExamples', a), [
                         button({ label: t('removeThemNow'), variant: 'primary', onClick: (ev, btn) => act(btn, { busy: t('applying'), run: () => ctx.api.hold(s.handle, 'removals', 'Release'), announce: t('announceHoldReleased') }) }),
@@ -11870,13 +11948,15 @@ function serverDetailScreen(ctx) {
                 holds.push(el('span', { class: 'shoal-tone--warn shoal-holdline' }, icon('warn', true), t('additionsOnHold', { n: m.heldAdditions, count: ctx.fmt.num(m.heldAdditions) })));
             }
 
+            const result = m.lastSync ? t('syncResult_' + m.lastSync.result) : '';
+            const resultSuffix = result ? ' (' + result + ')' : '';
             const rm = button({ label: t('removeEllipsis'), small: true, onClick: () => removeLibrary(s, m) });
             return el('li', { class: 'shoal-row shoal-row--library' },
                 el('div', { class: 'shoal-row__main' },
                     el('span', { class: 'shoal-row__title', text: m.localLibraryName }),
                     el('span', { class: 'shoal-row__meta shoal-meta', text: countsDiffer(m)
-                        ? t('libraryFromMetaSplit', { name: m.remoteName || '', remote: ctx.fmt.num(m.remoteCount), local: ctx.fmt.num(m.localCount), when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' })
-                        : t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), result: m.lastSync ? t('syncResult_' + m.lastSync.result) : '' }) }),
+                        ? t('libraryFromMetaSplit', { name: m.remoteName || '', remote: ctx.fmt.num(m.remoteCount), local: ctx.fmt.num(m.localCount), when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), resultSuffix })
+                        : t('libraryFromMeta', { remote: m.remoteName || '', count: ctx.fmt.num(m.count), n: m.count, when: m.lastSync ? ctx.fmt.relative(m.lastSync.atUtc) : t('never'), resultSuffix }) }),
                     skipLine(m.lastSync, ctx.fmt, false),
                     holds),
                 el('div', { class: 'shoal-row__controls shoal-row__controls--inline' }, summary, ctx.linkEl('libraries', { focus: 'lib-' + (m.libKey || m.mappingKey) }, 'shoal-link', t('changeWhoCanSee')), rm));
@@ -12222,10 +12302,11 @@ ctx.toast(t('saved'));
 
         // Mockup server.html: priority and quality limit on the left, the speed-test suggestion and Link speed on the right (one column below L).
         st.blocks.setServer(s);
+        body.append(librariesSection(s), holdsSection(s));
         body.append(el('div', { class: 'shoal-detail-grid' },
             el('div', { class: 'shoal-detail-grid__col' }, st.blocks.prio, st.blocks.qual),
             el('div', { class: 'shoal-detail-grid__col' }, st.blocks.rec, st.speed.root)));
-        body.append(librariesSection(s), holdsSection(s), storageSection(s), playingSection(s));
+        body.append(storageSection(s), playingSection(s));
         const rotation = rotationSection(s);
         if (rotation) {
             body.append(rotation);
@@ -13431,7 +13512,10 @@ function mount(page, params, deps) {
     page.addEventListener('viewhide', onHide);
     page.addEventListener('viewdestroy', onDestroy);
     // Errors that escape every handler (a script error, a rejected promise nobody awaited) are shown, not swallowed.
-    activeReporter = (message) => ctx.fail(message);
+    activeReporter = (detail) => {
+        const current = screen;
+        ctx.fail(t('unexpectedError'), { detail, onRetry: current && current.retryRead ? () => ctx.alive && current === screen ? current.retryRead() : undefined : null });
+    };
     const onWindowError = (ev) => {
         if (ctx.alive && ctx.shown) {
             reportUnexpected(ev && (ev.error || { message: ev.message }));

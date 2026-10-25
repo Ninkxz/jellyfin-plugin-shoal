@@ -63,6 +63,11 @@ public sealed class GroupMigration
         }
 
         var state = _state.Current;
+        if (state.Home.Peers.Any(p => _catalogs.Load(p.PeerKey).Unreadable))
+        {
+            return new GroupMigrationReport(0, 0, 0, false, "catalogUnreadable");
+        }
+
         var document = Clone(_groups.All());
         var before = document.Groups.Count;
         var pending = Apply(state, document);
@@ -95,6 +100,11 @@ public sealed class GroupMigration
         }
 
         var state = _state.Current;
+        if (state.Home.Peers.Any(p => _catalogs.Load(p.PeerKey).Unreadable))
+        {
+            return new GroupMigrationReport(0, 0, 0, false, "catalogUnreadable");
+        }
+
         var pending = 0;
         var made = 0;
         _groups.Update(document =>

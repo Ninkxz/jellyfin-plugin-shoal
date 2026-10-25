@@ -106,6 +106,11 @@ public sealed class StubCatalog : ILibraryTreeOwners
     /// <param name="store">The catalog store.</param>
     public StubCatalog(CatalogStore store) => _store = store;
 
+    /// <summary>Whether a catalog can authorize changes to group copies.</summary>
+    /// <param name="peerKey">The peer.</param>
+    /// <returns>False during recovery.</returns>
+    public bool IsReadable(string peerKey) => !_store.Load(peerKey).Unreadable;
+
     /// <summary>
     /// Finds the entry of a stub.
     /// </summary>
@@ -129,8 +134,9 @@ public sealed class StubCatalog : ILibraryTreeOwners
     /// <param name="peerSeriesId">Its series id (32 hex).</param>
     /// <param name="season">The season.</param>
     /// <param name="episode">The episode number.</param>
+    /// <param name="episodeEnd">The exact last represented episode, or null for one.</param>
     /// <returns>The entry, or null.</returns>
-    public CatalogEntry? FindHiddenEpisode(string peerKey, string peerSeriesId, int season, int episode) => Load(peerKey)?.HiddenEpisodes.GetValueOrDefault((peerSeriesId, season, episode));
+    public CatalogEntry? FindHiddenEpisode(string peerKey, string peerSeriesId, int season, int episode, int? episodeEnd = null) => Load(peerKey)?.HiddenEpisodes.GetValueOrDefault((peerSeriesId, season, episode, episodeEnd ?? episode));
 
     /// <summary>
     /// Finds the series entry that owns a top folder of a server's library (K47).
@@ -194,7 +200,7 @@ public sealed class StubCatalog : ILibraryTreeOwners
             var byFolder = new Dictionary<string, CatalogEntry>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
             var byItem = new Dictionary<string, CatalogEntry>(StringComparer.Ordinal);
             var byTop = new Dictionary<string, CatalogEntry>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-            var hidden = new Dictionary<(string Series, int Season, int Episode), CatalogEntry>();
+            var hidden = new Dictionary<(string Series, int Season, int Episode, int End), CatalogEntry>();
             foreach (var entry in load.Document.Entries)
             {
                 if (entry.Kind == EntryKind.Movie)
@@ -203,7 +209,7 @@ public sealed class StubCatalog : ILibraryTreeOwners
                 }
                 else if (entry.Kind == EntryKind.Episode && entry.State == EntryState.DuplicatePeer && entry.Season is { } season && entry.Episode is { } number)
                 {
-                    hidden.TryAdd((entry.PeerSeriesId, season, number), entry); // K43: a hidden source of another server's episode
+                    hidden.TryAdd((entry.PeerSeriesId, season, number, entry.EpisodeEnd ?? number), entry); // K43: a hidden source of another server's episode
                 }
 
                 if (entry.StubRelPath is not null)
@@ -228,7 +234,7 @@ public sealed class StubCatalog : ILibraryTreeOwners
         return cached;
     }
 
-    private sealed record Cached((long Ticks, long Length)? Stamp, Dictionary<string, CatalogEntry> ByFolder, Dictionary<string, CatalogEntry> MovieByItem, Dictionary<string, CatalogEntry> ByTop, Dictionary<(string Series, int Season, int Episode), CatalogEntry> HiddenEpisodes);
+    private sealed record Cached((long Ticks, long Length)? Stamp, Dictionary<string, CatalogEntry> ByFolder, Dictionary<string, CatalogEntry> MovieByItem, Dictionary<string, CatalogEntry> ByTop, Dictionary<(string Series, int Season, int Episode, int End), CatalogEntry> HiddenEpisodes);
 }
 
 /// <summary>

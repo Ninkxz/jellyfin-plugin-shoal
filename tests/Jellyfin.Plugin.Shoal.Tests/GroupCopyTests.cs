@@ -109,6 +109,77 @@ public sealed class GroupCopyTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LostCatalog_HoldsCopyPlanningAndRetirement()
+    {
+        var path = Path.Combine(_dir.Path, "shoal", "peers", A, "catalog.json");
+        File.Delete(path);
+        File.Delete(path + ".bak");
+        var before = System.Text.Json.JsonSerializer.Serialize(_book.All());
+        Assert.Equal(new GroupCopyResult(0, 0, 0), await _writer.RunAsync());
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(_book.All()));
+        Assert.False(Directory.Exists(Path.Combine(Root, "libs", L2, Folder)));
+        Assert.Empty(_events);
+    }
+
+    [Fact]
+    public async Task NewPeer_SharedLibraryWithKnownCopiesStillAllowsFirstImport()
+    {
+        await _writer.RunAsync();
+        var newPeer = new string('c', 32);
+        await _state.UpdateAsync(s =>
+        {
+            s.Home.Peers.Add(new PeerState { PeerKey = newPeer, DisplayName = "C", BaseUrl = "https://example.invalid", Libraries = { new LibraryMapping { MappingKey = "movies-1", RemoteName = "Movies", Subfolder = "movies" } } });
+            s.Home.Libraries.Single(l => l.LibKey == L2).Feeds.Add(newPeer);
+        });
+        var store = new CatalogStore(new ShoalPaths(_dir.Path), NullLogger<CatalogStore>.Instance, _state);
+        Assert.False(store.Load(newPeer).Unreadable);
+    }
+
+    [Fact]
+    public async Task CopyRetirement_FailedCaptureKeepsGroupOwnershipAndFile()
+    {
+        await _writer.RunAsync();
+        var capture = new KeepMyPlaceRetentionTests.Capture();
+        _writer.Retention = capture;
+        await _state.UpdateAsync(s => s.Home.Libraries.Single(l => l.LibKey == L2).Feeds.Clear());
+        var copy = _book.All().Single().Copies.Single(c => c.Extra);
+        var path = Path.Combine(Root, "libs", L2, Folder, Folder + ".strm");
+        Assert.Equal(new GroupCopyResult(0, 0, 0), await _writer.RunAsync());
+        Assert.True(File.Exists(path));
+        Assert.NotNull(_book.ByCopy(copy.StubKey));
+        Assert.Empty(_book.RetiredCopies());
+        Assert.Contains(path, capture.Paths);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OlderBackup_KnownKeyAtUnrecordedPathStillHolds(bool extraSource)
+    {
+        var paths = new ShoalPaths(_dir.Path);
+        var store = new CatalogStore(paths, NullLogger<CatalogStore>.Instance, _state);
+        var doc = store.Load(A).Document;
+        var key = OwnerStub;
+        if (extraSource)
+        {
+            key = "extrasource00001";
+            doc.Entries[0].Sources.Add(new CatalogSource { StubKey = key, StubRelPath = Folder + "/Extra.strm" });
+            File.WriteAllText(Path.Combine(Root, "libs", L1, Folder, "Extra.strm"), StubSentinel.Content(key));
+            store.Save(doc);
+        }
+
+        var catalog = Path.Combine(paths.PeerDir(A), "catalog.json");
+        File.Copy(catalog, catalog + ".bak", overwrite: true);
+        File.Delete(catalog);
+        Assert.False(store.Load(A).Unreadable); // complete backup explains every existing artifact
+        var duplicate = Path.Combine(Root, "libs", L1, "Unrecorded");
+        Directory.CreateDirectory(duplicate);
+        File.WriteAllText(Path.Combine(duplicate, "Duplicate.strm"), StubSentinel.Content(key));
+        Assert.True(store.Load(A).Unreadable);
+        Assert.True(File.Exists(Path.Combine(duplicate, "Duplicate.strm")));
+    }
+
+    [Fact]
     public async Task AGroupedTitle_GetsACopyInTheOtherMembersLibrary_AfterTheUsersAltTags_CarryingItsLibraryAndAltTag()
     {
         var result = await _writer.RunAsync();

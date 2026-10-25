@@ -53,6 +53,9 @@ internal sealed record SettingsDto
     /// <summary>Gets a value indicating whether quality follows the link.</summary>
     public bool? AutoFitQualityToLink { get; init; }
 
+    /// <summary>Gets a value indicating whether compatible local progress retention is enabled.</summary>
+    public bool? KeepMyPlaceEnabled { get; init; }
+
     /// <summary>Gets the streams per person.</summary>
     public int? MaxStreamsPerUser { get; init; }
 
@@ -282,6 +285,7 @@ public class AdminSettingsController : ControllerBase
         config.DiskQuotaGbPerPeer = body.DiskQuotaGbPerPeer ?? config.DiskQuotaGbPerPeer;
         config.ArtQuality = body.ArtQuality ?? config.ArtQuality;
         config.AutoFitQualityToLink = body.AutoFitQualityToLink ?? config.AutoFitQualityToLink;
+        config.KeepMyPlaceEnabled = body.KeepMyPlaceEnabled ?? config.KeepMyPlaceEnabled;
         config.MaxStreamsPerUser = body.MaxStreamsPerUser ?? config.MaxStreamsPerUser;
         config.HlsBufferAhead = body.HlsBufferAhead ?? config.HlsBufferAhead;
         config.TvEpisodeThumbs = body.TvEpisodeThumbs ?? config.TvEpisodeThumbs;
@@ -549,6 +553,7 @@ public class AdminSettingsController : ControllerBase
             DiskQuotaGbPerPeer = c.DiskQuotaGbPerPeer,
             ArtQuality = c.ArtQuality,
             AutoFitQualityToLink = c.AutoFitQualityToLink,
+            KeepMyPlaceEnabled = c.KeepMyPlaceEnabled,
             MaxStreamsPerUser = c.MaxStreamsPerUser,
             HlsBufferAhead = c.HlsBufferAhead,
             TvShowsEnabled = true, // always on (v2.9.1)

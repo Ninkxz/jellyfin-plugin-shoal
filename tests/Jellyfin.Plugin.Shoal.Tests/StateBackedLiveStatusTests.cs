@@ -16,6 +16,110 @@ namespace Jellyfin.Plugin.Shoal.Tests;
 /// </summary>
 public sealed class StateBackedLiveStatusTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LostCatalog_StillShowsThePendingAdminSync(bool allPeers)
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Catalogs.Save(new CatalogDocument { PeerKey = SyncRig.PeerKey });
+        rig.Catalogs.Save(new CatalogDocument { PeerKey = SyncRig.PeerKey });
+        rig.Refresh.IsScanRunning = true;
+        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State) { ScanRetryDelay = TimeSpan.FromMilliseconds(250) };
+
+        if (allPeers)
+        {
+            Assert.Equal(1, live.StartSyncAll());
+        }
+        else
+        {
+            Assert.True(live.StartSync(SyncRig.PeerKey));
+        }
+
+        await WaitSkippedAsync(rig, "scanRunning");
+        var catalog = System.IO.Path.Combine(rig.Paths.PeerDir(SyncRig.PeerKey), "catalog.json");
+        System.IO.File.Delete(catalog);
+        System.IO.File.Delete(catalog + ".bak");
+        Assert.True(System.IO.File.Exists(System.IO.Path.Combine(rig.Paths.PeerDir(SyncRig.PeerKey), "catalog-established")));
+        Assert.True(rig.Catalogs.Load(SyncRig.PeerKey).Unreadable);
+
+        try
+        {
+            var info = live.ForPeer(SyncRig.PeerKey);
+            Assert.True(info.Syncing);
+            var alert = Assert.Single(info.Alerts);
+            Assert.Equal("catalogRecovery", alert.Kind);
+            Assert.Equal("bad", alert.Severity);
+        }
+        finally
+        {
+            rig.Refresh.IsScanRunning = false;
+            await WaitIdleAsync(live);
+        }
+
+        Assert.False(System.IO.File.Exists(catalog));
+        Assert.False(System.IO.File.Exists(catalog + ".bak"));
+        Assert.Equal("catalogRecovery", Assert.Single(live.ForPeer(SyncRig.PeerKey).Alerts).Kind);
+    }
+
+    [Fact]
+    public async Task ASecondAdminRequestFinishing_DoesNotHideTheFirstPendingSync()
+    {
+        await using var rig = await SyncRig.CreateAsync();
+        rig.Refresh.IsScanRunning = true;
+        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State) { ScanRetryDelay = TimeSpan.FromSeconds(1) };
+        Assert.True(live.StartSync(SyncRig.PeerKey));
+        await WaitSkippedAsync(rig, "scanRunning");
+
+        try
+        {
+            using var hold = rig.Sync.TryHold();
+            Assert.NotNull(hold);
+            Assert.True(live.StartSync(SyncRig.PeerKey));
+            await WaitSkippedAsync(rig, "busy");
+            // The first job is still waiting for its scan retry. Observe the status after the
+            // short busy request has unwound, not just while its request is being dispatched.
+            var until = DateTime.UtcNow.AddMilliseconds(200);
+            while (DateTime.UtcNow < until)
+            {
+                Assert.True(live.ForPeer(SyncRig.PeerKey).Syncing);
+                await Task.Delay(10);
+            }
+        }
+        finally
+        {
+            rig.Refresh.IsScanRunning = false;
+            await WaitIdleAsync(live);
+        }
+    }
+
+    private static async Task WaitSkippedAsync(SyncRig rig, string reason)
+    {
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (rig.Catalogs.LastSkipped(SyncRig.PeerKey)?.Reason != reason && DateTime.UtcNow < until)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(reason, rig.Catalogs.LastSkipped(SyncRig.PeerKey)?.Reason);
+    }
+
+    [Fact]
+    public void LostCatalog_HasFixedRecoveryAlert()
+    {
+        using var dir = new TempDirectory();
+        var paths = new ShoalPaths(dir.Path);
+        var catalogs = new Jellyfin.Plugin.Shoal.Sync.CatalogStore(paths, NullLogger<Jellyfin.Plugin.Shoal.Sync.CatalogStore>.Instance);
+        catalogs.Save(new Jellyfin.Plugin.Shoal.Sync.CatalogDocument { PeerKey = StateSamples.PeerKeyA });
+        System.IO.File.Delete(System.IO.Path.Combine(paths.PeerDir(StateSamples.PeerKeyA), "catalog.json"));
+        var live = new StateBackedLiveStatus(new PeerHealthStore(paths, NullLogger<PeerHealthStore>.Instance), new Gate(), catalogs);
+        var info = live.ForPeer(StateSamples.PeerKeyA);
+        Assert.Equal(1, info.AlertCount);
+        var alert = Assert.Single(info.Alerts);
+        Assert.Equal("catalogRecovery", alert.Kind);
+        Assert.Equal("bad", alert.Severity);
+    }
+
     private sealed class Gate : IPairingGate
     {
         public bool Live { get; set; }
@@ -276,10 +380,16 @@ public sealed class StateBackedLiveStatusTests
         await using var rig = await SyncRig.CreateAsync();
         rig.Peer.Add("One", 2000, tmdb: 1);
         rig.Refresh.IsScanRunning = true;
-        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State) { ScanRetryDelay = TimeSpan.FromMilliseconds(20) };
+        var live = new StateBackedLiveStatus(new PeerHealthStore(rig.Paths, NullLogger<PeerHealthStore>.Instance), new NoPairing(), rig.Catalogs, sync: rig.Sync, state: rig.State) { ScanRetryDelay = TimeSpan.FromMilliseconds(100) };
 
         live.StartSync(SyncRig.PeerKey);
-        await Task.Delay(150);
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (rig.Catalogs.LastSkipped(SyncRig.PeerKey)?.Reason != "scanRunning" && DateTime.UtcNow < until)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Equal("scanRunning", rig.Catalogs.LastSkipped(SyncRig.PeerKey)?.Reason);
         Assert.Empty(rig.Catalog().Entries); // still blocked
         Assert.True(live.ForPeer(SyncRig.PeerKey).Syncing);
 

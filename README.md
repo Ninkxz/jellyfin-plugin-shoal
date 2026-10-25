@@ -2,6 +2,8 @@
 
 Watch your friends' Jellyfin libraries from your own server, without copying anything. Their titles show up in your Jellyfin like any other, play in Moonfin and jellyfin-web, and your friend's server does the heavy lifting.
 
+Requires Jellyfin 12.1 or newer (.NET 10, manifest ABI 12.1). This release is tested on Jellyfin 12.1 and does not target Jellyfin 10.11.
+
 ## Best with Moonfin
 
 Shoal works extremely well with [Moonfin](https://github.com/Moonfin-Client), and it is the client we recommend. It is a much better experience than the stock Jellyfin apps, and you can connect Seerr inside the app to request titles, so a friend's title you like can be requested for your own server in a few taps. jellyfin-web and the other Jellyfin clients are still supported: friends' titles show up and play there like any other title.
@@ -12,6 +14,26 @@ Shoal works extremely well with [Moonfin](https://github.com/Moonfin-Client), an
    `https://raw.githubusercontent.com/Ninkxz/jellyfin-plugin-shoal/main/manifest.json`
 2. Open the **Catalog**, find **Shoal**, click **Install**, and restart Jellyfin.
 3. Open **Dashboard**, **Shoal** and follow the steps. Design notes are in `docs/DESIGN.md`.
+
+## Keep My Place
+
+**Keep My Place** retains locally recorded watched status and compatible resume positions when a shared movie or episode becomes available in your own library. It is on by default, including when upgrading from a version without this setting. You can turn it off under Shoal's **Settings > Playback**; a saved off setting stays off. History stays on your server and follows only the same local user.
+
+Shoal requires a strong provider-ID match, current access to both libraries, and exact episode numbering. Existing local history wins. Ambiguous matches, active playback and incompatible running times are skipped; resume positions are never scaled between different versions. Keep My Place does not copy favorites, ratings or history from a friend's accounts.
+
+Removing a server or shared-library mapping revokes that source, so Keep My Place will not later restore history from it. Private transfer snapshots are bounded and expire after 90 days. If safe history retention fails during automatic stub removal, Shoal keeps the affected files for retry.
+
+TV deduplication works at series level: when a matching series exists locally, Shoal hides that friend's whole series, including episodes missing from the local copy. Keep My Place preserves compatible history; it does not combine episode coverage across local and shared versions.
+
+## Saved library recovery
+
+If a server's saved catalog is missing, Shoal first tries its validated backup. If neither copy is usable and existing shared files or prior catalog evidence remain, sync and affected library changes pause to protect those files. Ordinary sync or additions/removals approval cannot repair missing ownership information. Restore a known-good Shoal data backup before retrying; Shoal does not automatically adopt, overwrite or delete uncertain files.
+
+A recovered backup must also explain the paths and keys of existing shared files. A moved or extra copy that the backup does not record pauses recovery rather than creating another copy.
+
+## Episode numbering conflicts
+
+Backup servers must offer the same season and episode range to be interchangeable. A double episode is not a backup for a single episode. If overlapping files cannot preserve all episode numbers safely, Shoal holds the affected changes and shows an episode-numbering warning. Ask the sharing server's admin to correct the numbering or use matching ranges, then sync again; approving additions does not bypass the check.
 
 ## Both servers need Shoal
 

@@ -51,7 +51,7 @@ test('Save sends every field under the names of 8.5.1 and confirms', async () =>
         await p.wait(150);
         const put = p.mock.calls.find((c) => c.method === 'PUT' && c.path === 'Settings');
         assert.ok(put);
-        assert.deepEqual(Object.keys(put.body).sort(), ['alternateVersionsEnabled', 'artQuality', 'attachmentsEnabled', 'autoFitQualityToLink', 'diskQuotaGbPerPeer', 'hlsSubtitlesEnabled', 'maxStreamsPerUser', 'massDeletionMinCount', 'massDeletionPercent', 'newItemsMinCount', 'newItemsPercent', 'notifyClientsWhenOffline', 'parkAfterHours', 'parkOfflinePeers', 'reencodeImages', 'speedTestIntervalHours', 'stubRoot', 'stubRootNetworkAck', 'syncIntervalHours', 'tailscaleSocket', 'trickplayCacheGb', 'trickplayEnabled', 'tvEpisodeThumbs', 'hlsBufferAhead', 'offlineCardEnabled', 'requestServiceName', 'requestServiceUrl'].sort());
+        assert.deepEqual(Object.keys(put.body).sort(), ['keepMyPlaceEnabled', 'alternateVersionsEnabled', 'artQuality', 'attachmentsEnabled', 'autoFitQualityToLink', 'diskQuotaGbPerPeer', 'hlsSubtitlesEnabled', 'maxStreamsPerUser', 'massDeletionMinCount', 'massDeletionPercent', 'newItemsMinCount', 'newItemsPercent', 'notifyClientsWhenOffline', 'parkAfterHours', 'parkOfflinePeers', 'reencodeImages', 'speedTestIntervalHours', 'stubRoot', 'stubRootNetworkAck', 'syncIntervalHours', 'tailscaleSocket', 'trickplayCacheGb', 'trickplayEnabled', 'tvEpisodeThumbs', 'hlsBufferAhead', 'offlineCardEnabled', 'requestServiceName', 'requestServiceUrl'].sort());
         assert.equal(put.body.massDeletionMinCount, 30);
         assert.equal(put.body.syncIntervalHours, 6);
         assert.match(p.text(), /Settings saved/);

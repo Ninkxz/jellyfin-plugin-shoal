@@ -36,7 +36,7 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
     private readonly Jellyfin.Plugin.Shoal.Playback.StreamSlots? _slots;
     private readonly Jellyfin.Plugin.Shoal.Diagnostics.SpeedSummaryProvider? _speed;
     private readonly ILogger _logger;
-    private readonly ConcurrentDictionary<string, byte> _running = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, int> _running = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StateBackedLiveStatus"/> class.
@@ -213,7 +213,7 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
 
     private void Run(string key, Func<Task> work)
     {
-        _running[key] = 0;
+        _running.AddOrUpdate(key, 1, static (_, count) => count + 1);
         _ = Task.Run(async () =>
         {
             try
@@ -228,7 +228,22 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
             }
             finally
             {
-                _running.TryRemove(key, out _);
+                // Another request for this peer may still be queued or waiting for a scan.
+                // Remove only the final job's count, without racing a new request's increment.
+                while (_running.TryGetValue(key, out var count))
+                {
+                    if (count == 1)
+                    {
+                        if (((ICollection<KeyValuePair<string, int>>)_running).Remove(new(key, 1)))
+                        {
+                            break;
+                        }
+                    }
+                    else if (_running.TryUpdate(key, count - 1, count))
+                    {
+                        break;
+                    }
+                }
             }
         });
     }
@@ -266,9 +281,10 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
 
     private PeerLiveInfo FromCatalog(string peerKey)
     {
+        var syncing = _running.ContainsKey(peerKey) || _running.ContainsKey("all");
         if (_catalogs is null)
         {
-            return new PeerLiveInfo();
+            return new PeerLiveInfo { Syncing = syncing };
         }
 
         CatalogLoad load;
@@ -281,7 +297,12 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
 #pragma warning restore CA1031
         {
             _logger.LogWarning("The catalog of a peer could not be read for the Overview: {Error}", ex.GetType().Name);
-            return new PeerLiveInfo();
+            return new PeerLiveInfo { Syncing = syncing, AlertCount = 1, Alerts = [new PeerAlertInfo("catalogRecovery", "bad")] };
+        }
+
+        if (load.Unreadable)
+        {
+            return new PeerLiveInfo { Syncing = syncing, AlertCount = 1, Alerts = [new PeerAlertInfo("catalogRecovery", "bad")] };
         }
 
         var doc = load.Document;
@@ -289,7 +310,6 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
         // A title is a movie or a series; seasons and episodes belong to their series and are not counted on their own.
         var stubs = TitleCounts.Of(doc.Entries).Local;
         var hidden = doc.Entries.Where(static e => e.State == EntryState.DuplicatePeer && e.Kind is EntryKind.Movie or EntryKind.Series).ToList();
-        var syncing = _running.ContainsKey(peerKey) || _running.ContainsKey("all");
         var last = doc.LastSync;
         var quota = (_settings?.Current.DiskQuotaGbPerPeer ?? 2) * 1_000_000_000L;
         var alerts = Alerts(doc);
@@ -367,6 +387,9 @@ public sealed class StateBackedLiveStatus : IPeerLiveStatus
                     break;
                 case nameof(SyncAlert.NameCap):
                     result.Add(new PeerAlertInfo("entityCap", "warn"));
+                    break;
+                case nameof(SyncAlert.EpisodeRangeConflict):
+                    result.Add(new PeerAlertInfo("episodeRangeConflict", "warn"));
                     break;
                 case nameof(SyncAlert.WriteFailures):
                     result.Add(new PeerAlertInfo("stubFolder", "bad"));

@@ -137,6 +137,7 @@ test('the picture check cannot start: Settings and the Overview say why, in plai
         const p = await settings({ sandbox: 'unavailable', sandboxReason: reason });
         try {
             assert.match(p.text(), words);
+            assert.match(p.text(), /Existing pictures stay available\. New pictures wait until picture checking works again\./);
         } finally {
             p.close();
         }
@@ -148,6 +149,7 @@ test('the picture check cannot start: Settings and the Overview say why, in plai
             assert.equal(alert.textContent.split('The picture check is not available').length - 1, 1, 'the title is said once');
             assert.doesNotMatch(alert.textContent, /not available: |not available\./);
             assert.match(alert.textContent, words);
+            assert.match(alert.textContent, /Existing pictures stay available\. New pictures wait until picture checking works again\./);
             assert.match(alert.textContent, /Open Settings/);
         } finally {
             o.close();
