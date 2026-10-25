@@ -63,6 +63,9 @@ public sealed class MatrixWorld
 
     public ConcurrentDictionary<Guid, FederatedItem> Federated { get; } = new();
 
+    /// <summary>Gets or sets an optional observer around a real test request.</summary>
+    internal Func<HttpContext, RequestDelegate, Task>? RequestObserver { get; set; }
+
     /// <summary>Gets the stub paths below the library folder of the TV items ("Show (2020)/Season 01/S01E01.strm"); an item listed here has this path instead of a movie folder.</summary>
     public ConcurrentDictionary<Guid, string> TvPaths { get; } = new();
 
@@ -197,6 +200,7 @@ public sealed class MatrixHarness : IAsyncDisposable
         }
 
         var app = builder.Build();
+        app.Use((ctx, next) => world.RequestObserver is { } observer ? observer(ctx, next) : next(ctx));
         app.UseAuthentication();
         app.UseAuthorization();
         if (withFilter)

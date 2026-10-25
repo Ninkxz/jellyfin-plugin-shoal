@@ -522,49 +522,76 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
     public async Task AClientThatCancelsTheMainPlaylist_DoesNotCancelTheFetch_AndItsRetryNeedsNoSecondPeerCall()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var peerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requestFinished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         H.Peer.HlsPlaylistReply = (path, query) =>
         {
             if (path.EndsWith("/main.m3u8", StringComparison.Ordinal))
             {
+                peerStarted.TrySetResult();
                 gate.Task.GetAwaiter().GetResult(); // the Peer is still starting its conversion
             }
 
             return DefaultPlaylists(path, query);
         };
         var grant = await NewGrantAsync();
-        using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
-
-        using (var cancel = new CancellationTokenSource())
+        var mainPath = $"/Shoal/Hls/{grant.GrantId}/main.m3u8";
+        H.World.RequestObserver = async (context, next) =>
         {
-            var waiting = Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            if (context.Request.Path != mainPath)
             {
-                using var abandoned = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, $"/Shoal/Hls/{grant.GrantId}/main.m3u8", null, cancel.Token);
-            });
-            for (var i = 0; i < 600 && PeerCalls("/main.m3u8") == 0; i++)
-            {
-                await Task.Delay(50); // the Peer has the request and holds it
+                await next(context);
+                return;
             }
 
-            Assert.Equal(1, PeerCalls("/main.m3u8"));
-            await Task.Delay(200); // and the client has waited on it for a while
-            cancel.Cancel();
-            await waiting;
-        }
-
-        Assert.NotNull(grant.MainPrefetch);
-        Assert.False(grant.MainPrefetch!.IsCompleted, "the fetch goes on after the client left");
-        gate.SetResult();
-        var prefetched = await grant.MainPrefetch!; // the one fetch is done (any retry the transport made inside it is counted here, not against the client's retry)
-        var afterTheFetch = PeerCalls("/main.m3u8");
-        using var retry = await GetAsync($"/Shoal/Hls/{grant.GrantId}/main.m3u8", Sign(MatrixWorld.Admin));
-
-        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
-        if (prefetched is not null)
+            try
+            {
+                var handling = next(context);
+                requestStarted.TrySetResult();
+                await handling;
+            }
+            finally
+            {
+                requestFinished.TrySetResult(context.RequestAborted.IsCancellationRequested);
+            }
+        };
+        try
         {
-            Assert.Equal(afterTheFetch, PeerCalls("/main.m3u8")); // the client's retry needed no second Peer call (a fetch that failed under load is asked again, as it should be)
-        }
+            using var master = await GetAsync(MasterPath(grant), Sign(MatrixWorld.Admin));
+            using (var cancel = new CancellationTokenSource())
+            {
+                var waiting = Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                {
+                    using var abandoned = await H.SendAsync(Sign(MatrixWorld.Admin), HttpMethod.Get, mainPath, null, cancel.Token);
+                });
+                await peerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                await requestStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(1, PeerCalls("/main.m3u8"));
+                Assert.False(requestFinished.Task.IsCompleted, "Home is still waiting for the Peer's playlist");
+                cancel.Cancel();
 
-        Assert.Equal(20, grant.SegmentCount);
+                await waiting;
+                Assert.True(await requestFinished.Task.WaitAsync(TimeSpan.FromSeconds(10)), "Home observed the abandoned request's abort before the Peer finished");
+            }
+
+            Assert.NotNull(grant.MainPrefetch);
+            Assert.False(grant.MainPrefetch!.IsCompleted, "the fetch goes on after the client left");
+            gate.TrySetResult();
+            var prefetched = await grant.MainPrefetch!;
+            Assert.NotNull(prefetched);
+            var afterTheFetch = PeerCalls("/main.m3u8");
+            using var retry = await GetAsync(mainPath, Sign(MatrixWorld.Admin));
+
+            Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+            Assert.Equal(afterTheFetch, PeerCalls("/main.m3u8"));
+            Assert.Equal(20, grant.SegmentCount);
+        }
+        finally
+        {
+            H.World.RequestObserver = null;
+            gate.TrySetResult(); // a failed assertion must not strand the fake peer or the next test
+        }
     }
 
     [Fact]
@@ -1423,11 +1450,12 @@ public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifeti
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "video/mp2t";
             ctx.Response.ContentLength = 4_000_000;
+            await ctx.Response.StartAsync(); // the delay belongs to body reads, not time to the headers
             for (var i = 0; i < 4; i++)
             {
+                await Task.Delay(150); // every chunk, including the last, takes time to arrive
                 await ctx.Response.Body.WriteAsync(new byte[1_000_000]);
                 await ctx.Response.Body.FlushAsync();
-                await Task.Delay(150); // the link carries about 1 MB in 150 ms: the segment takes 0.6 s to arrive and plays for 0.5
             }
 
             return true;
