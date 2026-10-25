@@ -27,7 +27,7 @@ TV deduplication works at series level: when a matching series exists locally, S
 
 ## Saved library recovery
 
-If a server's saved catalog is missing, Shoal first tries its validated backup. If neither copy is usable and existing shared files or prior catalog evidence remain, sync and affected library changes pause to protect those files. Ordinary sync or additions/removals approval cannot repair missing ownership information. Restore a known-good Shoal data backup before retrying; Shoal does not automatically adopt, overwrite or delete uncertain files.
+If a server's saved catalog is missing, Shoal first tries its validated backup. If neither copy is usable and existing shared files or prior catalog evidence remain, syncs and imports from all friends pause to protect those files, including when the affected friend is disabled. Ordinary sync or additions/removals approval cannot repair missing ownership information. Restore a known-good Shoal data backup before retrying; Shoal does not automatically adopt, overwrite or delete uncertain files.
 
 A recovered backup must also explain the paths and keys of existing shared files. A moved or extra copy that the backup does not record pauses recovery rather than creating another copy.
 

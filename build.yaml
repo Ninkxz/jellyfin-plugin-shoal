@@ -1,6 +1,6 @@
 name: "Shoal"
 guid: "b3d48170-08c3-4272-8042-efb38df9bb24"
-version: "2.10.0.3"
+version: "2.10.0.4"
 targetAbi: "12.1.0.0"
 framework: "net10.0"
 overview: "Share libraries between friends' Jellyfin servers. Media stays on its original server."
@@ -14,4 +14,4 @@ owner: "Ninkxz"
 artifacts:
 - "Jellyfin.Plugin.Shoal.dll"
 changelog: >
-  Keep My Place is enabled by default: compatible watched status and resume positions follow shared titles to local media for the same local user. Existing local history and saved off settings are preserved. Safer catalog recovery, conflicting TV identity and overlapping episode handling; clearer admin settings and recovery guidance; protective image and request failure handling. Requires Jellyfin 12.1 or newer. Recovery status accurately reports pending work. Back up Shoal's data folder before upgrading. Uncertain catalogs or episode ranges pause affected changes for review.
+  Keep My Place is enabled by default: compatible watched status and resume positions follow shared titles to local media for the same local user. Existing local history and saved off settings are preserved. Safer catalog recovery pauses library-changing syncs across friends when an established saved catalog is unreadable, preventing duplicate episodes; conflicting TV identity and overlapping episode handling; clearer admin settings and recovery guidance; protective image and request failure handling. Requires Jellyfin 12.1 or newer. Recovery status accurately reports pending work. Back up Shoal's data folder before upgrading. Uncertain catalogs or episode ranges pause affected changes for review.

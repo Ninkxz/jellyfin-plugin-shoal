@@ -361,7 +361,10 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
         }
 
         var load = _d.Store.Load(peerKey);
-        if (load.Unreadable)
+
+        // Ownership spans peers: an unreadable owner must not look absent to another
+        // peer's planner, even when that owner is disabled. Fresh empty peers remain readable.
+        if (load.Unreadable || state.Home.Peers.Any(p => p.PeerKey != peerKey && _d.Store.Load(p.PeerKey).Unreadable))
         {
             return SyncReport.Failed("catalogUnreadable");
         }
