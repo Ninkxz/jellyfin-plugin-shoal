@@ -1,6 +1,6 @@
 name: "Shoal"
 guid: "b3d48170-08c3-4272-8042-efb38df9bb24"
-version: "2.10.0.4"
+version: "2.10.4.0"
 targetAbi: "12.1.0.0"
 framework: "net10.0"
 overview: "Share libraries between friends' Jellyfin servers. Media stays on its original server."
@@ -14,4 +14,4 @@ owner: "Ninkxz"
 artifacts:
 - "Jellyfin.Plugin.Shoal.dll"
 changelog: >
-  Keep My Place is enabled by default: compatible watched status and resume positions follow shared titles to local media for the same local user. Existing local history and saved off settings are preserved. Safer catalog recovery pauses library-changing syncs across friends when an established saved catalog is unreadable, preventing duplicate episodes; conflicting TV identity and overlapping episode handling; clearer admin settings and recovery guidance; protective image and request failure handling. Requires Jellyfin 12.1 or newer. Recovery status accurately reports pending work. Back up Shoal's data folder before upgrading. Uncertain catalogs or episode ranges pause affected changes for review.
+  You can now delete a local movie from this server the way Jellyfin does: pick it in the Shoal library page and it is removed from your library and from disk. It works on network shares. You can tick several movies and delete them in one go. There is no recovery folder any more. Originals that an older version already put on hold keep a Restore list, so they can still be brought back. Deletion stays off until you switch it on, and it asks for confirmation. Requires Jellyfin 12.1 or newer. Both servers in a share should run 2.10.4. Back up Shoal data before you upgrade.

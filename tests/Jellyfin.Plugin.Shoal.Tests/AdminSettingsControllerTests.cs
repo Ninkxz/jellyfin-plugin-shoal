@@ -337,6 +337,13 @@ public sealed class AdminSettingsControllerTests
     {
         // A setting the page edits but the controller does not know cannot be saved (Pilot 09 F1: TvShowsEnabled). SchemaVersion is the file's own.
         var dto = typeof(SettingsDto).GetProperties().Select(static p => p.Name).ToHashSet(StringComparer.Ordinal);
+        // Delete-like-Jellyfin (2.10.4) has its own elevated toggle route and contract tests; the two legacy removal fields are ignored.
+        var removalToggle = typeof(AdminLocalDeleteController).GetMethod(nameof(AdminLocalDeleteController.Enabled));
+        Assert.NotNull(removalToggle);
+        Assert.Equal("LocalRemoval/Enabled", removalToggle.GetCustomAttributes(typeof(HttpPutAttribute), false).Cast<HttpPutAttribute>().Single().Template);
+        dto.Add(nameof(PluginConfiguration.LocalRemovalEnabled));
+        dto.Add(nameof(PluginConfiguration.PermanentDeletionEnabled));
+        dto.Add(nameof(PluginConfiguration.LocalDeleteEnabled));
         var missing = typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
             .Select(static p => p.Name)
             .Where(name => name != nameof(PluginConfiguration.SchemaVersion) && !dto.Contains(name))

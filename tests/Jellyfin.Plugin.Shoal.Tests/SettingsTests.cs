@@ -110,8 +110,8 @@ public sealed class SettingsTests
         Assert.Equal(
             new[]
             {
-                "AlternateVersionsEnabled", "ArtQuality", "AttachmentsEnabled", "AutoFitQualityToLink", "DetectableByFriends", "DiskQuotaGbPerPeer", "HlsBufferAhead", "HlsSubtitlesEnabled", "KeepMyPlaceEnabled", "MassDeletionMinCount", "MassDeletionPercent",
-                "MaxStreamsPerUser", "NewItemsMinCount", "NewItemsPercent", "NotifyClientsWhenOffline", "OfflineCardEnabled", "ParkAfterHours", "ParkOfflinePeers", "ReencodeImages",
+                "AlternateVersionsEnabled", "ArtQuality", "AttachmentsEnabled", "AutoFitQualityToLink", "DetectableByFriends", "DiskQuotaGbPerPeer", "HlsBufferAhead", "HlsSubtitlesEnabled", "KeepMyPlaceEnabled", "LocalDeleteEnabled", "LocalRemovalEnabled", "MassDeletionMinCount", "MassDeletionPercent",
+                "MaxStreamsPerUser", "NewItemsMinCount", "NewItemsPercent", "NotifyClientsWhenOffline", "OfflineCardEnabled", "ParkAfterHours", "ParkOfflinePeers", "PermanentDeletionEnabled", "ReencodeImages",
                 "RequestServiceName", "RequestServiceUrl", "SchemaVersion", "SpeedTestIntervalHours", "SyncIntervalHours", "TailscaleSocket", "TrickplayCacheGb", "TrickplayEnabled", "TvEpisodeThumbs", "TvShowsEnabled"
             }.Order(StringComparer.Ordinal),
             members);

@@ -12,8 +12,10 @@ using Jellyfin.Plugin.Shoal.Api;
 using Jellyfin.Plugin.Shoal.Api.Admin;
 using Jellyfin.Plugin.Shoal.Configuration;
 using Jellyfin.Plugin.Shoal.Http;
+using Jellyfin.Plugin.Shoal.LocalRemoval;
 using Jellyfin.Plugin.Shoal.Pairing;
 using Jellyfin.Plugin.Shoal.State;
+using Jellyfin.Plugin.Shoal.Sync;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -137,6 +139,75 @@ public sealed class AdminF5Tests
         await rig.UntilFinishedAsync(InviteHomeTests.Deadline);
         Assert.NotNull(probe);
         var pairedKey = rig.State.Current.Home.Peers.Single(p => p.DisplayName == "Hops" && p.PeerKey != StateSamples.PeerKeyA).PeerKey;
+
+        // Local-copy preview must exercise a populated reply, not only an unknown/unpaired error.
+        const string previewItemId = "c0dec0dec0dec0dec0dec0dec0dec0de";
+        const string previewProviderId = "987654321";
+        const string previewStubKey = "privatestub01";
+        const string previewPath = "private/location.strm";
+        catalogs.Save(new Jellyfin.Plugin.Shoal.Sync.CatalogDocument
+        {
+            PeerKey = pairedKey,
+            CompletedOnce = true,
+            Report = new Jellyfin.Plugin.Shoal.Sync.OverlapReport { ComputedUtc = rig.Time.GetUtcNow().UtcDateTime },
+            Entries =
+            [
+                new Jellyfin.Plugin.Shoal.Sync.CatalogEntry
+                {
+                    PeerItemId = previewItemId,
+                    StubKey = previewStubKey,
+                    StubRelPath = previewPath,
+                    MappingKey = "preview-movies",
+                    State = Jellyfin.Plugin.Shoal.Sync.EntryState.DuplicateLocal,
+                    Title = "Preview sample",
+                    LocalSizeBytes = 8000,
+                    ProviderIds = new() { ["Tmdb"] = previewProviderId },
+                },
+            ],
+        });
+        var localRemoval = new AdminLocalRemovalController(rig.State, catalogs) { ControllerContext = context };
+        var preview = localRemoval.Preview(pairedKey);
+        var previewBody = AdminTestSupport.Body(preview);
+        Assert.Single(previewBody.GetProperty("items").EnumerateArray());
+        Assert.False(previewBody.GetProperty("items")[0].GetProperty("safeToRemove").GetBoolean());
+        Record("GET", "Shoal/Admin/Peers/{handle}/LocalRemovalPreview", preview);
+        Record("GET", "Shoal/Admin/Peers/{handle}/LocalRemovalPreview", localRemoval.Preview("nope"));
+        Record("GET", "Shoal/Admin/Peers/{handle}/LocalRemovalPreview", localRemoval.Preview(pairedKey, -1));
+
+        // Real operation replies must be populated. 2.10.4 K4b: only Restore is left of the legacy routes; a held original is made through the
+        // dormant coordinator directly (its move and purge routes are gone).
+        using var removalRig = new RemovalPrivacyRig(settings, rig.Time, pairedKey);
+        var removal = new AdminRemovalOperationsController(removalRig.Service) { ControllerContext = context };
+        removalRig.Service.Enable(true);
+        var removalCandidate = Assert.Single(AdminTestSupport.Body(AdminReply.Json(200, await removalRig.Service.StateAsync(pairedKey, default))).GetProperty("candidates").EnumerateArray()).GetProperty("candidateId").GetString()!;
+        var removalPlanId = AdminTestSupport.Body(AdminReply.Json(200, await removalRig.Service.PlanAsync(PairingRig.Admin, removalCandidate, default))).GetProperty("planId").GetString()!;
+        var removalJob = AdminTestSupport.Body(AdminReply.Json(200, await removalRig.Service.ConfirmAsync(PairingRig.Admin, removalPlanId, default)));
+        Assert.Equal("replacementReady", removalJob.GetProperty("phase").GetString());
+        removalRig.Service.Enable(false);
+        var removalRestored = await removal.Restore(removalJob.GetProperty("jobId").GetString()!, default);
+        Assert.Equal("restored", AdminTestSupport.Body(removalRestored).GetProperty("phase").GetString());
+        Record("POST", "Shoal/Admin/LocalRemoval/Jobs/{jobId}/Restore", removalRestored);
+
+        // 2.10.4 delete like Jellyfin: every new route, over the batch service with a fake core side.
+        using var deleteRig = new LocalDeleteServiceTests.Fixture(2);
+        deleteRig.Library.AnyAdmin = true; // the signed-in admin of this test
+        var deletes = new AdminLocalDeleteController(deleteRig.Service, settings, rig.State) { ControllerContext = context };
+        Record("PUT", "Shoal/Admin/LocalRemoval/Enabled", deletes.Enabled(new() { Enabled = true }));
+        Record("GET", "Shoal/Admin/LocalRemoval/Deletions/Current", deletes.Current());
+        var deleteState = await deletes.State(LocalDeleteServiceTests.Peer, default);
+        var deleteIds = AdminTestSupport.Body(deleteState).GetProperty("candidates").EnumerateArray().Select(static c => c.GetProperty("candidateId").GetString()!).ToArray();
+        Assert.Equal(2, deleteIds.Length);
+        Record("GET", "Shoal/Admin/Peers/{handle}/LocalRemoval", deleteState);
+        Record("GET", "Shoal/Admin/Peers/{handle}/LocalRemoval", await deletes.State("nope", default));
+        var started = deletes.Start(new() { CandidateIds = deleteIds });
+        var batchId = AdminTestSupport.Body(started, 202).GetProperty("batchId").GetString()!;
+        Record("POST", "Shoal/Admin/LocalRemoval/Deletions", started);
+        await deleteRig.Finish(batchId);
+        Record("GET", "Shoal/Admin/LocalRemoval/Deletions/{batchId}", deletes.Get(batchId));
+        Record("GET", "Shoal/Admin/LocalRemoval/Deletions/Current", deletes.Current());
+        Record("POST", "Shoal/Admin/LocalRemoval/Deletions/{batchId}/Stop", deletes.Stop(batchId));
+        Record("PUT", "Shoal/Admin/LocalRemoval/Enabled", deletes.Enabled(new() { Enabled = false }));
+        Record("GET", "Shoal/Admin/LocalRemoval/Status", await deletes.Status(default));
 
         Record("DELETE", "Shoal/Admin/Pairing", await pairing.Cancel(default));
         Record("POST", "Shoal/Admin/Peers/{handle}/DismissPairing", await pairing.DismissPairing(pairedKey, default));
@@ -337,7 +408,8 @@ public sealed class AdminF5Tests
         Assert.Empty(all.Except(covered));
 
         // The sentinels: everything the state and the stores hold that must never come out.
-        var sentinels = new List<string> { peer.Token, peer.Secret, rig.Key, PairingRig.Admin.ToString("N"), PairingRig.Admin.ToString("D") };
+        var sentinels = new List<string> { peer.Token, peer.Secret, rig.Key, PairingRig.Admin.ToString("N"), PairingRig.Admin.ToString("D"), previewItemId, previewProviderId, previewStubKey, previewPath };
+        sentinels.AddRange(removalRig.PrivateValues());
         foreach (var p in rig.State.Current.Home.Peers)
         {
             AddIfPresent(sentinels, p.PinnedServerId);
@@ -396,6 +468,99 @@ public sealed class AdminF5Tests
     private sealed class AllRatings : Jellyfin.Plugin.Shoal.Sync.IRatingTable
     {
         public bool IsRecognized(string rating) => true;
+    }
+
+    // Only the native/core/peer boundaries are controlled. The controller, coordinator and serialization are real.
+    private sealed class RemovalPrivacyRig : IRemovalLibrary, IRemovalOriginClient, IRemovalJournal, ISyncHold, IDisposable
+    {
+        private readonly RemovalTarget _target;
+        private readonly RemovalUserState _history = new(Guid.NewGuid(), true, false, 80_000_000, 2, null, true, 9, true, 1, 2);
+        private readonly Guid _sharedId = Guid.NewGuid();
+        private readonly Dictionary<string, RemovalFileSnapshot> _files = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, RemovalJob> _jobs = new(StringComparer.Ordinal);
+
+        internal RemovalPrivacyRig(Settings settings, TimeProvider time, string peerKey)
+        {
+            var root = Path.GetFullPath("/f5-private-local-media");
+            _target = new() { PeerKey = peerKey, MappingKey = "f5-private-mapping", PeerItemId = Guid.NewGuid(), LocalItemId = Guid.NewGuid(), LibraryId = Guid.NewGuid(), Title = "Recovery sample", Year = 2025, Root = root, Path = Path.Combine(root, "private-movie.mkv"), RecoveryRoot = Path.GetFullPath("/f5-private-retained-media"), ProviderIds = new Dictionary<string, string> { ["Tmdb"] = "867530900" }, RuntimeTicks = 200_000_000, Bytes = 8000, Generation = "private-core-generation" };
+            _files.Add(_target.Path, new(_target.Path, _target.Root, _target.Bytes, new string('a', 64), "private-native-file-identity"));
+            Service = new(this, this, this, settings, this, time, new(() => true,
+                (allowedRoot, path, _) => Task.FromResult(_files[path] with { Root = allowedRoot }),
+                (file, destinationRoot, name, _) =>
+                {
+                    var path = Path.Combine(destinationRoot, name);
+                    var moved = file with { FullPath = path, Root = destinationRoot };
+                    _files.Add(path, moved);
+                    _files.Remove(file.FullPath);
+                    return Task.FromResult(moved);
+                }, _files.ContainsKey, _ => { }, (_, _) => { }, (_, _) => { })
+                {
+                    PurgeStage = (job, _) =>
+                    {
+                        var staged = job.Held! with { FullPath = Path.Combine(_target.RecoveryRoot, job.Purge!.StageName) };
+                        _files.Remove(job.Held!.FullPath);
+                        _files.Add(staged.FullPath, staged);
+                        return Task.FromResult(new RemovalPurgeStage(staged, (_, authorize, _) =>
+                        {
+                            authorize();
+                            _files.Remove(staged.FullPath);
+                            return Task.FromResult(RemovalPurgeResult.UnlinkedAndFlushed);
+                        }, () => { }));
+                    },
+                });
+        }
+
+        internal RemovalCoordinator Service { get; }
+
+        internal IEnumerable<string> PrivateValues() => new[]
+        {
+            _target.MappingKey, _target.Root, _target.Path, _target.RecoveryRoot, _target.ProviderIds["Tmdb"], _target.Generation,
+            _target.PeerItemId.ToString("N"), _target.LocalItemId.ToString("N"), _target.LibraryId.ToString("N"), _sharedId.ToString("N"), _history.UserId.ToString("N"),
+            "private-native-file-identity", new string('a', 64), new string('b', 64),
+        }.Concat(_jobs.Values.Where(j => j.Purge is not null).SelectMany(j => new[] { j.Purge!.OperationId, j.Purge.StageName, j.Purge.FactsSha256 }));
+
+        public void VerifyPurgeAdministrator(Guid admin) { }
+
+        public RemovalPurgeState VerifyPurgeState(RemovalTarget target, Guid sharedItemId, IReadOnlyList<RemovalUserState> baseline) => new("private-purge-history", [_history]);
+
+        public IReadOnlyList<RemovalTarget> Discover(string peerKey) => [_target];
+
+        public RemovalTarget Revalidate(RemovalTarget target) => target;
+
+        public IReadOnlyList<RemovalUserState> Capture(Guid itemId) => [_history];
+
+        public void VerifyAccess(RemovalTarget target, IReadOnlyList<RemovalUserState> history) { }
+
+        public void Deindex(RemovalTarget target) { }
+
+        public Task<Guid> ImportAsync(RemovalTarget target, IReadOnlyList<RemovalUserState> history, CancellationToken cancellationToken) => Task.FromResult(_sharedId);
+
+        public void Handoff(RemovalTarget target, Guid itemId, IReadOnlyList<RemovalUserState> history) { }
+
+        public IReadOnlyList<RemovalUserState> CaptureShared(RemovalTarget target, Guid itemId, IReadOnlyList<RemovalUserState> baseline) => [_history];
+
+        public void VerifyShared(RemovalTarget target, Guid itemId, IReadOnlyList<RemovalUserState> history) { }
+
+        public Task<Guid> RestoreAsync(RemovalTarget target, IReadOnlyList<RemovalUserState> baseline, IReadOnlyList<RemovalUserState> shared, CancellationToken cancellationToken) => Task.FromResult(target.LocalItemId);
+
+        public Task<RemovalOriginDto> ProveAsync(RemovalTarget target, CancellationToken cancellationToken) => Task.FromResult(new RemovalOriginDto(1, new string('a', 64), target.Bytes, target.ProviderIds, target.RuntimeTicks, new string('b', 64)));
+
+        public Task<IReadOnlyList<RemovalJob>> LoadAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<RemovalJob>>(_jobs.Values.ToArray());
+
+        public Task EnsureCanPlanAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task EnsureCanPurgeAsync(string jobId, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SaveAsync(RemovalJob job, CancellationToken cancellationToken) { _jobs[job.JobId] = job; return Task.CompletedTask; }
+
+        public IDisposable TryHold() => new NoopHold();
+
+        public void Dispose() => Service.Dispose();
+
+        private sealed class NoopHold : IDisposable
+        {
+            public void Dispose() { }
+        }
     }
 
     private static void AddIfPresent(List<string> list, string? value)

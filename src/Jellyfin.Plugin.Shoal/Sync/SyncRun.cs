@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Shoal.Peers;
+using Jellyfin.Plugin.Shoal.Progress;
 using Jellyfin.Plugin.Shoal.Security;
 using Jellyfin.Plugin.Shoal.State;
 using Microsoft.Extensions.Logging;
@@ -79,6 +80,73 @@ internal sealed class SyncRun
             _report.Complete = false;
             return Finish(started, null);
         }
+    }
+
+    internal async Task<bool> RetireRestoredMovieAsync(string mappingKey, Guid peerItemId, IReadOnlyDictionary<string, string> providers, Func<bool> current, CancellationToken ct)
+    {
+        var entries = _doc.Entries.Where(e => e.Kind == EntryKind.Movie && e.MappingKey == mappingKey && Guid.TryParse(e.PeerItemId, out var id) && id == peerItemId).Take(2).ToArray();
+        var mapping = _peer.Libraries.SingleOrDefault(m => m.MappingKey == mappingKey && !TvSyncEngine.IsTv(m));
+        if (entries.Length != 1 || mapping is null || VisibilityPath(mapping) is not { } folder || !current())
+        {
+            return false;
+        }
+
+        var entry = entries[0];
+        if (!KeepMyPlacePolicy.Matches(new(KeepMyPlaceKind.Movie, providers), new(KeepMyPlaceKind.Movie, entry.ProviderIds)))
+        {
+            return false;
+        }
+
+        if (entry.State == EntryState.DuplicateLocal && entry.StubRelPath is null)
+        {
+            return true;
+        }
+
+        var verdict = BuildDedup().Judge(IdsOf(entry), entry.Title, entry.Year);
+        if (!IsActiveWithStub(entry) || entry.StubRelPath is null || verdict.State != EntryState.DuplicateLocal || !SoleRecordedOrigin(entry))
+        {
+            return false; // A newly ambiguous group needs ordinary guarded sync, never this one-movie cleanup.
+        }
+
+        var path = Path.Combine(folder, entry.StubRelPath);
+        if (!CatalogStore.IsSafeStubPath(entry.StubRelPath) || PathSanitizer.HasLinkBelow(_state.StubRoot, path))
+        {
+            return false;
+        }
+
+        var siblings = Directory.EnumerateFiles(Path.GetDirectoryName(path)!).Take(1025).ToArray();
+        if (siblings.Length > 1024 || siblings.Count(p => p.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)) != 1)
+        {
+            return false;
+        }
+
+        using (var file = File.OpenRead(path))
+        {
+            var bytes = new byte[1025];
+            var count = await file.ReadAsync(bytes.AsMemory(), ct).ConfigureAwait(false);
+            if (count > 1024 || !StubSentinel.TryParse(Encoding.UTF8.GetString(bytes, 0, count), out var key) || key != entry.StubKey)
+            {
+                return false;
+            }
+        }
+
+        var active = _doc.Entries.Count(static e => e.Kind == EntryKind.Movie && IsActiveWithStub(e));
+        var held = Math.Max(_settings.MassDeletionMinCount, CeilPercent(active, _settings.MassDeletionPercent)) < 1;
+        if (!await DemoteAsync(entry, verdict, new LibraryRun(mapping, folder, LibraryFolders.NfoTags(_state, _peer.PeerKey, mapping)), held, ct, () => current() && SoleRecordedOrigin(entry) && BuildDedup().Judge(IdsOf(entry), entry.Title, entry.Year).State == EntryState.DuplicateLocal).ConfigureAwait(false))
+        {
+            _doc.HeldRemovals = [.. _doc.Entries.Where(static e => e.State == EntryState.HeldRemoval).Select(static e => e.StubKey)];
+            Save();
+            return false;
+        }
+
+        _doc.Usage.DiskBytes = _quota.UsedBytes;
+        _doc.HeldRemovals.Remove(entry.StubKey);
+        ComputeReport();
+        Save();
+        UpdateGroups();
+        _d.Refresh.ReportChanged(Path.GetDirectoryName(path)!);
+        _d.Refresh.ScanLibrariesAt([folder]);
+        return true;
     }
 
     /// <summary>
@@ -823,35 +891,7 @@ internal sealed class SyncRun
         foreach (var (entry, verdict) in demotions)
         {
             var library = libraryOf[entry.MappingKey];
-            if (holdRemovals)
-            {
-                entry.State = EntryState.HeldRemoval;
-                continue;
-            }
-
-            if (entry.StubRelPath is not null && !await RetentionGuard.BeforeFolderAsync(_d.Retention, _state.StubRoot, Path.GetDirectoryName(Path.Combine(library.Folder, entry.StubRelPath))!, ct).ConfigureAwait(false))
-            {
-                entry.State = EntryState.HeldRemoval;
-                _alerts.Add(nameof(SyncAlert.WriteFailures));
-                continue;
-            }
-
-            if (entry.StubRelPath is null || _d.Writer.Remove(TargetOf(library), entry.StubRelPath, _quota))
-            {
-                MarkFolderChanged(library, entry.StubRelPath);
-                entry.State = verdict.State;
-                entry.DuplicateOf = verdict.DuplicateOf;
-                entry.LocalSizeBytes = verdict.LocalSizeBytes;
-                entry.StubRelPath = null;
-                entry.ImageTags = [];
-                _report.Removed++;
-                _report.Duplicates++;
-                _promoted = true; // the better-ranked copy is back: the stub is gone and core is asked once (one scan, as for a promotion)
-            }
-            else
-            {
-                _alerts.Add(nameof(SyncAlert.WriteFailures));
-            }
+            await DemoteAsync(entry, verdict, library, holdRemovals, ct).ConfigureAwait(false);
         }
 
         foreach (var (entry, verdict) in dupUpdates)
@@ -1269,6 +1309,52 @@ internal sealed class SyncRun
         UpdateGroups();
         Refresh();
         return report;
+    }
+
+    private bool SoleRecordedOrigin(CatalogEntry entry)
+    {
+        var group = _d.Groups?.ByCopy(entry.StubKey);
+        return group is null || (group.MetaOwner == _peer.PeerKey && group.Members.Count == 1 && group.Members[0].PeerKey == _peer.PeerKey
+            && group.Members[0].PeerItemId == entry.PeerItemId && group.Copies.Count == 1 && group.Copies[0].StubKey == entry.StubKey && !group.Copies[0].Extra);
+    }
+
+    private async Task<bool> DemoteAsync(CatalogEntry entry, DedupVerdict verdict, LibraryRun library, bool held, CancellationToken ct, Func<bool>? current = null)
+    {
+        if (held)
+        {
+            entry.State = EntryState.HeldRemoval;
+            return false;
+        }
+
+        if (entry.StubRelPath is not null && !await RetentionGuard.BeforeFolderAsync(_d.Retention, _state.StubRoot, Path.GetDirectoryName(Path.Combine(library.Folder, entry.StubRelPath))!, ct).ConfigureAwait(false))
+        {
+            entry.State = EntryState.HeldRemoval;
+            _alerts.Add(nameof(SyncAlert.WriteFailures));
+            return false;
+        }
+
+        if (current is not null && !current())
+        {
+            return false;
+        }
+
+        var target = new StubTarget(_state.StubRoot, library.Folder, _endpoint, library.Tags) { OmitFacets = LibraryFolders.HidesFacets(_state, _peer.PeerKey, library.Mapping), FriendName = _peer.ShownName() };
+        if (entry.StubRelPath is not null && !_d.Writer.Remove(target, entry.StubRelPath, _quota))
+        {
+            _alerts.Add(nameof(SyncAlert.WriteFailures));
+            return false;
+        }
+
+        MarkFolderChanged(library, entry.StubRelPath);
+        entry.State = verdict.State;
+        entry.DuplicateOf = verdict.DuplicateOf;
+        entry.LocalSizeBytes = verdict.LocalSizeBytes;
+        entry.StubRelPath = null;
+        entry.ImageTags = [];
+        _report.Removed++;
+        _report.Duplicates++;
+        _promoted = true;
+        return true;
     }
 
     private void ComputeReport()

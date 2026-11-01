@@ -221,12 +221,22 @@
                 </details>
               </section>
 
+              <!-- 2.10.3 T1: the one server control for Library overlap and Link speed below it -->
+              <div class="shoal-peerbar" data-section="peerbar" role="group" data-t-aria="serverShown" hidden>
+                <span class="shoal-peerbar__label" id="shoal-peerbar-label" data-t="showingLabel"></span>
+                <span class="selectContainer shoal-field shoal-field--inline" data-slot="peerselectwrap">
+                  <select class="emby-select-withcolor emby-select shoal-select" data-slot="peerselect" aria-labelledby="shoal-peerbar-label"></select>
+                  <svg class="shoal-icon shoal-select__chev" aria-hidden="true" focusable="false"><use href="#shoal-i-down"/></svg>
+                </span>
+                <span class="shoal-peerbar__name" data-slot="peername" hidden></span>
+                <span class="shoal-tag shoal-tag--in"><svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-in"/></svg><span data-t="laneWatching"></span></span>
+              </div>
+
               <section class="shoal-under shoal-panel shoal-overlap" data-section="overlap" aria-labelledby="shoal-h-overlap" hidden>
                 <div class="shoal-panel__head">
                   <div class="shoal-panel__titles">
                     <h2 class="shoal-h2 shoal-under__title" id="shoal-h-overlap">
                       <span data-slot="overlaptitle"></span>
-                      <span class="shoal-tag shoal-tag--in"><svg class="shoal-icon shoal-icon--s" aria-hidden="true" focusable="false"><use href="#shoal-i-in"/></svg><span data-t="laneWatching"></span></span>
                     </h2>
                   </div>
                 </div>
@@ -235,6 +245,14 @@
                   <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-layers"/></svg>
                   <span data-slot="backuptext"></span>
                 </p>
+                <!-- 2.10.3 T3: Library management first, Full report beside it -->
+                <div class="shoal-overlap__foot" data-slot="overlapfoot">
+                  <a class="emby-button raised shoal-btn shoal-btn--outline" href="#" data-slot="managelink">
+                    <svg class="shoal-icon" aria-hidden="true" focusable="false"><use href="#shoal-i-layers"/></svg>
+                    <span data-t="manageTitle"></span>
+                  </a>
+                  <a class="shoal-link" href="#" data-slot="fullreport" data-t="fullReport" hidden></a>
+                </div>
               </section>
 
               <div data-slot="speedhost" hidden></div>
@@ -248,6 +266,9 @@
             <header class="shoal-pagehead">
               <div class="shoal-pagehead__main">
                 <h1 class="shoal-h1" id="shoal-h-libraries" tabindex="-1" data-t="navLibraries"></h1>
+              </div>
+              <div class="shoal-pagehead__actions">
+                <a class="shoal-link shoal-pagehead__link" href="#" data-slot="managelink" data-t="manageTitle"></a>
               </div>
             </header>
             <div class="shoal-body" data-slot="body"></div>
@@ -302,6 +323,32 @@
               </div>
             </header>
             <div class="shoal-body" data-slot="body"></div>
+          </section>
+
+          <!-- ============================ Library management (2.10.3 T2: ?view=manage&tab=overlap|remove&id=<handle>) ============================ -->
+          <section class="shoal-view" data-shoal-view="manage" aria-labelledby="shoal-h-manage" hidden>
+            <header class="shoal-pagehead">
+              <div class="shoal-pagehead__main">
+                <h1 class="shoal-h1" id="shoal-h-manage" tabindex="-1" data-t="manageTitle"></h1>
+              </div>
+              <div class="shoal-pagehead__actions shoal-peerbar shoal-peerbar--head" data-slot="managepeer" hidden>
+                <span class="shoal-peerbar__label" id="shoal-manage-peerlabel" data-t="showingLabel"></span>
+                <span class="selectContainer shoal-field shoal-field--inline" data-slot="manageselectwrap">
+                  <select class="emby-select-withcolor emby-select shoal-select" data-slot="manageselect" aria-labelledby="shoal-manage-peerlabel"></select>
+                  <svg class="shoal-icon shoal-select__chev" aria-hidden="true" focusable="false"><use href="#shoal-i-down"/></svg>
+                </span>
+                <span class="shoal-peerbar__name" data-slot="managename" hidden></span>
+              </div>
+            </header>
+            <div class="shoal-body">
+              <p class="shoal-lead" data-slot="managenone" data-t="manageNoFriends" hidden></p>
+              <div class="shoal-tabs" role="tablist" data-slot="managetabs" data-t-aria="manageTabs" hidden>
+                <button type="button" class="shoal-tab" role="tab" id="shoal-tab-overlap" aria-controls="shoal-tabpanel-overlap" aria-selected="true" data-tab="overlap" data-t="manageTabOverlap"></button>
+                <button type="button" class="shoal-tab" role="tab" id="shoal-tab-remove" aria-controls="shoal-tabpanel-remove" aria-selected="false" tabindex="-1" data-tab="remove" data-t="manageTabRemove"></button>
+              </div>
+              <div class="shoal-tabpanel" role="tabpanel" id="shoal-tabpanel-overlap" aria-labelledby="shoal-tab-overlap" tabindex="0" data-slot="tabpanel-overlap" hidden></div>
+              <div class="shoal-tabpanel" role="tabpanel" id="shoal-tabpanel-remove" aria-labelledby="shoal-tab-remove" tabindex="0" data-slot="tabpanel-remove" hidden></div>
+            </div>
           </section>
 
           <!-- ============================ Friend detail ============================ -->

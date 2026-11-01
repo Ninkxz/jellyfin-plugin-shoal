@@ -1006,6 +1006,157 @@ export function createMock(options) {
         return ok({ removed: true });
     });
     route('GET', 'Peers/([^/]+)/Overlap', (m) => ok(overlapFor(servers.get(decodeURIComponent(m[1])))));
+    // The preview only serves golden backend replies supplied by the harness/test, never invented removal eligibility.
+    route('GET', 'Peers/([^/]+)/LocalRemovalPreview', (m, body, query) => {
+        const replies = opt.localRemovalPreviewGolden;
+        const reply = replies && (replies.status ? replies : replies[query.offset || '0']);
+        return reply ? { status: reply.status, body: clone(reply.body), headers: {} } : fail(404, 'notFound');
+    });
+    /* ---------------- Delete from this server (2.10.4, docs/plans/c0-delete-contract-2.10.4.md) ----------------
+     * opt.localDeleteGolden serves only the C0 golden files, read by the test from tests/contracts (the mock has no fs):
+     *   state (GET Peers/{h}/LocalRemoval, local-delete.state|off), global (GET LocalRemoval/Status), current (GET Deletions/Current;
+     *   local-delete.current-none for 404), restore (POST Jobs/{id}/Restore, removal-operations.restored), setting (PUT Enabled reply).
+     * Fixed mode (no script): start, batches (GET Deletions/{id} in order, the last one repeats) and stop are served unchanged.
+     * Script mode (opt.localDeleteGolden.script, an object): the batch runs over time like the server, one item at a time, built from the
+     *   golden rows: every GET Deletions/{id} moves it one step (queued -> checking -> deleting -> end). script entries keyed by title:
+     *   { slow: n }       n extra polls in checking (a big file on a share),
+     *   { rateLimited: n } n polls checking with reason originRateLimited (waiting for the friend's server), then checking again,
+     *   { refuse: word }  refused with that reason (a stop word also stops the batch: the rest notAttempted with that reason),
+     *   { notConfirmed: true }  notConfirmed, the batch stops, the rest notAttempted with reason notConfirmed,
+     *   { pending: true } done, but the friend's copy is not visible yet (shared pending, history notCarried).
+     *   After the last item one settling poll, then finished (or stopped). Done movies leave the candidate list. */
+    const ld = () => opt.localDeleteGolden || null;
+    const ldAnswer = (reply) => reply ? { status: reply.status, body: clone(reply.body), headers: clone(reply.headers || {}) } : fail(404, 'notFound');
+    const ldStop = new Set(['originUnavailable', 'originRateLimited', 'busy', 'disabled', 'administratorRequired', 'libraryBusy']);
+    let ldState = null;
+    let ldBatch = null; // script mode: { dto, at, polls, steps }
+    let ldPolls = 0;
+    let ldSeq = 0;
+    const ldHex = (lead) => (lead + (++ldSeq).toString(16)).padStart(32, '0').slice(-32);
+    const ldList = () => {
+        if (!ldState && ld() && ld().state) ldState = ld().state.status === 200 ? clone(ld().state.body) : null;
+        return ldState;
+    };
+    const ldCounts = (items) => ({
+        done: items.filter((x) => x.state === 'done').length, refused: items.filter((x) => x.state === 'refused').length,
+        notConfirmed: items.filter((x) => x.state === 'notConfirmed').length, notAttempted: items.filter((x) => x.state === 'notAttempted').length,
+        queued: items.filter((x) => ['queued', 'checking', 'deleting'].includes(x.state)).length
+    });
+    const ldEndRest = (b, reason) => {
+        for (const x of b.dto.items) if (x.state === 'queued') Object.assign(x, { state: 'notAttempted', reason });
+    };
+    function ldStep(b) {
+        const d = b.dto;
+        if (d.state === 'settling') {
+            for (const x of d.items) {
+                if (x.state !== 'done') continue;
+                const pending = (ld().script[x.title] || {}).pending;
+                Object.assign(x, { shared: pending ? 'pending' : 'present', history: pending ? 'notCarried' : 'carried' });
+            }
+            d.state = b.stopped ? 'stopped' : 'finished';
+            d.finishedUtc = new Date(now()).toISOString();
+            ldList().activeBatchId = null;
+            return;
+        }
+
+        const cur = d.items.find((x) => x.state === 'checking' || x.state === 'deleting');
+        if (!cur) {
+            const next = d.items.find((x) => x.state === 'queued');
+            if (next && !d.stopping) { next.state = 'checking'; b.slow = (ld().script[next.title] || {}).slow || 0; b.limited = (ld().script[next.title] || {}).rateLimited || 0; return; }
+            if (next) { ldEndRest(b, null); b.stopped = true; }
+            d.stopping = false;
+            d.state = 'settling';
+            return;
+        }
+
+        const rule = ld().script[cur.title] || {};
+        if (cur.state === 'checking' && b.limited > 0) { b.limited -= 1; cur.reason = 'originRateLimited'; return; }
+        if (cur.state === 'checking' && cur.reason === 'originRateLimited') { cur.reason = null; return; }
+        if (cur.state === 'checking' && b.slow > 0) { b.slow -= 1; return; }
+        if (cur.state === 'checking' && rule.refuse) {
+            Object.assign(cur, { state: 'refused', reason: rule.refuse });
+            if (ldStop.has(rule.refuse)) { ldEndRest(b, rule.refuse); b.stopped = true; }
+            return;
+        }
+        if (cur.state === 'checking') { cur.state = 'deleting'; return; }
+        if (rule.notConfirmed) {
+            Object.assign(cur, { state: 'notConfirmed', reason: 'notConfirmed' });
+            ldEndRest(b, 'notConfirmed');
+            b.stopped = true;
+            return;
+        }
+        cur.state = 'done';
+        const list = ldList();
+        list.candidates = list.candidates.filter((c) => c.candidateId !== b.ids.get(cur.itemKey));
+    }
+    const ldView = () => {
+        ldBatch.dto.counts = ldCounts(ldBatch.dto.items);
+        return ok(clone(ldBatch.dto));
+    };
+
+    route('GET', 'Peers/([^/]+)/LocalRemoval', () => (ldList() ? ok(clone(ldList())) : ldAnswer(ld() && ld().state)));
+    route('GET', 'LocalRemoval/Status', () => ldAnswer(ld() && ld().global));
+    route('PUT', 'LocalRemoval/Enabled', (m, body) => {
+        if (typeof body?.enabled !== 'boolean') return fail(400, 'invalidRequest');
+        if (!ld() || !ld().setting) return fail(404, 'notFound');
+        if (ldList()) ldList().enabled = body.enabled;
+        if (body.enabled === false && ldBatch && ['running'].includes(ldBatch.dto.state)) ldBatch.dto.stopping = true;
+        return ok({ ...clone(ld().setting.body), enabled: body.enabled });
+    });
+    route('POST', 'LocalRemoval/Deletions', (m, body) => {
+        const ids = body?.candidateIds;
+        if (!Array.isArray(ids) || ids.length < 1 || ids.length > 50 || new Set(ids).size !== ids.length || !ids.every((x) => /^[a-f0-9]{32}$/.test(x))) return fail(400, 'invalidRequest');
+        if (!ld() || !ld().start) return fail(404, 'notFound');
+        if (!ld().script) return ldAnswer(ld().start);
+        const list = ldList();
+        if (!list.enabled) return fail(409, 'disabled');
+        if (ldBatch && !['finished', 'stopped'].includes(ldBatch.dto.state)) return fail(409, 'busy');
+        const rows = ids.map((x) => list.candidates.find((c) => c.candidateId === x)).filter(Boolean);
+        if (!rows.length) return fail(409, 'candidateChanged');
+        const template = ld().start.body.items[0];
+        const keys = new Map();
+        const items = rows.map((row) => {
+            const itemKey = ldHex('e');
+            keys.set(itemKey, row.candidateId);
+            return { ...clone(template), itemKey, title: row.title, year: row.year, bytes: row.bytes, state: 'queued' };
+        });
+        const batches = ld().batches || [];
+        const shape = clone((batches[0] || {}).body || {});
+        ldBatch = { ids: keys, slow: 0, stopped: false, dto: { ...shape, batchId: ldHex('f'), state: 'running', startedUtc: new Date(now()).toISOString(), finishedUtc: null, stopping: false, counts: ldCounts(items), items } };
+        list.activeBatchId = ldBatch.dto.batchId;
+        return { status: 202, body: { ...clone(ld().start.body), batchId: ldBatch.dto.batchId, state: 'running', items: clone(items) }, headers: {} };
+    });
+    route('GET', 'LocalRemoval/Deletions/Current', () => {
+        if (ld() && ld().script) return ldBatch ? ldView() : ldAnswer(ld().current);
+        return ldAnswer(ld() && ld().current);
+    });
+    route('GET', 'LocalRemoval/Deletions/([^/]+)', (m) => {
+        if (!ld()) return fail(404, 'notFound');
+        if (ld().script) {
+            if (!ldBatch || ldBatch.dto.batchId !== decodeURIComponent(m[1])) return fail(404, 'notFound');
+            if (!['finished', 'stopped'].includes(ldBatch.dto.state)) ldStep(ldBatch);
+            return ldView();
+        }
+        const list = ld().batches || [];
+        const reply = list[Math.min(ldPolls, list.length - 1)];
+        ldPolls += 1;
+        return ldAnswer(reply);
+    });
+    route('POST', 'LocalRemoval/Deletions/([^/]+)/Stop', (m) => {
+        if (!ld()) return fail(404, 'notFound');
+        if (!ld().script) return ldAnswer(ld().stop);
+        if (!ldBatch || ldBatch.dto.batchId !== decodeURIComponent(m[1])) return fail(404, 'notFound');
+        if (ldBatch.dto.state === 'running') ldBatch.dto.stopping = true;
+        return ldView();
+    });
+    route('POST', 'LocalRemoval/Jobs/([^/]+)/Restore', (m) => {
+        const list = ldList();
+        const job = list && list.legacyJobs.find((j) => j.jobId === decodeURIComponent(m[1]) && j.canRestore);
+        if (!job || !ld().restore) return fail(404, 'notFound');
+        Object.assign(job, { phase: 'restored', canRestore: false, bytesHeld: 0 });
+        return ok({ ...clone(ld().restore.body), jobId: job.jobId, title: job.title });
+    });
+
 
     /* ---------------- quality limits and play order (K53, docs/kiro-v2.9-04.md) ----------------
      * opt.playOrder: GET PlayOrder answers (true, or 'odd' for an unknown reason, 'one' for a single server); without it a bare 404 (older server).

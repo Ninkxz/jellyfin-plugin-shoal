@@ -869,6 +869,8 @@ public sealed class CatalogSyncTests
         rig.Settings = SyncSettings.Default with { NameCap = 12 };
         var report = await rig.SyncAsync();
 
+        Assert.True(report.Result == SyncResultKind.Ok && report.Added == 6,
+            $"result={report.Result}; error={report.Error}; complete={report.Complete}; added={report.Added}; alerts={string.Join(',', report.Alerts)}; peerRequests={rig.Peer.Requests.Count}; itemRequests={rig.Peer.ItemHits}; failures={string.Join('|', rig.Log.Lines.Where(l => l.Contains("failed", StringComparison.OrdinalIgnoreCase)))}");
         Assert.Equal(6, report.Added);
         Assert.Contains(SyncAlert.NameCap, report.Alerts);
         var catalog = rig.Catalog();

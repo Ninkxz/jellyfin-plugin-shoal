@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "permanentDeleteAvailable": false,
+  "candidates": [],
+  "jobs": [{ "jobId": "33333333333333333333333333333333", "title": "Sintel", "phase": "replacementReady", "canRestore": true, "bytesHeld": 199749, "error": null }]
+}

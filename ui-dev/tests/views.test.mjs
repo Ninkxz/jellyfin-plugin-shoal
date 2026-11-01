@@ -5,7 +5,7 @@ import { mountPage, makeClock, JUNK } from './helpers.mjs';
 
 const VIEWS = [
     ['overview', {}], ['libraries', {}], ['settings', {}], ['pair', { dir: 'watch' }], ['pair', { dir: 'share' }],
-    ['server', { id: 'h-hops' }], ['server', { id: 'h-fern' }], ['server', { id: 'h-gran' }], ['friend', { id: 'f-sam' }], ['friend', { id: 'f-jo' }], ['overlap', { id: 'h-hops' }], ['layouts', {}]
+    ['server', { id: 'h-hops' }], ['server', { id: 'h-fern' }], ['server', { id: 'h-gran' }], ['friend', { id: 'f-sam' }], ['friend', { id: 'f-jo' }], ['overlap', { id: 'h-hops' }], ['layouts', {}], ['manage', { id: 'h-hops' }], ['manage', { tab: 'remove' }]
 ];
 const SCENARIOS = ['default', 'empty', 'friendsOnly', 'problems', 'keys', 'restored', 'recovery', 'recoveryNewer', 'oneServer', 'nothingShared'];
 

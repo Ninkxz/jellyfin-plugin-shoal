@@ -1,0 +1,47 @@
+{
+  "enabled": true,
+  "permanentDeleteAvailable": true,
+  "permanentDeletionEnabled": true,
+  "candidates": [
+    {
+      "candidateId": "11111111111111111111111111111111",
+      "title": "Sintel",
+      "year": 2010,
+      "bytes": 199749
+    },
+    {
+      "candidateId": "44444444444444444444444444444444",
+      "title": "Spring",
+      "year": 2019,
+      "bytes": 1048576
+    },
+    {
+      "candidateId": "55555555555555555555555555555555",
+      "title": "Tears of Steel",
+      "year": null,
+      "bytes": 524288
+    }
+  ],
+  "jobs": [
+    {
+      "jobId": "66666666666666666666666666666666",
+      "title": "Big Buck Bunny",
+      "phase": "purged",
+      "canRestore": false,
+      "canReviewPermanentDeletion": false,
+      "outcome": "purged",
+      "bytesHeld": 0,
+      "error": null
+    },
+    {
+      "jobId": "33333333333333333333333333333333",
+      "title": "Cosmos Laundromat",
+      "phase": "replacementReady",
+      "canRestore": true,
+      "canReviewPermanentDeletion": true,
+      "outcome": "retained",
+      "bytesHeld": 2097152,
+      "error": null
+    }
+  ]
+}

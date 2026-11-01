@@ -102,7 +102,7 @@ export async function mountPage(opts) {
     const o = Object.assign({ scenario: 'default', params: {}, now: () => Date.now() }, opts || {});
     const mod = await loadShoal();
     const d = ensureDom();
-    const { scenario, params, now, settleMs, features, nulls, emptyBodies, garbage, installed, latest, noCatalog, ...mockOptions } = o;
+    const { scenario, params, now, settleMs, features, storage, nulls, emptyBodies, garbage, installed, latest, noCatalog, ...mockOptions } = o;
     const mock = createMock({ scenario, now, pairing: 'ok', probeError: '', delayMs: 0, ...mockOptions });
     const client = createMockClient(mock, { nulls, emptyBodies, garbage, installed, latest, noCatalog });
     const holder = d.window.document.createElement('div');
@@ -113,7 +113,7 @@ export async function mountPage(opts) {
     const navigations = [];
     const handle = mod.mount(page, o.params, {
         api: mod.createApi(client), client, dashboard: { navigate: async (p) => { navigations.push(p); } }, now: o.now, locale: 'en-GB',
-        storage: { get: () => null, set: () => {} }, features
+        storage: storage || { get: () => null, set: () => {} }, features
     });
     page.dispatchEvent(new d.window.CustomEvent('viewshow', { bubbles: true, detail: { isRestored: false } }));
     const wait = async (ms) => new Promise((r) => setTimeout(r, ms || 30));

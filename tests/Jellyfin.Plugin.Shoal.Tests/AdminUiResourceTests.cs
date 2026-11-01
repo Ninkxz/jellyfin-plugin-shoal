@@ -196,7 +196,7 @@ public sealed class AdminUiResourceTests
         Assert.DoesNotContain("debugger", js, StringComparison.Ordinal);
         // The only persisted browser state is two per-viewer conveniences, always through safeStorage().
         var keys = Regex.Matches(js, @"const [A-Z_]*KEY = '([^']+)'").Select(m => m.Groups[1].Value).OrderBy(x => x, StringComparer.Ordinal).ToList();
-        Assert.Equal(new[] { "shoal.selected" }.OrderBy(x => x, StringComparer.Ordinal).ToList(), keys);
+        Assert.Equal(new[] { "shoal.deleteDismissed", "shoal.selected" }.OrderBy(x => x, StringComparer.Ordinal).ToList(), keys);
         Assert.Single(Regex.Matches(js, @"window\.localStorage\.setItem"));
         Assert.DoesNotContain("sessionStorage", js, StringComparison.Ordinal);
         Assert.DoesNotContain("indexedDB", js, StringComparison.Ordinal);

@@ -260,7 +260,7 @@ test('U-A1 order: tiles, lanes, New from friends\' servers, Library overlap, Lin
     const p = await overview('default');
     try {
         const heads = [...p.page.querySelectorAll('[data-shoal-view="overview"] h2')].filter((h) => !h.closest('[hidden]')).map((h) => visibleText(h));
-        assert.deepEqual(heads, ['Watching', 'Being watched', "New from friends' servers Watching", 'Library overlap with Fernwood Watching', 'Link speed']);
+        assert.deepEqual(heads, ['Watching', 'Being watched', "New from friends' servers Watching", 'Library overlap with Fernwood', 'Link speed with Fernwood']);
         // "Which server plays first" waits for the order from the server (docs/kiro2-v2.9-01.md).
         assert.equal(p.page.querySelector('[data-section="playorder"]').hidden, true);
     } finally {
@@ -330,7 +330,7 @@ test('Which server plays first: an older server without the route is asked once,
 test('Library overlap: the backup line uses the K53 counts (plays first, backup for) and hides without them', async () => {
     const p = await overview('default', { playOrder: true });
     try {
-        const select = p.page.querySelector('.shoal-speed select');
+        const select = p.page.querySelector('[data-slot="peerselect"]');
         select.value = 'h-hops';
         select.dispatchEvent(new window.Event('change', { bubbles: true }));
         await p.wait(200);
@@ -451,18 +451,81 @@ test('a failed load shows one generic sentence and never a server message', asyn
     }
 });
 
-test('choosing another server in Link speed updates the overlap and announces it', async () => {
-    const p = await overview('default');
+test('2.10.3 T1: the one Showing select above both cards switches overlap, backup line and Link speed together, and announces it', async () => {
+    const p = await overview('default', { playOrder: true });
     try {
-        const select = p.page.querySelector('.shoal-speed select');
+        const ov = p.page.querySelector('[data-shoal-view="overview"]');
+        const bar = ov.querySelector('[data-section="peerbar"]');
+        const overlap = ov.querySelector('[data-section="overlap"]');
+        assert.equal(bar.hidden, false);
+        // Above both cards: the bar comes before the overlap card, which comes before the speed card.
+        assert.ok(bar.compareDocumentPosition(overlap) & window.Node.DOCUMENT_POSITION_FOLLOWING);
+        assert.ok(overlap.compareDocumentPosition(ov.querySelector('.shoal-speed')) & window.Node.DOCUMENT_POSITION_FOLLOWING);
+        assert.match(visibleText(bar), /^Showing:/);
+        assert.equal(ov.querySelectorAll('.shoal-speed select').length, 0, 'no select inside the Link speed card');
+        const select = bar.querySelector('[data-slot="peerselect"]');
+        assert.equal(select.closest('[hidden]'), null);
+        assert.equal(p.page.querySelector('#' + select.getAttribute('aria-labelledby')).textContent, 'Showing:');
         select.value = 'h-hops';
         select.dispatchEvent(new window.Event('change', { bubbles: true }));
         await p.wait(250);
+        assert.equal(visibleText(ov.querySelector('[data-slot="overlaptitle"]')), 'Library overlap with Hops');
+        assert.equal(visibleText(ov.querySelector('.shoal-speed h2')), 'Link speed with Hops');
+        assert.match(visibleText(ov.querySelector('[data-slot="backupline"]')), /If Hops is offline/);
         assert.match(p.text(), /What plays from Hops/);
-        assert.match(p.text(), /Library overlap with Hops/);
-        assert.match(p.page.querySelector('[data-slot="live"]').textContent, /Showing link speed for Hops/);
+        assert.equal(p.page.querySelector('[data-slot="live"]').textContent, 'Now showing Hops');
     } finally {
         p.close();
+    }
+});
+
+test('2.10.3 T1: the pick is stored, and the next visit opens on it', async () => {
+    const box = new Map();
+    const storage = { get: (k) => box.get(k) ?? null, set: (k, v) => box.set(k, v) };
+    const p = await overview('default', { storage });
+    try {
+        const select = p.page.querySelector('[data-slot="peerselect"]');
+        select.value = 'h-hops';
+        select.dispatchEvent(new window.Event('change', { bubbles: true }));
+        await p.wait(150);
+        assert.equal(box.get('shoal.selected'), 'h-hops');
+    } finally {
+        p.close();
+    }
+
+    const again = await overview('default', { storage });
+    try {
+        assert.equal(again.page.querySelector('[data-slot="peerselect"]').value, 'h-hops');
+        assert.equal(visibleText(again.page.querySelector('.shoal-speed h2')), 'Link speed with Hops');
+    } finally {
+        again.close();
+    }
+});
+
+test('2.10.3 T1: with one server the Showing control is its name as text, not a select', async () => {
+    const p = await overview('oneServer');
+    try {
+        const bar = p.page.querySelector('[data-section="peerbar"]');
+        assert.equal(bar.hidden, false);
+        assert.equal(bar.querySelector('[data-slot="peerselectwrap"]').hidden, true);
+        const name = bar.querySelector('[data-slot="peername"]');
+        assert.equal(name.hidden, false);
+        assert.ok(name.textContent.length > 0);
+        assert.equal(visibleText(p.page.querySelector('.shoal-speed h2')), 'Link speed with ' + name.textContent);
+        assert.equal(p.page.querySelectorAll('.shoal-speed select').length, 0);
+    } finally {
+        p.close();
+    }
+});
+
+test('2.10.3 T1: with no servers the Showing control is hidden', async () => {
+    for (const scenario of ['empty', 'friendsOnly']) {
+        const p = await overview(scenario);
+        try {
+            assert.equal(p.page.querySelector('[data-section="peerbar"]').hidden, true, scenario);
+        } finally {
+            p.close();
+        }
     }
 });
 
@@ -551,4 +614,44 @@ test('backupVia names the other server only when exactly two can play; ordinalPl
     assert.equal(mod.backupVia({ playOrder: [...two.playOrder, { peerKey: 'c' }] }, servers, servers[0]), null);
     assert.equal(mod.backupVia(null, servers, servers[0]), null);
     assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(mod.ordinalPlace), ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th']);
+});
+
+test('2.10.3 T3: the overlap card footer has Library management first, then Full report, for the Showing server', async () => {
+    const p = await overview('default');
+    try {
+        const foot = p.page.querySelector('[data-shoal-view="overview"] [data-slot="overlapfoot"]');
+        const [manage, report] = [...foot.querySelectorAll('a')];
+        assert.equal(visibleText(manage), 'Library management');
+        assert.ok(manage.classList.contains('emby-button') && manage.classList.contains('shoal-btn--outline'));
+        assert.equal(visibleText(report), 'Full report');
+        assert.equal(report.hidden, false);
+        const select = p.page.querySelector('[data-slot="peerselect"]');
+        select.value = 'h-hops';
+        select.dispatchEvent(new window.Event('change', { bubbles: true }));
+        await p.wait(200);
+        assert.match(manage.getAttribute('href'), /view=manage/);
+        assert.deepEqual(JSON.parse(manage.dataset.shoalQuery), { id: 'h-hops', tab: 'overlap' });
+        assert.deepEqual(JSON.parse(report.dataset.shoalQuery), { id: 'h-hops' });
+        // Exactly one Full report link on the card (it no longer sits in the overlap text too).
+        assert.equal([...p.page.querySelectorAll('[data-section="overlap"] a')].filter((a) => visibleText(a) === 'Full report').length, 1);
+        manage.click();
+        await p.wait(50);
+        assert.equal(p.navigations.length, 1);
+        assert.match(p.navigations[0], /view=manage/);
+        assert.match(p.navigations[0], /tab=overlap/);
+        assert.match(p.navigations[0], /id=h-hops/);
+    } finally {
+        p.close();
+    }
+});
+
+test('2.10.3 T3: before the first full sync the card still offers Library management, not Full report', async () => {
+    const p = await overview('nothingShared');
+    try {
+        const foot = p.page.querySelector('[data-shoal-view="overview"] [data-slot="overlapfoot"]');
+        assert.equal(visibleText(foot.querySelector('[data-slot="managelink"]')), 'Library management');
+        assert.equal(foot.querySelector('[data-slot="fullreport"]').hidden, true);
+    } finally {
+        p.close();
+    }
 });

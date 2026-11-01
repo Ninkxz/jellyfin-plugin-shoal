@@ -23,6 +23,126 @@
 /* ====================================================================================== */
 
 const STRINGS = {
+    // 2.10.4 Delete from this server (docs/plans/lumen-delete-2.10.4.md; the ASCII there is the contract).
+    delTitle: "Delete local movies",
+    delEnable: "Allow Shoal to delete local movies",
+    delEnableHelp: "Deletes the movie and its folder from this server's disk after Shoal confirms your friend has the identical file.",
+    delOffHint: "Turn on Allow Shoal to delete local movies above.",
+    delEmpty: "Nothing overlaps with this friend yet.",
+    delChooseFriend: "Open a friend's Remove local copies tab to choose movies to delete.",
+    delRefresh: "Refresh",
+    delSummary: ["{n} movie, {bytes}", "{n} movies, {bytes}"],
+    delSelectShown: ["Select the {n} shown", "Select the {n} shown"],
+    delSelected: "{n} selected, {bytes}",
+    delButton: "Delete from this server",
+    delClear: "Clear",
+    delBulk: "Bulk actions",
+    delNoMatch: "No titles match.",
+    delMatches: ["{n} movie matches.", "{n} movies match."],
+    delCandidates: "Overlapped movies",
+    delCandidate: "{title} ({bytes} locally)",
+    delDialogTitle: "Delete from this server?",
+    delDialogCount: ["{n} movie, {bytes}.", "{n} movies, {bytes}."],
+    delDialogBody: "Each movie and its whole folder are deleted from this server's disk, like Jellyfin's Delete. Your friend's copy will play instead. This can't be undone.",
+    delDialogConfirm: "Delete",
+    delChecking: "Checking {i} of {n}: {title}",
+    delWaitingFriend: "Waiting for your friend's server: {title}",
+    delDeleting: "Deleting {i} of {n}: {title}",
+    delSettling: "Finishing up: adding your friend's copies",
+    delLargeFile: "(large file, this can take a while)",
+    delStop: "Stop after this one",
+    delStopNote: "The movie in progress always finishes.",
+    delStopping: "Stopping after this one...",
+    delReattached: "Picked up where you left off.",
+    delResults: "Results",
+    delDismiss: "Dismiss",
+    delCountDone: "{n} deleted",
+    delCountRefused: "{n} refused",
+    delCountNotSure: "{n} not sure",
+    delCountNotTried: "{n} not attempted",
+    delStatus_done: "Deleted",
+    delStatus_refused: "Refused",
+    delStatus_notConfirmed: "Not sure",
+    delStatus_notAttempted: "Not tried",
+    delStatus_working: "Working...",
+    delStatus_waiting: "Waiting",
+    delSharedPresent: "Playing from your friend now.",
+    delSharedPending: "Your friend's copy will show up after the next sync.",
+    delHistoryCarried: "Watch history kept.",
+    delHistoryNotCarried: "Watch history wasn't carried over.",
+    delStoppedBy: "Stopped: {reason}",
+    delStoppedUser: "Stopped: you asked to stop.",
+    delStoppedPrevious: "Stopped: couldn't confirm the previous movie.",
+    delReason_candidateChanged: "This movie changed since you opened the list. Reload and try again.",
+    delReason_contentNotEquivalent: "Your friend's file isn't identical, so nothing was deleted.",
+    delReason_historyChanged: "Someone's watch history changed while checking. Nothing was deleted. Try again.",
+    delReason_accessNotShared: "A person on this server can't see your friend's copy, so deleting would take their movie away. Share it with them first.",
+    delReason_removalChanged: "Something changed, or someone is watching it. Nothing was deleted.",
+    delReason_folderNotDedicated: "This movie shares its folder with other media, so Shoal won't delete it. Delete it in Jellyfin.",
+    delReason_deleteNotPermitted: "Your Jellyfin account isn't allowed to delete library content. Turn on 'Allow this user to delete library content' for you.",
+    delReason_deleteFailed: "Jellyfin couldn't delete the file. Check the share lets Jellyfin write and delete.",
+    delReason_unsupportedItem: "Shoal can't delete this kind of movie (shortcut, extra versions or external subtitles). Use Jellyfin.",
+    delReason_notConfirmed: "Shoal couldn't confirm whether this was deleted. Check this movie in Jellyfin before trying again.",
+    delStop_originUnavailable: "your friend's server isn't answering or can't confirm the copy. It may be offline or need Shoal 2.10.4.",
+    delStop_originRateLimited: "your friend's server is busy. Try again in a minute.",
+    delStop_busy: "another Shoal job is running. Try again soon.",
+    delStop_disabled: "deleting was turned off.",
+    delStop_administratorRequired: "this needs an administrator account.",
+    delStop_libraryBusy: "Jellyfin is scanning the library. Try again when it's done.",
+    delUnknown: "Something went wrong. Nothing was deleted.",
+    delStartFailed: "Nothing was deleted: {reason}",
+    delRate: "Your friend's server is busy. Try again in {seconds} seconds.",
+    delLost: "The server no longer knows this run (it may have restarted). Check these movies in Jellyfin before trying again.",
+    delPollTrouble: "Can't reach this server right now. Still trying...",
+    delUnavailable: "This server does not offer Delete from this server yet.",
+    delInvalid: "The reply could not be verified. Delete controls are unavailable.",
+    delError: "The request could not be completed. Refresh and try again.",
+    delBusyNote: "Working on this request...",
+    delShareNote: "Big movies can take several minutes to check. Both servers need Shoal 2.10.4.",
+    delLocked: "Deleting... you can leave this page, it keeps going.",
+    delStarted: ["Deleting {n} movie.", "Deleting {n} movies."],
+    delItemEnded: "{status}: {title}",
+    delUnsureRow: "Check this movie in Jellyfin first.",
+    delLegacyTitle: "Held by an earlier Shoal version",
+    delLegacyLead: "Restore puts the file back in your library. Then you can delete it like any other movie.",
+    delLegacyAttention: "Needs attention. Open Shoal's log or ask for help.",
+    delLegacyList: "Held movies",
+    delRestore: "Restore",
+    delRestoreLabel: "Restore {title}",
+    delRestored: "Restored. It is back in your library.",
+    delRestoreNotFinished: "Restore could not finish. The file is still held. Check for an occupied original location, then try again.",
+    delRestoreConflict: "The original location is occupied or has changed. Both copies are kept. Resolve the conflict before restoring.",
+    localRemovalTitle: "Local copy removal preview",
+    localRemovalIntro: "Nothing is deleted. This preview lists cached movie overlaps, not copies that are safe to remove. TV is not included.",
+    localRemovalSpace: "Space reclaimed by this preview: 0 bytes.",
+    localRemovalBlocked: "Not verified safe to remove",
+    localRemovalChecks: "Identity, current availability, quality, retained original, user access and watch progress still need verification.",
+    localRemovalEmpty: "No cached movie overlaps on this page.",
+    localRemovalNever: "No completed catalog sync yet. Sync this friend before checking again.",
+    localRemovalDisabled: "This friend is disabled. No removal preview is available.",
+    localRemovalPairing: "Pair this friend again before checking overlaps.",
+    localRemovalUnavailable: "This server does not provide a local copy removal preview yet.",
+    localRemovalError: "The preview could not be verified. No files were changed. Try again.",
+    localRemovalRecovery: "Saved library recovery must finish before this preview is available. No files were changed.",
+    localRemovalLoading: "Loading cached movie overlaps...",
+    localRemovalRefresh: "Refresh preview",
+    localRemovalPrevious: "Previous",
+    localRemovalNext: "Next",
+    localRemovalPageOf: "Page {page} of {pages}",
+    localRemovalFilter: "Filter titles",
+    localRemovalSort: "Sort",
+    localRemovalSortLargest: "Size, largest",
+    localRemovalSortSmallest: "Size, smallest",
+    localRemovalSortTitle: "Title, A to Z",
+    localRemovalMatches: ["{n} row on this page matches.", "{n} rows on this page match."],
+    localRemovalNoMatch: "No copies match.",
+    localRemovalClear: "Clear filter",
+    localRemovalPage: "Showing {start} to {end} of {total} cached overlap rows.",
+    localRemovalEveryRow: "This applies to every row below.",
+    localRemovalCaption: "Local copy removal preview. No row is verified safe to remove.",
+    localRemovalSize: "Size (estimate)",
+    localRemovalMovie: "Title",
+    localRemovalUpdated: "Catalog last computed {when}. Current availability has not been checked.",
     // ---- pairing v2 (docs/ui-spec-pairing-v2.md): every line of the new pair and share flows. No dashes in any of it. ----
     installTitle: "This server doesn't have Shoal yet, or has an older Shoal",
     installBody: "Both servers need Shoal. Ask your friend to install it from the link below, then check again.",
@@ -504,7 +624,7 @@ const STRINGS = {
     announceSyncFinished: "Sync finished: {added} added, {removed} removed",
     announceNowState: "{server} is now {state}",
     announceManyChanged: "{n} servers changed status",
-    announceShowingSpeed: "Showing link speed for {server}",
+    announceNowShowing: "Now showing {server}",
     announceCodeExpired: "The code expired",
     announceOneMinute: "1 minute left",
     announceFiveMinutes: "5 minutes left",
@@ -521,6 +641,9 @@ const STRINGS = {
 
     // link speed panel and chart
     linkSpeed: "Link speed",
+    speedTitleWith: "Link speed with {server}",
+    showingLabel: "Showing:",
+    serverShown: "Server shown",
     serverLabel: "Server",
     timeRange: "Time range",
     range_24h: "24 h",
@@ -626,6 +749,11 @@ const STRINGS = {
     fullReport: "Full report",
     overlapNone: "Overlap shows up after the first full sync.",
     overlapReport: "Library overlap",
+    manageTitle: "Library management",
+    manageTabs: "Library management sections",
+    manageTabOverlap: "Overlap",
+    manageTabRemove: "Remove local copies",
+    manageNoFriends: "Pair a friend's server to see its overlap and manage local copies here.",
     overlapReportNone: "No overlap report yet. It appears after the first full sync.",
     yourCopyPlays: "Your copy always plays when you both have a title.",
     byQuality: "By quality",
@@ -1698,7 +1826,7 @@ const APPS_VERIFIED = { web: false, moonfinIos: false, moonfinOther: false, jmp:
 /** Where the plugin is installed from: the link a friend gets when their server has no Shoal. */
 const INSTALL_URL = 'https://github.com/Ninkxz/jellyfin-plugin-shoal';
 
-const VIEWS = ['overview', 'libraries', 'settings', 'pair', 'server', 'overlap', 'friend', 'layouts'];
+const VIEWS = ['overview', 'libraries', 'settings', 'pair', 'server', 'overlap', 'friend', 'layouts', 'manage'];
 const TOP_VIEWS = ['overview', 'libraries', 'settings'];
 
 /* Quality thresholds drawn on the chart (DESIGN 7.2: smooth if T >= 1.5 x reference bitrate). */
@@ -2334,6 +2462,15 @@ function createApi(client) {
         releaseSeries: (h, kind, series) => call('POST', 'Peers/' + enc(h) + '/Holds/' + enc(kind) + '/' + enc('Release') + '?series=' + enc(series)),
         holds: (h) => call('GET', 'Peers/' + enc(h) + '/Holds'),
         overlap: (h) => call('GET', 'Peers/' + enc(h) + '/Overlap'),
+        localRemovalPreview: (h, offset) => call('GET', 'Peers/' + enc(h) + '/LocalRemovalPreview?offset=' + offset + '&limit=50'),
+        removal: (h) => h ? call('GET', 'Peers/' + enc(h) + '/LocalRemoval') : call('GET', 'LocalRemoval/Status'),
+        removalEnabled: (enabled) => call('PUT', 'LocalRemoval/Enabled', { enabled }),
+        // 2.10.4 (c0-delete-contract-2.10.4.md): the server batch. Start, follow, re-attach, stop.
+        deleteStart: (candidateIds) => call('POST', 'LocalRemoval/Deletions', { candidateIds }),
+        deleteBatch: (id) => call('GET', 'LocalRemoval/Deletions/' + enc(id)),
+        deleteCurrent: () => call('GET', 'LocalRemoval/Deletions/Current'),
+        deleteStop: (id) => call('POST', 'LocalRemoval/Deletions/' + enc(id) + '/Stop', {}),
+        removalRestore: (id) => call('POST', 'LocalRemoval/Jobs/' + enc(id) + '/Restore', {}),
         speed: (h, range) => call('GET', 'Peers/' + enc(h) + '/Speed?range=' + enc(range)),
         speedTest: (h, deep) => call('POST', 'Peers/' + enc(h) + '/SpeedTest', { deep: !!deep }),
         libraries: () => call('GET', 'Libraries'),
@@ -3637,6 +3774,13 @@ function openDialog(ctx, o) {
     const foot = slot(dialog, 'foot');
     const errorNode = slot(dialog, 'error');
     titleNode.textContent = o.title;
+    // A dangerous confirm is an alertdialog whose body is its description, so the count and size are read with the title (2.10.3 Lumen F2).
+    if (o.alert) {
+        dialog.setAttribute('role', 'alertdialog');
+        body.id = uid('shoal-dlg-body');
+        dialog.setAttribute('aria-describedby', body.id);
+    }
+
     if (o.wide) {
         dialog.classList.add('shoal-dialog--wide');
     }
@@ -3720,6 +3864,7 @@ async function confirmDialog(ctx, o) {
     const result = await openDialog(ctx, {
         title: o.title,
         safeFocus: o.safeFocus !== undefined ? !!o.safeFocus : !!o.danger,
+        alert: !!o.danger,
         build(body, dlg) {
             if (o.intro) {
                 body.append(paragraph(o.intro));
@@ -4789,7 +4934,9 @@ function createSpeedPanel(ctx, o) {
     const nameNode = el('span', { class: 'shoal-titlerow__name', hidden: true });
     const sub = el('p', { class: 'shoal-panel__sub' });
     const h2 = el('h2', { class: 'shoal-h2', id: headId, tabindex: '-1', text: t('linkSpeed') });
-    const titleRow = el('div', { class: 'shoal-titlerow' }, h2, el('span', { class: 'shoal-titlerow__colon', 'aria-hidden': 'true', text: ':' }), selectWrap, nameNode);
+    // On Overview the section's one Showing select picks the server (2.10.3 T1), so the title names it and the card has no select of its own.
+    const titleRow = o.hidePeerSelect ? el('div', { class: 'shoal-titlerow' }, h2)
+        : el('div', { class: 'shoal-titlerow' }, h2, el('span', { class: 'shoal-titlerow__colon', 'aria-hidden': 'true', text: ':' }), selectWrap, nameNode);
     const ranges = o.detail ? ['24h', '7d', '30d'] : ['24h', '7d'];
     let rangeKey = '24h';
     const seg = segmented(ranges.map((r) => ({ value: r, label: t('range_' + r) })), rangeKey, (v) => {
@@ -4871,6 +5018,10 @@ function createSpeedPanel(ctx, o) {
         nameNode.hidden = many;
         const cur = current();
         nameNode.textContent = cur ? cur.displayName : '';
+        if (o.hidePeerSelect) {
+            h2.textContent = cur ? t('speedTitleWith', { server: cur.displayName }) : t('linkSpeed');
+        }
+
         if (diag && cur) {
             ctx.link(diag, 'server', { id: cur.handle, focus: 'speed' });
         }
@@ -5179,6 +5330,12 @@ function overviewScreen(ctx) {
     const overlapTitle = slot(view, 'overlaptitle');
     const overlapBody = slot(view, 'overlapbody');
     const backupLine = slot(view, 'backupline');
+    const peerBar = q(view, '[data-section="peerbar"]');
+    const peerSelect = slot(view, 'peerselect');
+    const peerSelectWrap = slot(view, 'peerselectwrap');
+    const peerName = slot(view, 'peername');
+    const manageLink = slot(view, 'managelink');
+    const fullReport = slot(view, 'fullreport');
     const postersSection = q(view, '[data-section="posters"]');
     const postersHost = slot(view, 'posters');
     const postersEmpty = slot(view, 'postersempty');
@@ -5579,7 +5736,24 @@ function overviewScreen(ctx) {
         }
     }
 
-    /* ---------- selection, speed and overlap (the speed panel's Server select drives both) ---------- */
+    /* ---------- selection, speed and overlap (the section's one Showing select drives both cards) ---------- */
+
+    peerSelect.addEventListener('change', () => select(peerSelect.value, true));
+
+    function renderPeerBar(servers) {
+        peerBar.hidden = servers.length === 0;
+        replaceKids(peerSelect, servers.map((s) => el('option', { value: s.handle, text: s.displayName })));
+        if (st.selected) {
+            peerSelect.value = st.selected;
+        }
+
+        // One server: its name as plain text, not a select with one choice.
+        const many = servers.length > 1;
+        peerSelectWrap.hidden = !many;
+        peerName.hidden = many;
+        const cur = servers.find((s) => s.handle === st.selected);
+        peerName.textContent = cur ? cur.displayName : '';
+    }
 
     function select(handle, announce) {
         if (!handle || handle === st.selected) {
@@ -5588,6 +5762,7 @@ function overviewScreen(ctx) {
 
         st.selected = handle;
         ctx.storage.set(SELECTED_KEY, handle);
+        renderPeerBar(serversOf());
         if (st.speed) {
             st.speed.setServers(serversOf(), st.selected);
         }
@@ -5595,7 +5770,7 @@ function overviewScreen(ctx) {
         loadOverlap();
         if (announce) {
             const s = serversOf().find((x) => x.handle === handle);
-            ctx.announce(t('announceShowingSpeed', { server: s ? s.displayName : '' }));
+            ctx.announce(t('announceNowShowing', { server: s ? s.displayName : '' }));
         }
     }
 
@@ -5621,6 +5796,10 @@ function overviewScreen(ctx) {
         }
 
         overlapTitle.textContent = t('overlapTitle', { server: cur.displayName });
+        // The card footer: Library management for this server (2.10.3 T3), and Full report once there is a report.
+        ctx.link(manageLink, 'manage', { id: handle, tab: 'overlap' });
+        ctx.link(fullReport, 'overlap', { id: handle });
+        fullReport.hidden = true;
         const mine = ++st.overlapSeq;
         try {
             const ov = await ctx.api.overlap(handle);
@@ -5629,7 +5808,8 @@ function overviewScreen(ctx) {
             }
 
             st.overlapHandle = handle;
-            fillOverlap(ctx, overlapBody, cur.displayName, ov, { view: 'overlap', query: { id: handle } });
+            fillOverlap(ctx, overlapBody, cur.displayName, ov, null);
+            fullReport.hidden = !(ov && ov.computedUtc);
             renderBackupLine(ov, cur);
         } catch {
             if (mine === st.overlapSeq) {
@@ -5645,7 +5825,7 @@ function overviewScreen(ctx) {
             return;
         }
 
-        st.speed = createSpeedPanel(ctx, { servers: [], selected: null, onSelect: (h) => select(h, true) });
+        st.speed = createSpeedPanel(ctx, { servers: [], selected: null, hidePeerSelect: true });
         speedHost.append(st.speed.root);
     }
 
@@ -6087,6 +6267,7 @@ function overviewScreen(ctx) {
         renderWatchingMeta(servers);
         renderRows(servers);
         ensureSpeedPanel();
+        renderPeerBar(servers);
         speedHost.hidden = !hasServers;
         if (hasServers) {
             st.speed.setServers(servers, st.selected);
@@ -6434,6 +6615,8 @@ function librariesScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="libraries"]');
     const body = slot(view, 'body');
     const st = { data: null, shares: null, servers: [], loaded: false, focusKey: null, busy: new Set(), errors: new Map(), readErrors: [], status: null };
+    // Header fallback to Library management (2.10.3 T3); that page picks the server.
+    ctx.link(slot(view, 'managelink'), 'manage', {});
 
     function youId() {
         return currentUserId(ctx, st.data);
@@ -9041,7 +9224,9 @@ ctx.toast(t('settingsSaved'));
         }
 
         protectNode = hardeningPanel();
-        appendKids(body, [layoutLinkPanel(ctx, st.layouts, st.nfoMains, st.notLocked, st.mainsMissing), ctx.features.inboxExplainer ? inboxCard(ctx) : null, buildForm(st.settings), protectNode, keyStoragePanel(st.settings), parentalPanel(), statePanel(), dangerPanel()]);
+        const recovery = removalOperationsPanel(ctx, null);
+        appendKids(body, [layoutLinkPanel(ctx, st.layouts, st.nfoMains, st.notLocked, st.mainsMissing), ctx.features.inboxExplainer ? inboxCard(ctx) : null, buildForm(st.settings), protectNode, keyStoragePanel(st.settings), parentalPanel(), statePanel(), recovery.root, dangerPanel()]);
+        recovery.load();
     }
 
     async function load(initial) {
@@ -12410,6 +12595,725 @@ ctx.toast(t('saved'));
 /* Screen: Overlap report (ui-spec 8.6)                                                   */
 /* ====================================================================================== */
 
+/* Delete from this server (2.10.4, docs/plans/atlas-delete-like-jellyfin-2.10.4.md, lumen-delete-2.10.4.md, c0-delete-contract-2.10.4.md).
+ * One list, one danger button, one dialog. The batch runs on the server, one movie at a time; this page starts it, polls it every 2 s
+ * (ctx.features.deletePollMs in tests), asks it to stop, and re-attaches to it on page load. It never decides an outcome itself. */
+const DELETE_ITEM_STATES = ['queued', 'checking', 'deleting', 'done', 'refused', 'notConfirmed', 'notAttempted'];
+const DELETE_BATCH_STATES = ['running', 'settling', 'finished', 'stopped'];
+const DELETE_ITEM_REASONS = ['candidateChanged', 'contentNotEquivalent', 'historyChanged', 'accessNotShared', 'removalChanged', 'folderNotDedicated', 'deleteNotPermitted',
+    'deleteFailed', 'unsupportedItem', 'notConfirmed'];
+const DELETE_STOP_REASONS = ['originUnavailable', 'originRateLimited', 'busy', 'disabled', 'administratorRequired', 'libraryBusy'];
+// Legacy jobs from 2.10.2/2.10.3 (Atlas "Existing installs"): Restore only, a read-only "Needs attention" row, the rest hidden.
+const LEGACY_HELD = ['prepared', 'quarantined', 'replacementReady', 'needsRecovery'];
+const LEGACY_ATTENTION = ['purgePrepared', 'purgeCommitting', 'purgeOutcomeUnknown'];
+const LEGACY_PHASES = [...LEGACY_HELD, ...LEGACY_ATTENTION, 'restored', 'purged'];
+const DELETE_DISMISSED_KEY = 'shoal.deleteDismissed';
+
+/** The words for one reason code; never the code itself (Lumen section 4). */
+function deleteReasonText(reason) {
+    if (DELETE_ITEM_REASONS.includes(reason)) return t('delReason_' + reason);
+    if (!DELETE_STOP_REASONS.includes(reason)) return t('delUnknown');
+    // The stop words are written to follow "Stopped: "; on the movie that hit the stop they open the sentence.
+    const text = t('delStop_' + reason);
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function removalOperationsPanel(ctx, handle) {
+    const panel = section(t('delTitle'));
+    panel.root.setAttribute('data-removal-operations', '');
+    const pollMs = Number(ctx.features && ctx.features.deletePollMs) || 2000;
+    const isId = (value) => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
+    const isTitle = (value) => typeof value === 'string' && value.length > 0 && value.length <= 1024;
+    const isBytes = (value) => Number.isSafeInteger(value) && value >= 0;
+    const isYear = (value) => value === null || value === undefined || Number.isInteger(value);
+    const isWord = (value) => value === null || value === undefined || typeof value === 'string' && /^[a-zA-Z0-9]{1,64}$/.test(value);
+    const live = () => ctx.alive && panel.root.isConnected;
+    const keyOf = (row) => row.title + '\u0000' + (row.year == null ? '' : row.year) + '\u0000' + row.bytes;
+    const nameOf = (row) => row.title + (row.year == null ? '' : ' (' + row.year + ')');
+    const validJob = (job) => job && isId(job.jobId) && isTitle(job.title) && LEGACY_PHASES.includes(job.phase) && typeof job.canRestore === 'boolean'
+        && isBytes(job.bytesHeld) && isWord(job.error);
+    const validState = (reply) => reply && typeof reply.enabled === 'boolean' && typeof reply.deleteAvailable === 'boolean'
+        && Array.isArray(reply.candidates) && reply.candidates.length <= 300 && Array.isArray(reply.legacyJobs) && reply.legacyJobs.length <= 200
+        && reply.candidates.every((row) => row && isId(row.candidateId) && isTitle(row.title) && isBytes(row.bytes) && isYear(row.year))
+        && reply.legacyJobs.every(validJob) && (reply.activeBatchId == null || isId(reply.activeBatchId))
+        && new Set(reply.candidates.map((row) => row.candidateId)).size === reply.candidates.length;
+    const validItem = (item) => item && isId(item.itemKey) && isTitle(item.title) && isYear(item.year) && isBytes(item.bytes)
+        && DELETE_ITEM_STATES.includes(item.state) && isWord(item.reason)
+        && (item.shared == null || item.shared === 'present' || item.shared === 'pending')
+        && (item.history == null || item.history === 'carried' || item.history === 'notCarried');
+    const validBatch = (b) => b && isId(b.batchId) && DELETE_BATCH_STATES.includes(b.state) && Array.isArray(b.items) && b.items.length > 0
+        && b.items.length <= 50 && b.items.every(validItem) && (b.stopping == null || typeof b.stopping === 'boolean');
+    const ended = (b) => b.state === 'finished' || b.state === 'stopped';
+
+    let data = null;
+    let available = false;
+    let loading = false;
+    let busy = false; // a switch, Restore or start request in flight
+    let sequence = 0;
+    let firstLoad = true;
+    let batch = null; // the batch this page shows (running or ended)
+    let pollTimer = null;
+    let pollFailures = 0;
+    let stopAsked = false;
+    const since = new Map(); // itemKey -> ctx.now() when it was first seen checking (the large-file note)
+    // Ticks are keyed by title, year and size: candidate ids are minted afresh on every list read, and a new panel clears them.
+    const ticked = new Set();
+    const unsure = new Set(); // keys of movies that ended notConfirmed in this panel (Lumen F2)
+
+    const note = el('p', { role: 'status', 'aria-live': 'polite', class: 'shoal-meta' });
+    const enable = checkRow({ label: t('delEnable'), note: t('delEnableHelp'), checked: false, disabled: true,
+        onChange: (value) => setEnabled(value) });
+    enable.input.setAttribute('data-action', 'removal-enable');
+    const shareNote = el('p', { class: 'shoal-meta shoal-rmshare', text: t('delShareNote') });
+    // Lumen F6: the off hint sits right under the switch and its help line.
+    const offHint = el('p', { class: 'shoal-meta shoal-rmhint', id: uid('shoal-rmoff'), text: t('delOffHint'), hidden: true });
+    const settings = el('div', { class: 'shoal-rmsettings' }, enable.root, offHint, shareNote);
+    const refresh = button({ label: t('delRefresh'), small: true, action: 'removal-refresh', onClick: () => load() });
+
+    // Progress line with Stop (Lumen section 3), then the result list until Dismiss.
+    // Lumen F7: not a live region; start, each finished movie and the summary are spoken through ctx.announce instead.
+    const progressText = el('p', { class: 'shoal-rmprogress__text' });
+    const stopBtn = button({ label: t('delStop'), action: 'removal-stop', onClick: () => stop() });
+    stopBtn.setAttribute('title', t('delStopNote'));
+    const progress = el('div', { class: 'shoal-rmprogress', hidden: true }, progressText, stopBtn);
+    const results = el('div', { class: 'shoal-rmresults', hidden: true });
+
+    // Lumen F5: while a batch runs, one line says why the list is locked.
+    const lockNote = el('p', { class: 'shoal-meta shoal-rmlock', text: t('delLocked'), hidden: true });
+    const candidates = el('div', { class: 'shoal-rmcands' });
+    const rmSummary = el('p', { class: 'shoal-meta shoal-rmsummary' });
+    const rmFilter = textField({ id: uid('shoal-rmfilter'), label: t('localRemovalFilter'), type: 'search' });
+    const rmSort = selectField({ id: uid('shoal-rmsort'), label: t('localRemovalSort'), value: 'largest', options: [
+        { value: 'largest', label: t('localRemovalSortLargest') }, { value: 'smallest', label: t('localRemovalSortSmallest') }, { value: 'title', label: t('localRemovalSortTitle') }] });
+    rmFilter.input.setAttribute('data-removal-filter', '');
+    rmSort.select.setAttribute('data-removal-filter', '');
+    const rmTools = el('div', { class: 'shoal-lrtools', hidden: true }, rmFilter.root, rmSort.root);
+    const rmMatches = el('p', { class: 'shoal-meta shoal-lrtools__count', hidden: true });
+    const allBox = el('input', { type: 'checkbox', 'data-action': 'removal-select-all' });
+    const allText = el('span', { class: 'shoal-check__label' });
+    const allRow = el('div', { class: 'shoal-rmall' }, el('label', { class: 'shoal-check' }, allBox, el('span', { class: 'shoal-check__text' }, allText)), rmSummary);
+    const rmNoMatch = el('p', { class: 'shoal-meta shoal-rmnomatch', hidden: true }, t('delNoMatch'), ' ',
+        button({ label: t('localRemovalClear'), small: true, action: 'removal-clear-filter', onClick: () => { rmFilter.input.value = ''; arrangeRows(true); rmFilter.input.focus(); } }));
+    const rmHead = el('div', { class: 'shoal-rmtop', hidden: true }, rmTools, rmMatches, allRow);
+
+    // The sticky bar: appears at 1+ ticked; its count is spoken politely. The only action is the red outline Delete button.
+    const barCount = el('p', { class: 'shoal-rmbar__count', role: 'status', 'aria-live': 'polite' });
+    const deleteBtn = button({ label: t('delButton'), icon: 'trash', action: 'removal-delete', onClick: () => startDelete() });
+    deleteBtn.classList.add('shoal-btn--dangerline');
+    deleteBtn.setAttribute('aria-describedby', offHint.id);
+    const clearBtn = button({ label: t('delClear'), action: 'removal-clear', onClick: () => { ticked.clear(); for (const i of candidates.querySelectorAll('input[data-candidate]')) i.checked = false; syncTicks(); } });
+    clearBtn.classList.add('shoal-rmbar__clear');
+    const bar = el('div', { class: 'shoal-rmbar', role: 'region', 'aria-label': t('delBulk'), hidden: true }, barCount, el('div', { class: 'shoal-rmbar__acts' }, deleteBtn, clearBtn));
+
+    // "Held by an earlier Shoal version" (Lumen section 5): below the list, only when such jobs exist.
+    const legacy = el('div', { class: 'shoal-rmlegacy', 'data-removal-legacy': '', hidden: true });
+
+    panel.body.append(settings, refresh, note, progress, results, lockNote, rmHead, candidates, rmNoMatch, bar, legacy);
+    rmFilter.input.addEventListener('input', () => arrangeRows(true));
+    rmSort.select.addEventListener('change', () => arrangeRows(false));
+    allBox.addEventListener('change', () => {
+        const on = allBox.checked;
+        for (const li of shownRows()) {
+            if (unsure.has(li.dataset.key)) continue;
+            if (on) ticked.add(li.dataset.key); else ticked.delete(li.dataset.key);
+            li.querySelector('input[data-candidate]').checked = on;
+        }
+        syncTicks();
+    });
+
+    const shownRows = () => [...candidates.querySelectorAll('.shoal-rmlist > li')].filter((li) => !li.hidden);
+    const running = () => !!batch && !ended(batch);
+    const canPick = () => available && !busy && !running() && data?.enabled === true;
+
+    function controls() {
+        refresh.disabled = busy || loading;
+        // While a batch runs the bar, ticks and switch are disabled (Lumen section 3).
+        enable.input.disabled = busy || !available || running();
+        enable.root.classList.toggle('is-disabled', enable.input.disabled);
+        for (const input of candidates.querySelectorAll('input')) input.disabled = !canPick() || input.dataset.unsure === 'true';
+        lockNote.hidden = !running();
+        candidates.classList.toggle('is-locked', running());
+        barCount.setAttribute('aria-live', running() ? 'off' : 'polite');
+        allBox.disabled = !canPick();
+        deleteBtn.disabled = !canPick() || !data.candidates.some((row) => ticked.has(keyOf(row)));
+        clearBtn.disabled = busy || running();
+        offHint.hidden = !available || data?.enabled !== false || !handle;
+        for (const btn of legacy.querySelectorAll('button')) btn.disabled = busy || running();
+    }
+
+    function syncTicks() {
+        const rows = data ? data.candidates.filter((row) => ticked.has(keyOf(row))) : [];
+        bar.hidden = rows.length === 0;
+        barCount.textContent = rows.length ? t('delSelected', { n: rows.length, bytes: ctx.fmt.bytes(rows.reduce((s, r) => s + r.bytes, 0)) }) : '';
+        const shown = shownRows().filter((li) => !unsure.has(li.dataset.key));
+        const on = shown.filter((li) => ticked.has(li.dataset.key)).length;
+        allText.textContent = t('delSelectShown', { n: shown.length });
+        allBox.checked = shown.length > 0 && on === shown.length;
+        allBox.indeterminate = on > 0 && on < shown.length;
+        controls();
+    }
+
+    function arrangeRows(announce) {
+        const list = candidates.querySelector('.shoal-rmlist');
+        if (!list) { syncTicks(); return; }
+        const needle = rmFilter.input.value.trim().toLocaleLowerCase();
+        const how = rmSort.select.value;
+        const rows = [...list.children];
+        rows.sort((a, b) => (how === 'title' ? a.dataset.title.localeCompare(b.dataset.title)
+            : how === 'smallest' ? Number(a.dataset.bytes) - Number(b.dataset.bytes) : Number(b.dataset.bytes) - Number(a.dataset.bytes)));
+        let shown = 0;
+        for (const row of rows) {
+            row.hidden = !!needle && !row.dataset.title.toLocaleLowerCase().includes(needle);
+            if (!row.hidden) shown += 1;
+            list.append(row);
+        }
+        rmMatches.hidden = !needle;
+        rmMatches.textContent = needle ? t('delMatches', { n: shown }) : '';
+        rmNoMatch.hidden = !needle || shown > 0;
+        syncTicks();
+        if (announce) ctx.announce(needle ? rmMatches.textContent : rmSummary.textContent);
+    }
+
+    function render() {
+        enable.input.checked = data.enabled;
+        clear(candidates);
+        if (!handle) candidates.append(paragraph(t('delChooseFriend'), 'shoal-meta'));
+        // With the switch off the server may list nothing; that says nothing about the overlap, so only the off hint shows.
+        else if (!data.candidates.length && data.enabled) candidates.append(paragraph(t('delEmpty')));
+        const list = el('ul', { class: 'shoal-rmlist', 'aria-label': t('delCandidates') });
+        if (data.candidates.length) candidates.append(list);
+        const present = new Set(data.candidates.map(keyOf));
+        for (const key of [...ticked]) if (!present.has(key) || unsure.has(key)) ticked.delete(key);
+        for (const row of data.candidates) {
+            const key = keyOf(row);
+            const name = nameOf(row);
+            const locked = unsure.has(key);
+            const choice = checkRow({ label: name, checked: ticked.has(key), onChange: (checked) => {
+                if (checked) ticked.add(key); else ticked.delete(key);
+                syncTicks();
+            } });
+            choice.input.dataset.candidate = row.candidateId;
+            choice.input.setAttribute('aria-label', t('delCandidate', { title: name, bytes: ctx.fmt.bytes(row.bytes) }));
+            choice.input.setAttribute('aria-describedby', offHint.id);
+            // Lumen F2: a movie that ended Not sure is never sent again from this list; it waits for a reload after the admin checked it.
+            const lockedNote = locked ? el('span', { class: 'shoal-meta shoal-rmrow__note', id: uid('shoal-rmunsure'), text: t('delUnsureRow') }) : null;
+            if (locked) {
+                choice.input.dataset.unsure = 'true';
+                choice.input.disabled = true;
+                choice.input.setAttribute('aria-describedby', lockedNote.id);
+            }
+            list.append(el('li', { class: 'shoal-rmrow' + (locked ? ' is-unsure' : ''), 'data-title': row.title, 'data-bytes': String(row.bytes), 'data-key': key },
+                choice.root, el('span', { class: 'shoal-rmrow__size is-num', text: ctx.fmt.bytes(row.bytes) }), lockedNote));
+        }
+
+        rmHead.hidden = !data.candidates.length;
+        rmTools.hidden = data.candidates.length < 2;
+        rmSummary.textContent = data.candidates.length ? t('delSummary', { n: data.candidates.length, bytes: ctx.fmt.bytes(data.candidates.reduce((s, r) => s + r.bytes, 0)) }) : '';
+        renderLegacy();
+        arrangeRows(false);
+    }
+
+    function renderLegacy() {
+        clear(legacy);
+        const jobs = data.legacyJobs.filter((job) => LEGACY_HELD.includes(job.phase) || LEGACY_ATTENTION.includes(job.phase));
+        legacy.hidden = jobs.length === 0;
+        if (!jobs.length) return;
+        const head = el('h3', { class: 'shoal-h3', id: uid('shoal-rmlegacy'), text: t('delLegacyTitle') });
+        legacy.setAttribute('aria-labelledby', head.id);
+        const list = el('ul', { class: 'shoal-rmlist', 'aria-label': t('delLegacyList') });
+        for (const job of jobs) {
+            const restorable = job.canRestore && LEGACY_HELD.includes(job.phase);
+            const main = el('div', { class: 'shoal-rmheld__main' }, el('span', { class: 'shoal-rmheld__title', text: job.title }),
+                restorable ? null : el('span', { class: 'shoal-meta shoal-rmheld__note', text: t('delLegacyAttention') }));
+            const row = el('li', { class: 'shoal-rmheld', 'data-job': job.jobId }, main);
+            if (restorable) {
+                const restore = button({ label: t('delRestore'), small: true, action: 'removal-restore', onClick: () => restoreJob(job) });
+                restore.dataset.job = job.jobId;
+                restore.setAttribute('aria-label', t('delRestoreLabel', { title: job.title }));
+                row.append(el('span', { class: 'shoal-rmheld__size is-num', text: ctx.fmt.bytes(job.bytesHeld) }), el('span', { class: 'shoal-rmheld__act' }, restore));
+            }
+
+            list.append(row);
+        }
+
+        legacy.append(head, paragraph(t('delLegacyLead'), 'shoal-meta shoal-rmlead'), list);
+    }
+
+    /* ---------------- the batch: progress, Stop, results ---------------- */
+
+    function stopReason(b) {
+        const item = b.items.find((x) => x.state === 'notAttempted' && x.reason);
+        return item ? item.reason : null;
+    }
+
+    function notTriedText(reason) {
+        if (!reason) return t('delStoppedUser');
+        if (reason === 'notConfirmed') return t('delStoppedPrevious');
+        return t('delStoppedBy', { reason: DELETE_STOP_REASONS.includes(reason) ? t('delStop_' + reason) : t('delUnknown') });
+    }
+
+    function doneText(item) {
+        const parts = [];
+        if (item.shared === 'present') parts.push(t('delSharedPresent'));
+        if (item.shared === 'pending') parts.push(t('delSharedPending'));
+        if (item.history === 'carried') parts.push(t('delHistoryCarried'));
+        if (item.history === 'notCarried') parts.push(t('delHistoryNotCarried'));
+        return parts.join(' ');
+    }
+
+    function itemRow(item, current) {
+        const status = current ? 'working' : item.state === 'queued' || item.state === 'checking' || item.state === 'deleting' ? 'waiting' : item.state;
+        const icons = { done: 'ok', refused: 'x', notConfirmed: 'warn', notAttempted: 'pause', working: 'sync', waiting: 'clock' };
+        const tones = { done: 'ok', refused: 'bad', notConfirmed: 'warn', notAttempted: 'off', working: 'info', waiting: 'off' };
+        const why = status === 'done' ? doneText(item) : status === 'refused' ? deleteReasonText(item.reason)
+            : status === 'notConfirmed' ? t('delReason_notConfirmed') : status === 'notAttempted' ? notTriedText(item.reason) : '';
+        return el('li', { class: 'shoal-rmresult', 'data-item': item.itemKey, 'data-state': status }, chip(tones[status], icons[status], t('delStatus_' + status)),
+            el('span', { class: 'shoal-rmresult__title', text: nameOf(item) }), why ? el('span', { class: 'shoal-meta shoal-rmresult__why', text: why }) : null);
+    }
+
+    function renderBatch() {
+        clear(results);
+        if (!batch) {
+            progress.hidden = true;
+            results.hidden = true;
+            controls();
+            return;
+        }
+
+        const list = el('ul', { class: 'shoal-rmresults__list', 'aria-label': t('delResults') });
+        const at = batch.items.findIndex((x) => x.state === 'checking' || x.state === 'deleting');
+        const next = at >= 0 ? at : batch.state === 'running' ? batch.items.findIndex((x) => x.state === 'queued') : -1;
+        batch.items.forEach((item, i) => list.append(itemRow(item, !ended(batch) && i === next)));
+        if (ended(batch)) {
+            progress.hidden = true;
+            const count = (state) => batch.items.filter((x) => x.state === state).length;
+            const parts = [['done', 'delCountDone'], ['refused', 'delCountRefused'], ['notConfirmed', 'delCountNotSure'], ['notAttempted', 'delCountNotTried']]
+                .filter(([state]) => count(state) > 0).map(([state, key]) => t(key, { n: count(state) }));
+            const cause = batch.items.some((x) => x.state === 'notAttempted') ? notTriedText(stopReason(batch)) : '';
+            results.append(el('div', { class: 'shoal-rmresults__head' },
+                el('div', {}, el('p', { class: 'shoal-rmresults__sum', text: parts.join(', ') }), cause ? el('p', { class: 'shoal-meta shoal-rmresults__cause', text: cause }) : null),
+                button({ label: t('delDismiss'), small: true, action: 'removal-dismiss', onClick: () => dismiss() })));
+        } else {
+            progress.hidden = false;
+            const item = next >= 0 ? batch.items[next] : null;
+            let line = batch.state === 'settling' || !item ? t('delSettling')
+                : item.state === 'checking' && item.reason === 'originRateLimited' ? t('delWaitingFriend', { title: nameOf(item) })
+                : t(item.state === 'deleting' ? 'delDeleting' : 'delChecking', { i: next + 1, n: batch.items.length, title: nameOf(item) });
+            if (item && item.state === 'checking' && batch.state === 'running') {
+                if (!since.has(item.itemKey)) since.set(item.itemKey, ctx.now());
+                if (ctx.now() - since.get(item.itemKey) >= 120000) line += ' ' + t('delLargeFile');
+            }
+            if (progressText.textContent !== line) progressText.textContent = line;
+            const stopping = batch.stopping === true || stopAsked;
+            stopBtn.disabled = stopping || batch.state !== 'running';
+            stopBtn.textContent = stopping ? t('delStopping') : t('delStop');
+        }
+
+        results.hidden = false;
+        results.append(list);
+        controls();
+    }
+
+    function dismiss() {
+        if (batch) {
+            try { ctx.storage.set(DELETE_DISMISSED_KEY, batch.batchId); } catch { /* a per-viewer convenience only */ }
+        }
+        batch = null;
+        renderBatch();
+    }
+
+    /** Follows one batch until it ends; then the list is read again so deleted movies leave it. */
+    function follow(next, announceStart) {
+        ctx.clearTimer(pollTimer);
+        pollTimer = null;
+        pollFailures = 0;
+        batch = next;
+        stopAsked = false;
+        if (announceStart) ctx.announce(announceStart);
+        if (ended(batch)) markUnsure(batch);
+        renderBatch();
+        if (ended(batch)) {
+            if (data) render();
+            return;
+        }
+        pollTimer = ctx.later(poll, pollMs);
+    }
+
+    async function poll() {
+        pollTimer = null;
+        if (!batch || !live()) return;
+        const id = batch.batchId;
+        let reply;
+        try {
+            reply = await ctx.api.deleteBatch(id);
+        } catch (err) {
+            if (!live() || !batch || batch.batchId !== id) return;
+            if (err && err.status === 404) {
+                // Lost on a server restart (Atlas risk 5): nothing more is known; say so and stop following.
+                batch = null;
+                renderBatch();
+                note.textContent = t('delLost');
+                ctx.announce(t('delLost'));
+                await load(true);
+                return;
+            }
+            pollFailures += 1;
+            if (pollFailures >= 3) note.textContent = t('delPollTrouble');
+            pollTimer = ctx.later(poll, pollMs);
+            return;
+        }
+
+        if (!live() || !batch || batch.batchId !== id) return;
+        if (!validBatch(reply) || reply.batchId !== id) {
+            pollFailures += 1;
+            if (pollFailures >= 3) note.textContent = t('delInvalid');
+            pollTimer = ctx.later(poll, pollMs);
+            return;
+        }
+
+        pollFailures = 0;
+        if (note.textContent === t('delPollTrouble') || note.textContent === t('delInvalid')) note.textContent = '';
+        const before = new Map(batch.items.map((x) => [x.itemKey, x.state]));
+        batch = reply;
+        const finishedNow = reply.items.filter((x) => ['done', 'refused', 'notConfirmed', 'notAttempted'].includes(x.state) && before.get(x.itemKey) !== x.state && x.state !== 'notAttempted');
+        if (finishedNow.length) ctx.announce(finishedNow.map((x) => t('delItemEnded', { status: t('delStatus_' + x.state), title: nameOf(x) })).join('. '));
+        renderBatch();
+        if (!ended(batch)) {
+            pollTimer = ctx.later(poll, pollMs);
+            return;
+        }
+
+        await finish();
+    }
+
+    async function finish() {
+        // Done ticks clear; refused and not-tried movies stay ticked so they can be sent again.
+        for (const item of batch.items) if (item.state === 'done') ticked.delete(keyOf(item));
+        markUnsure(batch);
+        const ending = batch;
+        await load();
+        if (!live() || batch !== ending) return;
+        renderBatch();
+        const sum = results.querySelector('.shoal-rmresults__sum')?.textContent || '';
+        const cause = results.querySelector('.shoal-rmresults__cause')?.textContent || '';
+        ctx.announce(cause ? sum + '. ' + cause : sum);
+    }
+
+    function markUnsure(b) {
+        for (const item of b.items) {
+            if (item.state !== 'notConfirmed') continue;
+            unsure.add(keyOf(item));
+            ticked.delete(keyOf(item));
+        }
+    }
+
+    async function stop() {
+        if (!batch || ended(batch) || stopAsked) return;
+        stopAsked = true;
+        renderBatch();
+        const id = batch.batchId;
+        try {
+            const reply = await ctx.api.deleteStop(id);
+            if (live() && batch && batch.batchId === id && validBatch(reply) && reply.batchId === id) {
+                batch = reply;
+                renderBatch();
+            }
+        } catch (err) {
+            if (!live()) return;
+            stopAsked = false;
+            note.textContent = startError(err);
+            renderBatch();
+        }
+    }
+
+    function startError(err) {
+        const kind = err && err.kind;
+        if (err && err.status === 429) return t('delRate', { seconds: Math.max(1, Math.min(3600, Number(err.retryAfter) || 10)) });
+        if (kind === 'candidateChanged') return t('delReason_candidateChanged');
+        if (DELETE_STOP_REASONS.includes(kind)) return t('delStartFailed', { reason: t('delStop_' + kind) });
+        if (err && err.status === 404) return t('delUnavailable');
+        return t('delError');
+    }
+
+    /** One plain dialog (count and size of the ticked movies), then one request that starts the server batch. */
+    async function startDelete() {
+        if (!canPick() || !handle) return;
+        const rows = data.candidates.filter((row) => ticked.has(keyOf(row))).slice(0, 50);
+        if (!rows.length) return;
+        const size = ctx.fmt.bytes(rows.reduce((s, r) => s + r.bytes, 0));
+        const answer = await confirmDialog(ctx, { title: t('delDialogTitle'), intro: t('delDialogCount', { n: rows.length, bytes: size }),
+            after: [paragraph(t('delDialogBody'))], confirmLabel: t('delDialogConfirm'), danger: true });
+        if (!answer.confirmed || !live() || !canPick()) return;
+        busy = true;
+        controls();
+        note.textContent = t('delBusyNote');
+        try {
+            const reply = await ctx.api.deleteStart(rows.map((row) => row.candidateId));
+            if (!live()) return;
+            if (!validBatch(reply)) throw new Error('invalidDeleteReply');
+            note.textContent = '';
+            busy = false;
+            follow(reply, t('delStarted', { n: reply.items.length }));
+        } catch (err) {
+            if (!live()) return;
+            busy = false;
+            note.textContent = err && err.message === 'invalidDeleteReply' ? t('delInvalid') : startError(err);
+            await load(true);
+        } finally {
+            busy = false;
+            if (live()) controls();
+        }
+    }
+
+    async function restoreJob(job) {
+        if (busy || running() || !live()) return;
+        busy = true;
+        controls();
+        note.textContent = t('delBusyNote');
+        try {
+            const reply = await ctx.api.removalRestore(job.jobId);
+            if (!live()) return;
+            if (!validJob(reply) || reply.jobId !== job.jobId) throw new Error('invalidDeleteReply');
+            note.textContent = reply.phase === 'restored' ? t('delRestored') : t('delRestoreNotFinished');
+        } catch (err) {
+            if (!live()) return;
+            note.textContent = err && err.kind === 'restoreConflict' ? t('delRestoreConflict') : err && err.message === 'invalidDeleteReply' ? t('delInvalid') : startError(err);
+        } finally {
+            busy = false;
+        }
+        await load(true);
+    }
+
+    async function setEnabled(value) {
+        if (busy || !available || running()) return;
+        busy = true;
+        controls();
+        note.textContent = t('delBusyNote');
+        try {
+            await ctx.api.removalEnabled(value);
+            if (live()) note.textContent = '';
+        } catch (err) {
+            if (live()) note.textContent = startError(err);
+        } finally {
+            busy = false;
+        }
+        await load(true);
+    }
+
+    /** Re-attach (Lumen section 3): a running batch, or the latest finished one this viewer has not dismissed. */
+    async function reattach(activeBatchId) {
+        let reply;
+        try {
+            reply = await ctx.api.deleteCurrent();
+        } catch {
+            return;
+        }
+        if (!live() || batch || !validBatch(reply)) return;
+        if (ended(reply)) {
+            let dismissed = null;
+            try { dismissed = ctx.storage.get(DELETE_DISMISSED_KEY); } catch { /* none */ }
+            if (dismissed === reply.batchId) return;
+            follow(reply);
+            return;
+        }
+        follow(reply, t('delReattached'));
+        note.textContent = t('delReattached');
+    }
+
+    async function load(keepNote) {
+        const mine = ++sequence;
+        available = false;
+        loading = true;
+        controls();
+        try {
+            const reply = await ctx.api.removal(handle);
+            if (mine !== sequence || !live()) return;
+            if (!validState(reply)) throw new Error('invalidDeleteReply');
+            data = reply;
+            available = true;
+            if (!keepNote && !running()) note.textContent = '';
+            render();
+            if (firstLoad) {
+                firstLoad = false;
+                await reattach(reply.activeBatchId);
+            } else if (!batch && reply.activeBatchId) {
+                await reattach(reply.activeBatchId);
+            }
+        } catch (err) {
+            if (mine !== sequence || !live()) return;
+            if (data) render();
+            else { clear(candidates); enable.input.checked = false; }
+            note.textContent = err && err.message === 'invalidDeleteReply' ? t('delInvalid') : err && err.status === 404 ? t('delUnavailable') : t('delError');
+        } finally {
+            if (mine === sequence && live()) { loading = false; controls(); }
+        }
+    }
+
+    return { root: panel.root, load };
+}
+
+/** Read-only cached discovery. No browser value from this panel can authorize file removal. */
+function localRemovalPreviewPanel(ctx, handle) {
+    const panel = section(t('localRemovalTitle'), { intro: t('localRemovalIntro') });
+    panel.root.setAttribute('data-local-removal-preview', '');
+    panel.body.append(el('p', { class: 'shoal-meta', text: t('localRemovalSpace') }),
+        el('p', { class: 'shoal-body-text', text: t('localRemovalChecks') }));
+    const result = el('div', { 'aria-live': 'polite' });
+    const refresh = button({ label: t('localRemovalRefresh'), small: true, action: 'local-preview-refresh', onClick: () => load(0) });
+    // 2.10.3 T4: search by title and sort, on the rows of this page only (the server pages by 50). They only reorder or hide rows.
+    const filter = textField({ id: uid('shoal-lrfilter'), label: t('localRemovalFilter'), type: 'search' });
+    const sort = selectField({ id: uid('shoal-lrsort'), label: t('localRemovalSort'), value: 'largest', options: [
+        { value: 'largest', label: t('localRemovalSortLargest') }, { value: 'smallest', label: t('localRemovalSortSmallest') }, { value: 'title', label: t('localRemovalSortTitle') }] });
+    filter.input.setAttribute('data-local-preview-filter', '');
+    sort.select.setAttribute('data-local-preview-filter', '');
+    const tools = el('div', { class: 'shoal-lrtools', hidden: true }, filter.root, sort.root);
+    const matches = el('p', { class: 'shoal-meta shoal-lrtools__count', hidden: true });
+    const rowsHost = el('div');
+    // Rows sit outside the live region, so filtering or sorting does not read the whole table aloud; the count is announced instead.
+    const list = el('div', { class: 'shoal-lrlist' });
+    let page = null;
+    filter.input.addEventListener('input', () => renderRows(true));
+    sort.select.addEventListener('change', () => renderRows(false));
+    panel.body.append(refresh, tools, result, list);
+    let sequence = 0;
+
+    function previewTable(items, how) {
+        const sorted = (col) => (col === 'title' && how === 'title' ? 'ascending' : col === 'size' && how !== 'title' ? (how === 'smallest' ? 'ascending' : 'descending') : null);
+        const table = el('table', { class: 'shoal-table shoal-lrtable' },
+            el('caption', { class: 'shoal-sr', text: t('localRemovalCaption') }),
+            el('thead', {}, el('tr', {},
+                el('th', { scope: 'col', 'aria-sort': sorted('title'), text: t('localRemovalMovie') }),
+                el('th', { scope: 'col', class: 'is-num', 'aria-sort': sorted('size'), text: t('localRemovalSize') }))),
+            el('tbody', {}, items.map((item) => {
+                const name = item.title + (item.year === null ? '' : ' (' + item.year + ')');
+                return el('tr', {},
+                    el('th', { scope: 'row', class: 'shoal-lrtable__title', title: name, 'data-label': t('localRemovalMovie'), text: name }),
+                    el('td', { class: 'is-num', 'data-label': t('localRemovalSize'), text: ctx.fmt.bytes(item.localBytesEstimate) }));
+            })));
+        return el('div', { class: 'shoal-tablewrap', tabindex: '0', role: 'region', 'aria-label': t('localRemovalTitle') }, table);
+    }
+
+    function renderRows(announce) {
+        if (!page) {
+            return;
+        }
+
+        const needle = filter.input.value.trim().toLocaleLowerCase();
+        const how = sort.select.value;
+        const items = page.items.filter((item) => !needle || item.title.toLocaleLowerCase().includes(needle));
+        if (how === 'title') {
+            items.sort((a, b) => a.title.localeCompare(b.title));
+        } else {
+            items.sort((a, b) => (how === 'smallest' ? a.localBytesEstimate - b.localBytesEstimate : b.localBytesEstimate - a.localBytesEstimate));
+        }
+
+        matches.hidden = !needle;
+        matches.textContent = needle ? t('localRemovalMatches', { n: items.length }) : '';
+        if (items.length) {
+            replaceKids(rowsHost, previewTable(items, how));
+        } else {
+            const clearBtn = button({ label: t('localRemovalClear'), small: true, action: 'local-preview-clear', onClick: () => {
+                filter.input.value = '';
+                renderRows(true);
+                filter.input.focus();
+            } });
+            replaceKids(rowsHost, el('div', { class: 'shoal-lrtools__none' }, el('p', { class: 'shoal-meta', text: t('localRemovalNoMatch') }), clearBtn));
+        }
+
+        if (announce) {
+            ctx.announce(needle ? matches.textContent : t('localRemovalPage', pageVars()));
+        }
+    }
+
+    function pageVars() {
+        return { start: ctx.fmt.num(page.items.length ? page.offset + 1 : 0), end: ctx.fmt.num(page.offset + page.items.length), total: ctx.fmt.num(page.total) };
+    }
+    const required = ['identityUnverified', 'freshnessUnverified', 'qualityUnverified', 'originRetentionUnverified', 'accessUnverified', 'historyTransferUnverified'];
+
+    function valid(data, offset) {
+        if (!data || data.previewOnly !== true || data.removalEnabled !== false || data.reclaimableBytes !== 0
+            || !['ready', 'neverSynced', 'disabled', 'needsPairing'].includes(data.catalogStatus)
+            || data.offset !== offset || data.limit !== 50 || !Number.isSafeInteger(data.total) || data.total < 0
+            || !Array.isArray(data.items) || data.items.length > 50 || typeof data.hasMore !== 'boolean'
+            || data.total < offset + data.items.length || (data.hasMore && data.items.length !== 50)
+            || data.hasMore !== (offset + data.items.length < data.total)
+            || (data.catalogStatus !== 'ready' && (data.items.length || data.total))) {
+            return false;
+        }
+
+        return data.items.every((item) => item && typeof item.title === 'string' && item.title.length <= 1024
+            && (item.year === null || Number.isInteger(item.year))
+            && Number.isSafeInteger(item.localBytesEstimate) && item.localBytesEstimate >= 0
+            && item.safeToRemove === false && Array.isArray(item.blockers)
+            && required.every((reason) => item.blockers.includes(reason)))
+            && (data.computedUtc === null || typeof data.computedUtc === 'string' && Number.isFinite(Date.parse(data.computedUtc)));
+    }
+
+    async function load(offset) {
+        const mine = ++sequence;
+        refresh.disabled = true;
+        result.setAttribute('aria-busy', 'true');
+        replaceKids(result, el('p', { class: 'shoal-meta', text: t('localRemovalLoading') }));
+        clear(list);
+        try {
+            const data = await ctx.api.localRemovalPreview(handle, offset);
+            if (mine !== sequence || !ctx.alive || !panel.root.isConnected) {
+                return;
+            }
+
+            if (!valid(data, offset)) {
+                throw new Error('Invalid local removal preview');
+            }
+
+            clear(result);
+            tools.hidden = true;
+            page = null;
+            const note = { neverSynced: 'localRemovalNever', disabled: 'localRemovalDisabled', needsPairing: 'localRemovalPairing' }[data.catalogStatus];
+            if (note) {
+                result.append(el('p', { class: 'shoal-meta', text: t(note) }));
+                return;
+            }
+
+            if (data.computedUtc) {
+                result.append(el('p', { class: 'shoal-meta', text: t('localRemovalUpdated', { when: ctx.fmt.relative(data.computedUtc) }) }));
+            }
+
+            page = { items: data.items, offset, total: data.total };
+            if (!data.items.length) {
+                result.append(el('p', { class: 'shoal-meta', text: t('localRemovalEmpty') }));
+            } else {
+                tools.hidden = false;
+                // Lumen F4: every preview row is unsafe by contract, so the status is said once, not 50 times.
+                list.append(el('p', { class: 'shoal-lrstatus' }, chip('warn', 'warn', t('localRemovalBlocked')), el('span', { class: 'shoal-meta', text: t('localRemovalEveryRow') })), matches, rowsHost);
+                renderRows(false);
+            }
+
+            // Pager: the row count on the left, normal-size Previous and Next on the right, never full width.
+            const nav = el('div', { class: 'shoal-pager', role: 'group', 'aria-label': t('localRemovalTitle') },
+                button({ label: t('localRemovalPrevious'), disabled: offset === 0, action: 'local-preview-previous', onClick: () => load(Math.max(0, offset - 50)) }),
+                el('span', { class: 'shoal-pager__page', text: t('localRemovalPageOf', { page: ctx.fmt.num(Math.floor(offset / 50) + 1), pages: ctx.fmt.num(Math.max(1, Math.ceil(data.total / 50))) }) }),
+                button({ label: t('localRemovalNext'), disabled: !data.hasMore, action: 'local-preview-next', onClick: () => load(offset + 50) }));
+            list.append(el('div', { class: 'shoal-lrfoot' }, el('p', { class: 'shoal-meta', text: t('localRemovalPage', pageVars()) }), nav));
+        } catch (err) {
+            if (mine !== sequence || !ctx.alive || !panel.root.isConnected) {
+                return;
+            }
+
+            const message = err.status === 404 ? 'localRemovalUnavailable' : err.status === 409 ? 'localRemovalRecovery' : 'localRemovalError';
+            tools.hidden = true;
+            page = null;
+            replaceKids(result, el('p', { class: 'shoal-meta', role: 'status', text: t(message) }));
+        } finally {
+            if (mine === sequence) {
+                refresh.disabled = false;
+                result.removeAttribute('aria-busy');
+            }
+        }
+    }
+
+    return { root: panel.root, load: () => load(0) };
+}
+
 function overlapReportScreen(ctx) {
     const view = q(ctx.root, '[data-shoal-view="overlap"]');
     const body = slot(view, 'body');
@@ -12446,8 +13350,17 @@ function overlapReportScreen(ctx) {
 
     function renderReport(cur, ov) {
         clear(body);
+        const removal = removalOperationsPanel(ctx, cur.handle);
+        function appendPreview() {
+            // 2.10.4 Lumen F1: the delete section only. The old read-only preview ("Nothing is deleted...") contradicts a screen that
+            // deletes; it stays on Library management's Overlap tab.
+            body.append(removal.root);
+            removal.load();
+        }
+
         if (!ov || !ov.computedUtc) {
             body.append(el('p', { class: 'shoal-lead', text: t('overlapReportNone') }));
+            appendPreview();
             return;
         }
 
@@ -12490,6 +13403,7 @@ function overlapReportScreen(ctx) {
         }
 
         body.append(el('p', { class: 'shoal-meta', text: t('overlapUpdated', { when: ctx.fmt.relative(ov.computedUtc) }) }));
+        appendPreview();
     }
 
     async function init() {
@@ -12525,6 +13439,152 @@ function overlapReportScreen(ctx) {
             loadOverlap();
         } catch {
             replaceKids(body, loadErrorBox(() => init()));
+        }
+    }
+
+    return {
+        show() {
+            if (!st.loaded) {
+                init();
+            }
+        },
+        hide() {},
+        destroy() {}
+    };
+}
+
+/* ====================================================================================== */
+/* Screen: Library management (2.10.3 T2, docs/plans/lumen-ui-rework-2.10.3.md section 1)  */
+/* ====================================================================================== */
+
+/**
+ * ?view=manage&tab=overlap|remove&id=<handle>. Two real tabs, each holding one existing panel: localRemovalPreviewPanel (Overlap) and
+ * removalOperationsPanel (Remove local copies), built with the same arguments and loaded with the same load() as on the overlap report.
+ * A panel is built the first time its tab is shown, and built again for a new server. The server is the Overview's Showing pick
+ * (SELECTED_KEY) unless the address names a paired one; an unknown id falls back to that pick, an unknown tab to Overlap.
+ */
+function manageScreen(ctx) {
+    const MANAGE_TABS = ['overlap', 'remove'];
+    // 2.10.4: the Recoverable and Deleted lists are gone; old addresses naming them (tab=recoverable|deleted) still open the Remove tab.
+    const REMOVE_TABS = ['remove', 'recoverable', 'deleted'];
+    const view = q(ctx.root, '[data-shoal-view="manage"]');
+    const peer = slot(view, 'managepeer');
+    const select = slot(view, 'manageselect');
+    const selectWrap = slot(view, 'manageselectwrap');
+    const nameNode = slot(view, 'managename');
+    const none = slot(view, 'managenone');
+    const tablist = slot(view, 'managetabs');
+    const tabs = qa(tablist, '[role="tab"]');
+    const panels = { overlap: slot(view, 'tabpanel-overlap'), remove: slot(view, 'tabpanel-remove') };
+    const st = { servers: [], handle: null, tab: REMOVE_TABS.includes(ctx.params.tab) ? 'remove' : 'overlap', built: {}, loaded: false };
+
+    select.addEventListener('change', () => {
+        if (select.value && select.value !== st.handle) {
+            ctx.storage.set(SELECTED_KEY, select.value);
+            setServer(select.value);
+            remember();
+            const cur = st.servers.find((s) => s.handle === st.handle);
+            ctx.announce(t('announceNowShowing', { server: cur ? cur.displayName : '' }));
+        }
+    });
+    for (const tab of tabs) {
+        tab.addEventListener('click', () => { showTab(tab.dataset.tab, false); remember(); });
+    }
+
+    // Arrow keys, Home and End move between tabs and select the one they land on (WAI-ARIA tabs, automatic activation).
+    tablist.addEventListener('keydown', (ev) => {
+        const at = tabs.indexOf(ev.target);
+        if (at < 0) {
+            return;
+        }
+
+        const next = ev.key === 'ArrowRight' ? (at + 1) % tabs.length : ev.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length
+            : ev.key === 'Home' ? 0 : ev.key === 'End' ? tabs.length - 1 : -1;
+        if (next >= 0) {
+            ev.preventDefault();
+            showTab(tabs[next].dataset.tab, true);
+            remember();
+        }
+    });
+
+    /** Lumen F10: the address keeps the open tab and server, so reload and Back return to them. replaceState adds no history entry and fires no hashchange. */
+    function remember() {
+        const hash = String(window.location.hash || '');
+        if (!st.handle || !/^#\/?configurationpage\?/i.test(hash)) {
+            return;
+        }
+
+        const next = ctx.href('manage', { id: st.handle, tab: st.tab });
+        if (next !== hash && window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState(window.history.state, '', next);
+        }
+    }
+
+    function showTab(name, focus) {
+        st.tab = name;
+        for (const tab of tabs) {
+            const on = tab.dataset.tab === name;
+            tab.setAttribute('aria-selected', on ? 'true' : 'false');
+            tab.tabIndex = on ? 0 : -1;
+            panels[tab.dataset.tab].hidden = !on;
+            if (on && focus) {
+                tab.focus();
+            }
+        }
+
+        build(name);
+    }
+
+    function build(name) {
+        if (!st.handle || st.built[name]) {
+            return;
+        }
+
+        const panel = name === 'overlap' ? localRemovalPreviewPanel(ctx, st.handle) : removalOperationsPanel(ctx, st.handle);
+        st.built[name] = panel;
+        replaceKids(panels[name], panel.root);
+        panel.load();
+    }
+
+    function setServer(handle) {
+        st.handle = handle;
+        st.built = {};
+        for (const name of MANAGE_TABS) {
+            clear(panels[name]);
+        }
+
+        const cur = st.servers.find((s) => s.handle === handle);
+        select.value = handle;
+        nameNode.textContent = cur ? cur.displayName : '';
+        showTab(st.tab, false);
+    }
+
+    async function init() {
+        try {
+            const data = await ctx.api.status();
+            if (!ctx.alive) {
+                return;
+            }
+
+            st.servers = sortServers(data.servers || []);
+            st.loaded = true;
+            const has = st.servers.length > 0;
+            none.hidden = has;
+            tablist.hidden = !has;
+            peer.hidden = !has;
+            if (!has) {
+                return;
+            }
+
+            const asked = st.servers.some((s) => s.handle === ctx.params.id) ? ctx.params.id : null;
+            replaceKids(select, st.servers.map((s) => el('option', { value: s.handle, text: s.displayName })));
+            selectWrap.hidden = st.servers.length < 2;
+            nameNode.hidden = st.servers.length > 1;
+            setServer(asked || pickSelection(st.servers, ctx.storage.get(SELECTED_KEY), ctx.fmt));
+        } catch {
+            none.hidden = true;
+            replaceKids(panels.overlap, loadErrorBox(() => init()));
+            panels.overlap.hidden = false;
         }
     }
 
@@ -13180,11 +14240,12 @@ const SCREEN_FACTORIES = {
     server: serverDetailScreen,
     overlap: overlapReportScreen,
     friend: friendDetailScreen,
-    layouts: layoutsScreen
+    layouts: layoutsScreen,
+    manage: manageScreen
 };
 
 /** The h1 shown in recovery mode, where the real screen is replaced by the banner (ui-spec 8.8). */
-const RECOVERY_TITLES = { overview: 'appName', libraries: 'navLibraries', settings: 'navSettings', pair: 'pairServer', server: 'appName', overlap: 'overlapReport', friend: 'appName', layouts: 'layTitle' };
+const RECOVERY_TITLES = { overview: 'appName', libraries: 'navLibraries', settings: 'navSettings', pair: 'pairServer', server: 'appName', overlap: 'overlapReport', friend: 'appName', layouts: 'layTitle', manage: 'manageTitle' };
 
 /** Where the back link of each sub-screen goes (ui-spec 2.2, section 8). */
 function backTarget(view, params) {

@@ -1244,3 +1244,197 @@ html[data-theme="light"] .shoalPage, html[data-theme="appletv"] .shoalPage, .sho
 @media (forced-colors: active) {
   .shoalPage .shoal-rec-tag { border: 1px solid CanvasText; }
 }
+
+/* ---------- 2.10.3 UI rework (docs/plans/lumen-ui-rework-2.10.3.md) ---------- */
+/* T1: one Showing control above Library overlap and Link speed */
+.shoalPage .shoal-peerbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 40px; }
+.shoalPage .shoal-peerbar[hidden] { display: none; }
+.shoalPage .shoal-peerbar__label { font-size: 1rem; line-height: 1.5rem; font-weight: 700; }
+.shoalPage .shoal-peerbar .shoal-select { min-height: 44px; min-width: 180px; width: auto; font-size: 1rem; font-weight: 700; }
+.shoalPage .shoal-peerbar__name { font-size: 1rem; line-height: 1.5rem; font-weight: 700; }
+.shoalPage .shoal-peerbar:not([hidden]) + .shoal-overlap { margin-top: 16px; }
+/* T2: Library management, a header, two real tabs, one panel each */
+.shoalPage .shoal-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--shoal-line); margin-bottom: 24px; scrollbar-width: thin; }
+.shoalPage .shoal-tab { flex: none; min-height: 44px; padding: 10px 16px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--shoal-muted); font: inherit; font-size: 1rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.shoalPage .shoal-tab:hover { color: var(--shoal-text); }
+.shoalPage .shoal-tab[aria-selected="true"] { color: var(--shoal-text); border-bottom-color: var(--shoal-accent); }
+.shoalPage .shoal-tab:focus-visible { outline: 2px solid var(--shoal-accent); outline-offset: -2px; }
+.shoalPage .shoal-tabpanel:focus-visible { outline: 2px solid var(--shoal-accent); outline-offset: 4px; }
+.shoalPage .shoal-tabpanel[hidden] { display: none; }
+.shoalPage .shoal-peerbar--head { margin-top: 0; align-items: center; }
+.shoalPage .shoal-peerbar--head[hidden] { display: none; }
+/* T3: the overlap card footer, Library management (outline) then Full report */
+.shoalPage .shoal-overlap__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 16px; }
+.shoalPage .shoal-btn--outline, .shoalPage .shoal-btn--outline:focus { background: transparent; color: var(--shoal-accent); box-shadow: inset 0 0 0 1px var(--shoal-accent); }
+.shoalPage .shoal-btn--outline:hover, .shoalPage .shoal-btn--outline:focus:hover { background: var(--shoal-quiet-bg-hover); color: var(--shoal-text); }
+.shoalPage .shoal-pagehead__link { align-self: center; }
+/* T4: Overlap tab table: filter and sort row, 14px rows, right-aligned sizes, one chip per row, pager on the right */
+.shoalPage .shoal-lrtools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin: 16px 0 8px; }
+.shoalPage .shoal-lrtools[hidden] { display: none; }
+.shoalPage .shoal-lrtools > .shoal-field { margin: 0; }
+.shoalPage .shoal-lrtools > .inputContainer { flex: 1 1 260px; max-width: 420px; }
+.shoalPage .shoal-lrtools > .selectContainer { flex: 0 1 200px; }
+.shoalPage .shoal-lrtools .shoal-input, .shoalPage .shoal-lrtools .shoal-select { min-height: 44px; }
+.shoalPage .shoal-lrtools__count { margin: 4px 0 8px; }
+.shoalPage .shoal-lrtools__none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; }
+.shoalPage .shoal-lrtable { font-size: 0.875rem; line-height: 1.25rem; table-layout: auto; }
+.shoalPage .shoal-lrtable th[scope="col"] { font-size: 0.8125rem; }
+.shoalPage .shoal-lrtable tbody th, .shoalPage .shoal-lrtable td { padding: 12px; vertical-align: middle; min-height: 48px; }
+.shoalPage .shoal-lrtable tbody th { font-weight: 400; color: var(--shoal-text); text-align: left; white-space: nowrap; max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.shoalPage .shoal-lrtable .is-num { width: 120px; white-space: nowrap; font-size: 0.8125rem; }
+.shoalPage .shoal-lrtable tbody tr:hover { background: var(--shoal-quiet-bg); }
+.shoalPage .shoal-lrfoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-top: 12px; }
+.shoalPage .shoal-lrfoot > .shoal-meta { margin: 0; }
+.shoalPage .shoal-pager { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.shoalPage .shoal-pager > .shoal-btn { flex: none; width: auto; }
+.shoalPage .shoal-pager__page { font-size: 0.8125rem; color: var(--shoal-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* T5: Remove tab: aligned rows (checkbox and title, size, one action), job rows with a phase chip, the danger zone closed at the bottom */
+.shoalPage .shoal-rmhead, .shoalPage .shoal-rmrow { display: grid; grid-template-columns: minmax(0, 1fr) 96px 120px; align-items: center; column-gap: 16px; }
+.shoalPage .shoal-rmhead { padding: 8px 12px; border-bottom: 1px solid var(--shoal-line); font-size: 0.8125rem; font-weight: 700; color: var(--shoal-muted); margin-top: 16px; }
+.shoalPage .shoal-rmhead .is-num, .shoalPage .shoal-rmrow__size { text-align: right; font-variant-numeric: tabular-nums; }
+.shoalPage .shoal-rmlist { list-style: none; margin: 0; padding: 0; }
+.shoalPage .shoal-rmrow { min-height: 48px; padding-right: 12px; border-bottom: 1px solid var(--shoal-line); }
+.shoalPage .shoal-rmrow > .shoal-check { min-width: 0; align-items: center; padding: 8px 12px; }
+.shoalPage .shoal-rmrow .shoal-check__label { font-size: 0.875rem; line-height: 1.25rem; }
+.shoalPage .shoal-rmrow__size { font-size: 0.8125rem; color: var(--shoal-muted); white-space: nowrap; }
+.shoalPage .shoal-rmrow__act { display: flex; justify-content: flex-end; }
+.shoalPage .shoal-rmrow__act .shoal-btn { min-width: 96px; }
+.shoalPage .shoal-rmjobs { display: grid; gap: 0; }
+.shoalPage .shoal-rmjob { display: grid; grid-template-columns: 220px minmax(0, 1fr) auto; align-items: center; column-gap: 16px; row-gap: 8px; min-height: 48px; padding: 10px 12px; border-bottom: 1px solid var(--shoal-line); font-size: 0.875rem; }
+.shoalPage .shoal-rmjob > .shoal-chip { justify-self: start; white-space: normal; }
+.shoalPage .shoal-rmjob__text > p { margin: 0; }
+.shoalPage .shoal-rmjob__text > p + p { margin-top: 4px; font-size: 0.8125rem; color: var(--shoal-muted); }
+.shoalPage .shoal-rmjob__act { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.shoalPage .shoal-rmjob__act:empty { display: none; }
+/* 2.10.3 fixes from Lumen's review */
+/* F2: a disabled Check reads as waiting, not dead: an outline at full text contrast instead of .45 opacity; the shared hint says why */
+.shoalPage .shoal-rmrow__act .shoal-btn:disabled { opacity: 1; background: transparent; color: var(--shoal-muted); box-shadow: inset 0 0 0 1px var(--shoal-line); }
+.shoalPage .shoal-rmrow__act .shoal-btn:disabled:hover { background: transparent; }
+.shoalPage .shoal-rmtop[hidden], .shoalPage .shoal-rmhint[hidden] { display: none; }
+.shoalPage .shoal-rmsummary { margin: 16px 0 0; font-size: 0.875rem; color: var(--shoal-text); }
+.shoalPage .shoal-rmhint { margin: 8px 0 0; font-size: 0.875rem; }
+/* F5: the ticked row is highlighted across its full width */
+.shoalPage .shoal-rmrow:has(input[data-candidate]:checked) { background: var(--shoal-in-bg); }
+.shoalPage .shoal-rmrow > .shoal-check:hover { background: none; }
+.shoalPage .shoal-rmrow:hover { background: var(--shoal-hover); }
+/* F6: Review permanent deletion is a danger outline, set apart from Restore */
+.shoalPage .shoal-btn--dangerline, .shoalPage .shoal-btn--dangerline:focus { background: transparent; color: var(--shoal-bad); box-shadow: inset 0 0 0 1px var(--shoal-bad); }
+.shoalPage .shoal-btn--dangerline:hover, .shoalPage .shoal-btn--dangerline:focus:hover { background: var(--shoal-bad-bg); color: var(--shoal-bad); }
+.shoalPage .shoal-rmjob__act { column-gap: 24px; }
+/* F7: no text under 13px in the removal panel; intro and job help at 14px */
+.shoalPage [data-removal-operations] .shoal-section__intro, .shoalPage .shoal-rmjob__text > p + p { font-size: 0.875rem; line-height: 1.25rem; }
+/* F4: the one status line above the preview table */
+.shoalPage .shoal-lrstatus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0 12px; }
+@media (forced-colors: active) {
+  .shoalPage .shoal-rmrow:has(input[data-candidate]:checked) { outline: 2px solid Highlight; outline-offset: -2px; }
+  .shoalPage .shoal-btn--dangerline, .shoalPage .shoal-rmrow__act .shoal-btn:disabled { border: 1px solid CanvasText; }
+}
+/* 2.10.3 U2 (docs/plans/lumen-simple-removal-2.10.3.md sections 2 and 5): ticked rows, select the shown, sticky bulk bar, queue progress and results */
+.shoalPage .shoal-rmrow { grid-template-columns: minmax(0, 1fr) 96px; }
+.shoalPage .shoal-rmall { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; border-bottom: 1px solid var(--shoal-line); }
+.shoalPage .shoal-rmall > .shoal-check { align-items: center; padding: 8px 12px; }
+.shoalPage .shoal-rmall > .shoal-rmsummary { margin: 0; padding-right: 12px; font-variant-numeric: tabular-nums; }
+.shoalPage .shoal-rmnomatch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; }
+.shoalPage .shoal-rmnomatch[hidden], .shoalPage .shoal-rmbar[hidden], .shoalPage .shoal-rmprogress[hidden], .shoalPage .shoal-rmresults[hidden] { display: none; }
+.shoalPage .shoal-rmbar { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+  margin-top: 12px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--shoal-line); background: var(--shoal-surface, #181818); box-shadow: 0 -6px 16px rgba(0,0,0,.35); }
+.shoalPage .shoal-rmbar__count { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.shoalPage .shoal-rmbar__acts { display: flex; flex-wrap: wrap; gap: 12px; }
+.shoalPage .shoal-rmprogress { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 16px 0 8px; }
+.shoalPage .shoal-rmprogress__text { margin: 0; font-weight: 700; }
+.shoalPage .shoal-rmresults { margin: 12px 0; }
+.shoalPage .shoal-rmresults__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.shoalPage .shoal-rmresults__sum { margin: 0; font-weight: 700; }
+.shoalPage .shoal-rmresults__list { list-style: none; margin: 8px 0 0; padding: 0; }
+.shoalPage .shoal-rmresult { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; column-gap: 16px; row-gap: 2px; min-height: 40px; padding: 6px 0; border-bottom: 1px solid var(--shoal-line); font-size: 0.875rem; }
+.shoalPage .shoal-rmresult > .shoal-chip { justify-self: start; }
+.shoalPage .shoal-rmresult__why { grid-column: 2; }
+@container shoal (max-width: 639px) {
+  .shoalPage .shoal-rmbar { flex-direction: column; align-items: stretch; }
+  .shoalPage .shoal-rmbar__acts .shoal-btn { flex: 1 1 100%; min-height: 44px; }
+  .shoalPage .shoal-rmresult { grid-template-columns: minmax(0, 1fr); }
+  .shoalPage .shoal-rmresult__why { grid-column: 1; }
+}
+/* 2.10.4 Delete from this server (docs/plans/lumen-delete-2.10.4.md): one switch with its help, the off hint, the held list, progress and results */
+.shoalPage .shoal-rmsettings { margin: 16px 0; }
+.shoalPage .shoal-rmsettings .shoal-check__note { display: block; margin-top: 2px; font-size: 0.875rem; line-height: 1.25rem; }
+.shoalPage .shoal-rmshare { margin: 4px 0 0 32px; font-size: 0.875rem; line-height: 1.25rem; }
+.shoalPage .shoal-rmlead { margin: 0 0 8px; }
+.shoalPage .shoal-rmresults__cause { margin: 2px 0 0; }
+.shoalPage .shoal-rmlegacy { margin-top: 32px; }
+.shoalPage .shoal-rmlegacy[hidden] { display: none; }
+.shoalPage .shoal-rmlegacy > .shoal-h3 { margin: 0 0 4px; }
+.shoalPage .shoal-rmheld { display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; align-items: center; column-gap: 16px; min-height: 48px; padding: 6px 12px; border-bottom: 1px solid var(--shoal-line); font-size: 0.875rem; }
+.shoalPage .shoal-rmheld__main { display: flex; flex-direction: column; min-width: 0; grid-column: 1; }
+.shoalPage .shoal-rmheld__title { line-height: 1.25rem; overflow-wrap: anywhere; }
+.shoalPage .shoal-rmheld__size { text-align: right; font-size: 0.8125rem; color: var(--shoal-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shoalPage .shoal-rmheld__act { display: flex; justify-content: flex-end; }
+.shoalPage .shoal-rmheld__act .shoal-btn { min-width: 96px; min-height: 44px; }
+@container shoal (max-width: 639px) {
+  .shoalPage .shoal-rmshare { margin-left: 0; }
+  .shoalPage .shoal-rmbar__acts .shoal-rmbar__clear { min-height: 44px; background: none; box-shadow: none; text-decoration: underline; }
+  .shoalPage .shoal-rmprogress { flex-direction: column; align-items: stretch; }
+  .shoalPage .shoal-rmprogress .shoal-btn { width: 100%; min-height: 44px; }
+  .shoalPage .shoal-rmresults__head { flex-direction: column; align-items: stretch; }
+  .shoalPage .shoal-rmresults__head .shoal-btn { min-height: 44px; }
+  .shoalPage .shoal-rmheld { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; padding: 10px 0 12px; }
+  .shoalPage .shoal-rmheld__size { text-align: left; }
+  .shoalPage .shoal-rmheld__act { grid-column: 1 / -1; }
+  .shoalPage .shoal-rmheld__act .shoal-btn { width: 100%; }
+}
+/* T6: phone width (Lumen section 4): stacked rows, stacked filters, full-width actions, 44px targets */
+@container shoal (max-width: 639px) {
+  .shoalPage .shoal-lrtools { flex-direction: column; align-items: stretch; }
+  .shoalPage .shoal-lrtools > .inputContainer, .shoalPage .shoal-lrtools > .selectContainer { flex: none; max-width: none; width: 100%; }
+  .shoalPage .shoal-lrtable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .shoalPage .shoal-lrtable, .shoalPage .shoal-lrtable tbody { display: block; width: 100%; }
+  .shoalPage .shoal-lrtable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--shoal-line); }
+  .shoalPage .shoal-lrtable tbody th, .shoalPage .shoal-lrtable td { display: block; padding: 0; border: 0; min-height: 0; }
+  .shoalPage .shoal-lrtable tbody th { grid-column: 1 / -1; max-width: none; width: auto; white-space: normal; overflow-wrap: anywhere; }
+  .shoalPage .shoal-lrtable .is-num { width: auto; text-align: left; align-self: center; }
+  .shoalPage .shoal-lrtable .shoal-chip { white-space: normal; }
+  .shoalPage .shoal-lrfoot { flex-direction: column; align-items: stretch; }
+  .shoalPage .shoal-pager { margin-left: 0; justify-content: space-between; }
+  .shoalPage .shoal-rmhead { display: none; }
+  .shoalPage .shoal-rmrow { grid-template-columns: minmax(0, 1fr); row-gap: 4px; padding: 8px 0 12px; }
+  .shoalPage .shoal-rmrow > .shoal-check { padding: 8px 0; }
+  .shoalPage .shoal-rmrow__size { text-align: left; padding-left: 32px; }
+  .shoalPage .shoal-rmrow__act .shoal-btn { width: 100%; min-height: 44px; }
+  .shoalPage .shoal-rmjob { grid-template-columns: minmax(0, 1fr); padding: 12px 0; }
+  .shoalPage .shoal-rmjob__act { justify-content: stretch; }
+  .shoalPage .shoal-rmjob__act .shoal-btn { flex: 1 1 100%; min-height: 44px; }
+}
+@container shoal (max-width: 639px) {
+  .shoalPage .shoal-peerbar .shoal-field--inline { display: block; flex: 1 1 100%; }
+  .shoalPage .shoal-peerbar .shoal-select { width: 100%; }
+  .shoalPage .shoal-overlap__foot { flex-direction: column; align-items: stretch; }
+  .shoalPage .shoal-overlap__foot .shoal-btn { width: 100%; }
+}
+@media (forced-colors: active) {
+  .shoalPage .shoal-tab[aria-selected="true"] { border-bottom-color: Highlight; }
+}
+/* 2.10.3 simple-removal fixes (docs/reviews/lumen-review-simple-removal-2.10.3.md) */
+/* F3: the ticked row is tinted across the whole row, no left stripe; the label's own hover never paints a shorter band */
+.shoalPage .shoal-rmrow .shoal-check:hover { background: none; }
+/* F5: the switch row is a full-width 48px click target with the label inside */
+.shoalPage .shoal-rmsettings .shoal-check { min-height: 48px; align-items: center; }
+@container shoal (max-width: 639px) {
+  /* F7: in a dangerous confirm, Cancel stays on top and Delete forever below, away from the thumb */
+  .shoalPage .shoal-dialog[role="alertdialog"] .shoal-dialog__foot { flex-direction: column; }
+}
+/* 2.10.4 Lumen review (docs/reviews/lumen-review-delete-2.10.4.md) */
+/* F4: the switch, every row and Select the shown are tap areas of 44px or more, label inside */
+.shoalPage .shoal-rmrow > .shoal-check, .shoalPage .shoal-rmall > .shoal-check, .shoalPage .shoal-rmsettings .shoal-check { min-height: 48px; box-sizing: border-box; }
+/* F2: a Not sure movie is locked with its note under the title */
+.shoalPage .shoal-rmrow > .shoal-rmrow__note { grid-column: 1 / -1; margin: -4px 0 0; padding: 0 12px 8px 44px; font-size: 0.875rem; }
+/* F5: while a batch runs the rows dim, the checks stay readable; one line says it keeps going */
+.shoalPage .shoal-rmlock { margin: 8px 0; font-size: 0.875rem; }
+.shoalPage .shoal-rmlock[hidden] { display: none; }
+.shoalPage .shoal-rmcands.is-locked .shoal-check__label, .shoalPage .shoal-rmcands.is-locked .shoal-rmrow__size { color: var(--shoal-muted); }
+.shoalPage .shoal-rmcands.is-locked input[type="checkbox"]:disabled, .shoalPage .shoal-rmrow.is-unsure input[type="checkbox"]:disabled { opacity: 1; }
+/* F6: the off hint sits under the switch help, indented like it */
+.shoalPage .shoal-rmsettings > .shoal-rmhint { margin: 0 0 4px 32px; }
+@container shoal (max-width: 639px) {
+  .shoalPage .shoal-rmrow > .shoal-rmrow__note { padding-left: 32px; }
+  .shoalPage .shoal-rmsettings > .shoal-rmhint { margin-left: 0; }
+}

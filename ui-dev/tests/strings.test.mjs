@@ -140,3 +140,35 @@ test('the friend steps (fs_) have no dash, arrow, or numbered cross reference ei
 
     assert.deepEqual(bad, []);
 });
+
+// 2.10.3 U5: the retired removal phrases (docs/plans/lumen-simple-removal-2.10.3.md, "Retired phrases") appear in no copy and no markup.
+// The one allowed source match is the server's own purge-plan reply field (`confirmation`), which the UI checks but never shows.
+test('2.10.3 retired removal phrases are gone from copy, markup and code', async () => {
+    const { STRINGS } = await loadShoal();
+    const copy = JSON.stringify(STRINGS);
+    const retired = [/Danger zone/, /Permanent deletion allowed/, /DELETE ORIGINAL FOREVER/, /REMOVE LOCAL COPY/, /Review permanent deletion/i,
+        /Check this copy/, /Tick a title to check it/, /Allow permanent deletion of held originals/, /Rows may refer to the same local copy/, /I understand Shoal cannot restore/,
+        /I accept that I may lose access/, /Type [A-Z ]{6,} to confirm/];
+    for (const phrase of retired) {
+        assert.doesNotMatch(copy, phrase, 'copy: ' + phrase);
+        assert.doesNotMatch(html, phrase, 'markup: ' + phrase);
+    }
+
+    // 2.10.4 removed the purge routes, so no line of the page names the old server phrases any more.
+    assert.deepEqual(js.split('\n').filter((line) => /DELETE ORIGINAL FOREVER|REMOVE LOCAL COPY/.test(line)), []);
+});
+
+// 2.10.4 U2: the retired phrases of docs/plans/lumen-delete-2.10.4.md ("Retired phrases") appear in no copy and no markup.
+test('2.10.4 retired removal phrases are gone: no Recoverable or Deleted pools, no delete forever, no danger zone', () => {
+    const copy = JSON.stringify(mod.STRINGS);
+    const retired = [/Recoverable/, /Move to recoverable/, /Delete forever/i, /Allow delete forever/, /Restore original/, /Danger zone/i, /DELETE ORIGINAL FOREVER/,
+        /recovery folder/i, /This does not free disk space/, /Optional movie removal with recovery/, /Review permanent deletion/i, /Enable local movie removal/];
+    for (const phrase of retired) {
+        assert.doesNotMatch(copy, phrase, 'copy: ' + phrase);
+        assert.doesNotMatch(html, phrase, 'markup: ' + phrase);
+    }
+    // "Deleted" survives only as the result word of one item, never as a list or tab name.
+    assert.deepEqual(Object.entries(mod.STRINGS).filter(([, v]) => v === 'Deleted').map(([k]) => k), ['delStatus_done']);
+    assert.equal(copy.split('"Allow Shoal to delete local movies"').length - 1, 1, 'one switch label');
+    assert.match(mod.STRINGS.delReason_removalChanged, /^Something changed, or someone is watching it/);
+});

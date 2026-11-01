@@ -171,41 +171,12 @@ public sealed class CatalogStore
     /// </summary>
     /// <param name="peerKey">A valid peer key.</param>
     /// <returns>The catalog.</returns>
-    public CatalogLoad Load(string peerKey)
-    {
-        var path = FilePath(peerKey);
-        foreach (var candidate in new[] { path, path + ".bak" })
-        {
-            var loaded = TryRead(candidate, peerKey);
-            if (loaded is not null)
-            {
-                loaded.Document.LoadedWithLoss = loaded.Dropped > 0 || !string.Equals(candidate, path, StringComparison.Ordinal);
-                if (loaded.Dropped > 0)
-                {
-                    _logger.LogWarning("The catalog of peer {Peer} dropped {Count} entries that failed validation or passed a cap; their stubs stay on disk until the next sync removes them", Redact.Id(peerKey), loaded.Dropped);
-                }
+    public CatalogLoad Load(string peerKey) => LoadCore(peerKey, remember: true);
 
-                if (!string.Equals(candidate, path, StringComparison.Ordinal) && HasPriorEvidence(peerKey, loaded.Document))
-                {
-                    _recovery[peerKey] = true;
-                    return loaded with { Unreadable = true };
-                }
-
-                Establish(peerKey);
-                _recovery.TryRemove(peerKey, out _);
-                return loaded;
-            }
-        }
-
-        if (!File.Exists(path) && !File.Exists(path + ".bak") && !HasPriorEvidence(peerKey))
-        {
-            return new CatalogLoad(Empty(peerKey), false, 0);
-        }
-
-        _recovery[peerKey] = true;
-        _logger.LogWarning("The catalog of peer {Peer} could not be read; the sync waits for the admin", Redact.Id(peerKey));
-        return new CatalogLoad(Empty(peerKey), true, 0);
-    }
+    /// <summary>Reads cached evidence without creating markers or changing recovery decisions.</summary>
+    /// <param name="peerKey">A valid peer key.</param>
+    /// <returns>The validated cached catalog.</returns>
+    public CatalogLoad LoadForPreview(string peerKey) => LoadCore(peerKey, remember: false);
 
     /// <summary>
     /// Writes the catalog atomically.
@@ -236,6 +207,54 @@ public sealed class CatalogStore
         {
             _logger.LogInformation("The catalog of peer {Peer} was saved without a normal replace ({Outcome})", Redact.Id(document.PeerKey), outcome);
         }
+    }
+
+    private CatalogLoad LoadCore(string peerKey, bool remember)
+    {
+        var path = FilePath(peerKey);
+        foreach (var candidate in new[] { path, path + ".bak" })
+        {
+            var loaded = TryRead(candidate, peerKey);
+            if (loaded is not null)
+            {
+                loaded.Document.LoadedWithLoss = loaded.Dropped > 0 || !string.Equals(candidate, path, StringComparison.Ordinal);
+                if (loaded.Dropped > 0)
+                {
+                    _logger.LogWarning("The catalog of peer {Peer} dropped {Count} entries that failed validation or passed a cap; their stubs stay on disk until the next sync removes them", Redact.Id(peerKey), loaded.Dropped);
+                }
+
+                if (!string.Equals(candidate, path, StringComparison.Ordinal) && HasPriorEvidence(peerKey, loaded.Document))
+                {
+                    if (remember)
+                    {
+                        _recovery[peerKey] = true;
+                    }
+
+                    return loaded with { Unreadable = true };
+                }
+
+                if (remember)
+                {
+                    Establish(peerKey);
+                    _recovery.TryRemove(peerKey, out _);
+                }
+
+                return loaded;
+            }
+        }
+
+        if (!File.Exists(path) && !File.Exists(path + ".bak") && !HasPriorEvidence(peerKey))
+        {
+            return new CatalogLoad(Empty(peerKey), false, 0);
+        }
+
+        if (remember)
+        {
+            _recovery[peerKey] = true;
+        }
+
+        _logger.LogWarning("The catalog of peer {Peer} could not be read; the sync waits for the admin", Redact.Id(peerKey));
+        return new CatalogLoad(Empty(peerKey), true, 0);
     }
 
     private string MarkerPath(string peerKey) => Path.Combine(_paths.PeerDir(peerKey), "catalog-established");

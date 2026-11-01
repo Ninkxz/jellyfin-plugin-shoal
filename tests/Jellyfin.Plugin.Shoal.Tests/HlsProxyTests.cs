@@ -21,6 +21,8 @@ namespace Jellyfin.Plugin.Shoal.Tests;
 /// K17 acceptance (DESIGN 6.4, 6.9, 6.1): the HLS proxy on real routing with a real grant, Moonfin's mutated URLs (T-CLI-3), the Peer request exactly as
 /// 6.11 says, the client-query rules, the stream and conversion slots, the scoped ActiveEncodings delete (W4-4, T-SEC-25) and the grant checks.
 /// </summary>
+// Real upstream-read timing needs the same exclusive process window as heap measurements.
+[Collection("MemoryMeasurement")]
 public sealed class HlsProxyTests : IClassFixture<PlaybackFixture>, IAsyncLifetime
 {
     private const string HexToken = "0123456789abcdef0123456789abcdef";

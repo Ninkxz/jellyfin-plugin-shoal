@@ -21,7 +21,7 @@ test('every section of 8.5 is there, in order', async () => {
     try {
         const titles = [...p.page.querySelectorAll('[data-shoal-view="settings"] h2')].filter((h) => !h.closest('[hidden]')).map((h) => h.textContent);
         // v2.9: the Library layouts link panel comes first (docs/design/ui-v2/settings.html).
-        assert.deepEqual(titles, ['Library layouts', 'Library files', 'Syncing', 'Playback', 'Extra features', 'Speed tests', 'Offline servers', 'Tailscale', 'Protect your shared videos', 'Key storage', 'Parental limits', 'Backups and checks', 'Delete all Shoal data']);
+        assert.deepEqual(titles, ['Library layouts', 'Library files', 'Syncing', 'Playback', 'Extra features', 'Speed tests', 'Offline servers', 'Tailscale', 'Protect your shared videos', 'Key storage', 'Parental limits', 'Backups and checks', 'Delete local movies', 'Delete all Shoal data']);
         const t = p.text();
         assert.match(t, /Hold new titles when more than/);
         assert.match(t, /Storage limit per server \(GB\)/);

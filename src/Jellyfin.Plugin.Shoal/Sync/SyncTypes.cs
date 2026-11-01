@@ -96,6 +96,13 @@ public interface ILibraryRefresh
     void ScanLibrariesAt(IReadOnlyCollection<string> folders)
     {
     }
+
+    /// <summary>
+    /// Asks core to index one changed folder now: from the nearest folder core already knows, one level at a time down to it (2.10.3, removal waits).
+    /// Never a scan of a library, never subject to the five-minute scan limit. The default only reports the change.
+    /// </summary>
+    /// <param name="path">The folder that changed (the shared copy's folder, or a restored movie's folder).</param>
+    void RefreshNearest(string path) => ReportChanged(path);
 }
 
 /// <summary>

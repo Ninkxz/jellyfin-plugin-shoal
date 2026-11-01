@@ -162,6 +162,8 @@ public sealed class FfmpegFactAttribute : FactAttribute
 /// <summary>
 /// K32: T-IMG-1 to T-IMG-7 (DESIGN v2.6.7) against a stand-in child, plus the real ffmpeg where there is one.
 /// </summary>
+// GC.GetTotalMemory observes the entire testhost, so unrelated test allocations must be excluded.
+[Collection("MemoryMeasurement")]
 public sealed class ChildImageSanitizerTests
 {
     private static readonly byte[] Poster = ImageBuilder.Jpeg(600, 900, 2000);

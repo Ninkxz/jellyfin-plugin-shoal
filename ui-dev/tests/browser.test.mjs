@@ -4,6 +4,7 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
 import { startHarness } from '../server.mjs';
+import { golden } from './helpers.mjs';
 
 let browser = null;
 let harness = null;
@@ -60,7 +61,8 @@ test('F2: every top screen works under script-src self, style-src self unsafe-in
         ['server', 'view=server&id=h-hops', '.shoal-detail__header'],
         ['friend', 'view=friend&id=f-sam', '.shoal-detail__header'],
         ['overlap', 'view=overlap&id=h-hops', '.shoal-panel'],
-        ['layouts', 'view=layouts&job=running', '.shoal-lib']
+        ['layouts', 'view=layouts&job=running', '.shoal-lib'],
+        ['manage', 'view=manage&id=h-hops', '[role="tab"]']
     ];
     for (const [name, query, selector] of screens) {
         const { page, ctx, problems } = await open(`scenario=default&${query}&csp=1`, 1440);
@@ -333,6 +335,133 @@ for (const width of [1440, 375]) {
         await ctx.close();
     });
 }
+
+// 2.10.3 T1/T2: the Showing bar and the Library management tabs at phone and desktop width: no sideways scroll, 44px targets, CSP clean.
+test('2.10.3: Showing bar and Library management tabs at 375 and 1440, CSP clean', { skip }, async () => {
+    for (const width of [375, 1440]) {
+        for (const query of ['view=overview', 'view=manage&id=h-hops', 'view=manage&id=h-hops&tab=remove']) {
+            const { page, ctx, problems } = await open('scenario=default&' + query + '&csp=1', width, 800);
+            const m = await page.evaluate(() => {
+                const v = document.querySelector('.shoal-view:not([hidden])');
+                const sel = v.querySelector('[data-slot="peerselect"], [data-slot="manageselect"]');
+                return {
+                    hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+                    select: sel ? sel.getBoundingClientRect().height : 0,
+                    tabs: [...v.querySelectorAll('[role="tab"]')].map((b) => b.getBoundingClientRect().height),
+                    panel: !!v.querySelector('[role="tabpanel"]:not([hidden]) [data-local-removal-preview], [role="tabpanel"]:not([hidden]) [data-removal-operations]'),
+                    csp: window.__csp
+                };
+            });
+            const name = width + ' ' + query;
+            assert.equal(m.hscroll, false, name);
+            assert.ok(m.select >= 44, name + ' select ' + m.select);
+            assert.deepEqual(m.csp, [], name);
+            assert.deepEqual(problems, [], name);
+            if (query !== 'view=overview') {
+                assert.equal(m.tabs.length, 2, name);
+                assert.ok(m.tabs.every((h) => h >= 44), name + ' tabs ' + m.tabs);
+                assert.ok(m.panel, name + ' panel');
+            }
+
+            await ctx.close();
+        }
+    }
+});
+
+// 2.10.3 T6 (Lumen section 4): at 375 and 360 the manage page stacks its rows, keeps 44px targets and never scrolls sideways.
+test('2.10.3 T6: Library management tabs, rows, bar, held list and dialog at phone width', { skip }, async () => {
+    const preview = golden('local-removal-preview.get', 200);
+    const base = preview.body.items[0];
+    preview.body.items = [base, { ...base, title: 'A very long movie title that has to wrap onto a second line on a phone screen', year: 2019, localBytesEstimate: 123456789 }];
+    preview.body.total = 2;
+    // 2.10.4: Delete from this server, served from the C0 goldens; one long title, one held original from an earlier version.
+    const removal = { state: golden('local-delete.state', 200), current: golden('local-delete.current-none', 404), start: golden('local-delete.start', 202) };
+    removal.state.body.activeBatchId = null;
+    removal.state.body.candidates = [{ candidateId: '3'.repeat(32), title: 'Another rather long movie title for the phone layout check', year: 2001, bytes: 2048 }];
+    for (const width of [375, 360]) {
+        const { page, ctx, problems } = await open('scenario=default&view=manage&id=h-hops&csp=1', width, 800);
+        await page.evaluate(([a, b]) => window.__mock.set({ localRemovalPreviewGolden: a, localDeleteGolden: b }), [preview, removal]);
+        await page.click('[data-action="local-preview-refresh"]');
+        await page.waitForSelector('.shoal-lrtable tbody tr');
+        const ov = await page.evaluate(() => {
+            const rows = [...document.querySelectorAll('.shoal-lrtable tbody tr')];
+            const box = (n) => n.getBoundingClientRect();
+            const tools = [...document.querySelectorAll('.shoal-lrtools input, .shoal-lrtools select')].map((n) => [box(n).width, box(n).height]);
+            const list = document.querySelector('[role="tablist"]');
+            return {
+                hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+                stacked: rows.every((r) => getComputedStyle(r).display === 'grid'),
+                headHidden: box(document.querySelector('.shoal-lrtable thead')).height <= 1,
+                wraps: rows.some((r) => box(r.querySelector('th')).height > 24),
+                tools, tablist: box(list).height, panelWidth: box(document.querySelector('.shoal-lrtools')).width,
+                pager: [...document.querySelectorAll('.shoal-pager button')].map((b) => box(b).height)
+            };
+        });
+        assert.equal(ov.hscroll, false, width + ' overlap: sideways scroll');
+        assert.ok(ov.stacked && ov.headHidden, width + ' overlap rows stack');
+        assert.ok(ov.wraps, width + ' a long title wraps');
+        assert.ok(ov.tools.every(([w, h]) => h >= 44 && w >= ov.panelWidth - 2), width + ' filters stacked full width ' + JSON.stringify(ov.tools));
+        assert.ok(ov.tablist < 70, width + ' tabs stay on one line ' + ov.tablist);
+        assert.ok(ov.pager.every((h) => h >= 44), width + ' pager targets');
+
+        await page.click('[role="tab"][data-tab="remove"]');
+        await page.waitForSelector('.shoal-rmrow');
+        await page.click('.shoal-rmrow input[data-candidate]'); // a tick shows the bulk bar; Delete from this server is its action
+        const rmv = await page.evaluate(() => {
+            const box = (n) => n.getBoundingClientRect();
+            const row = document.querySelector('.shoal-rmrow');
+            const del = box(document.querySelector('[data-action="removal-delete"]'));
+            const clear = box(document.querySelector('[data-action="removal-clear"]'));
+            const restore = document.querySelector('[data-removal-legacy] [data-action="removal-restore"]');
+            return {
+                hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+                del: [del.width, del.height, box(document.querySelector('.shoal-rmbar')).width - 32], clearBelow: clear.top >= del.bottom - 1,
+                checkbox: box(row.querySelector('.shoal-check')).height,
+                sw: box(document.querySelector('.shoal-rmsettings .shoal-check')).height,
+                restore: restore ? [box(restore).width, box(restore).height, box(restore.closest('.shoal-rmheld')).width] : null,
+                gone: document.querySelectorAll('.shoal-rmpool, .shoal-rmbadge, details[data-removal-danger], [data-action="purge-enable"]').length
+            };
+        });
+        assert.equal(rmv.hscroll, false, width + ' remove: sideways scroll');
+        assert.ok(rmv.del[0] >= rmv.del[2] - 2 && rmv.del[1] >= 44, width + ' full-width Delete from this server ' + JSON.stringify(rmv));
+        assert.ok(rmv.clearBelow, width + ' Clear sits under the Delete button');
+        assert.ok(rmv.checkbox >= 44, width + ' checkbox target');
+        assert.ok(rmv.sw >= 44, width + ' switch row');
+        assert.ok(rmv.restore && rmv.restore[1] >= 44 && rmv.restore[0] >= rmv.restore[2] - 2, width + ' held Restore full width ' + JSON.stringify(rmv.restore));
+        assert.equal(rmv.gone, 0, width + ' no pools, no second switch, no danger zone');
+        // The dialog at phone width: full width, buttons stacked with Cancel on top; Esc cancels and focus returns to the bar button.
+        await page.click('[data-action="removal-delete"]');
+        await page.waitForSelector('[role="alertdialog"]');
+        const dlg = await page.evaluate(() => {
+            const d = document.querySelector('[role="alertdialog"]');
+            const btns = [...d.querySelectorAll('button')].filter((b) => ['Cancel', 'Delete'].includes(b.textContent.trim())).map((b) => [b.textContent.trim(), b.getBoundingClientRect().top, b.getBoundingClientRect().height]);
+            return { btns, width: d.getBoundingClientRect().width, focus: document.activeElement.textContent.trim() };
+        });
+        assert.equal(dlg.focus, 'Cancel', width + ' Cancel focused');
+        assert.equal(dlg.btns[0][0], 'Cancel');
+        assert.ok(dlg.btns[0][1] < dlg.btns[1][1], width + ' Cancel above Delete ' + JSON.stringify(dlg));
+        assert.ok(dlg.btns.every((b) => b[2] >= 44), width + ' dialog targets');
+        assert.ok(dlg.width >= width - 40, width + ' dialog full width ' + dlg.width);
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('[role="alertdialog"]', { state: 'detached' });
+        assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-action')), 'removal-delete', width + ' focus returns');
+        assert.deepEqual(await page.evaluate(() => window.__csp), [], width + ' CSP');
+        assert.deepEqual(problems, [], width + ' console');
+        await ctx.close();
+    }
+
+    // Overview at 375: the Showing select and the card buttons are full width.
+    const { page, ctx } = await open('scenario=default&view=overview', 375, 800);
+    const m = await page.evaluate(() => {
+        const box = (n) => n.getBoundingClientRect();
+        const foot = document.querySelector('[data-slot="overlapfoot"]');
+        return { hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth, select: box(document.querySelector('[data-slot="peerselect"]')), bar: box(document.querySelector('[data-section="peerbar"]')), btn: box(foot.querySelector('.shoal-btn')), foot: box(foot) };
+    });
+    assert.equal(m.hscroll, false);
+    assert.ok(m.select.height >= 44 && m.select.width >= m.bar.width - 2, 'select full width');
+    assert.ok(m.btn.width >= m.foot.width - 2 && m.btn.height >= 44, 'Library management full width');
+    await ctx.close();
+});
 
 // Pilot 15 R6: the NFO saver warning fits its row on a phone and in Settings, with no CSP problem.
 test('NFO saver warning: no sideways scroll at 375 on Library layouts and Settings, CSP clean', { skip }, async () => {

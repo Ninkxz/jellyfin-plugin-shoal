@@ -38,6 +38,15 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether compatible progress follows Shoal titles to local media for the same local user. Enabled by default; an explicit saved false is preserved.</summary>
     public bool KeepMyPlaceEnabled { get; set; } = true;
 
+    /// <summary>Gets or sets a value indicating whether explicit recoverable movie removal is enabled. Off until the owner opts in.</summary>
+    public bool LocalRemovalEnabled { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether reviewed permanent deletion of retained originals is permitted. Off by default.</summary>
+    public bool PermanentDeletionEnabled { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether Shoal may delete a local movie (and its folder) the way Jellyfin's Delete does, after proving the friend has the identical file (2.10.4). Off by default; the two legacy fields above are ignored.</summary>
+    public bool LocalDeleteEnabled { get; set; }
+
     /// <summary>Gets or sets the most streams one local user may run at once across all friends' servers (1 to 4, owner D13).</summary>
     public int MaxStreamsPerUser { get; set; } = 4;
 

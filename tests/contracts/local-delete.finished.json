@@ -1,0 +1,66 @@
+{
+  "batchId": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+  "state": "stopped",
+  "startedUtc": "2026-10-28T12:00:00+00:00",
+  "finishedUtc": "2026-10-28T12:09:00+00:00",
+  "stopping": false,
+  "counts": {
+    "done": 2,
+    "refused": 1,
+    "notConfirmed": 1,
+    "notAttempted": 1,
+    "queued": 0
+  },
+  "items": [
+    {
+      "itemKey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "title": "Sintel",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "done",
+      "reason": null,
+      "shared": "present",
+      "history": "carried"
+    },
+    {
+      "itemKey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "title": "Big Buck Bunny",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "done",
+      "reason": null,
+      "shared": "pending",
+      "history": "notCarried"
+    },
+    {
+      "itemKey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "title": "Tears of Steel",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "refused",
+      "reason": "folderNotDedicated",
+      "shared": null,
+      "history": null
+    },
+    {
+      "itemKey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+      "title": "Elephants Dream",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "notConfirmed",
+      "reason": "notConfirmed",
+      "shared": null,
+      "history": null
+    },
+    {
+      "itemKey": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      "title": "Cosmos Laundromat",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "notAttempted",
+      "reason": "notConfirmed",
+      "shared": null,
+      "history": null
+    }
+  ]
+}

@@ -27,7 +27,7 @@ function overviewCounts(p) {
         handles: new Set(rows.map((r) => r.dataset.handle)).size,
         footnotes: textCount(ov, 'Titles are movies and series'),
         speedPanels: ov.querySelector('[data-slot="speedhost"]').children.length,
-        speedTitles: Array.from(ov.querySelectorAll('h2')).filter((h) => h.textContent.trim() === 'Link speed').length,
+        speedTitles: Array.from(ov.querySelectorAll('h2')).filter((h) => /^Link speed with /.test(h.textContent.trim())).length,
         versions: ov.querySelectorAll('.shoal-version').length
     };
 }
@@ -89,7 +89,8 @@ const SCREENS = [
     ['layouts', 'view=layouts', {}],
     ['server', 'view=server&id=h-hops', { id: 'h-hops' }],
     ['friend', 'view=friend&id=f-sam', { id: 'f-sam' }],
-    ['overlap', 'view=overlap&id=h-hops', { id: 'h-hops' }]
+    ['overlap', 'view=overlap&id=h-hops', { id: 'h-hops' }],
+    ['manage', 'view=manage&id=h-hops&tab=remove', { id: 'h-hops', tab: 'remove' }]
 ];
 
 for (const [view, query, extra] of SCREENS) {

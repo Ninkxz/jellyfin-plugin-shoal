@@ -1,0 +1,36 @@
+{
+  "batchId": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+  "state": "running",
+  "startedUtc": "2026-10-28T12:00:00+00:00",
+  "finishedUtc": null,
+  "stopping": true,
+  "counts": {
+    "done": 0,
+    "refused": 0,
+    "notConfirmed": 0,
+    "notAttempted": 0,
+    "queued": 2
+  },
+  "items": [
+    {
+      "itemKey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "title": "Sintel",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "deleting",
+      "reason": null,
+      "shared": null,
+      "history": null
+    },
+    {
+      "itemKey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "title": "Big Buck Bunny",
+      "year": 2010,
+      "bytes": 199749,
+      "state": "queued",
+      "reason": null,
+      "shared": null,
+      "history": null
+    }
+  ]
+}

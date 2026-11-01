@@ -292,6 +292,51 @@ public sealed class CatalogSyncService : IDisposable, ISyncActivity, ISyncHold
     /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
+    /// <summary>Retires one recorded shared movie after verified local restoration, without contacting its peer.</summary>
+    /// <param name="peerKey">The recorded owner.</param>
+    /// <param name="mappingKey">The recorded movie mapping.</param>
+    /// <param name="peerItemId">The previously proved source movie.</param>
+    /// <param name="providers">The restored movie's strong identities.</param>
+    /// <param name="current">Fresh physical-core, identity and inactive-playback checks.</param>
+    /// <param name="cancellationToken">Best-effort cleanup cancellation.</param>
+    /// <returns>Whether the local-only retirement completed.</returns>
+    internal async Task<bool> RetireRestoredMovieAsync(string peerKey, string mappingKey, Guid peerItemId, IReadOnlyDictionary<string, string> providers, Func<bool> current, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested || !_gate.Wait(0, CancellationToken.None))
+        {
+            return false;
+        }
+
+        try
+        {
+            var state = _state.Current;
+            var peer = state.Home.Peers.SingleOrDefault(p => p.PeerKey == peerKey);
+            if (_state.Status != StateStatus.Ready || LayoutUnfinished?.Invoke() == true || peer is null
+                || state.Home.Peers.Any(p =>
+                {
+                    var load = _d.Store.Load(p.PeerKey);
+                    return load.Unreadable || load.Dropped > 0 || load.Document.LoadedWithLoss;
+                }) || !Uri.TryCreate(peer.BaseUrl, UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
+
+            // Supplies only the recorded owner to StubWriter.Remove; no peer transport is invoked.
+            var owner = new PeerEndpoint(peer.PeerKey, peer.ShownName(), uri, string.Empty, string.Empty);
+            var run = new SyncRun(_d, state, peer, owner, _d.Store.Load(peerKey).Document, _settings(), _d.Time.GetUtcNow().UtcDateTime, false, false);
+            return await run.RetireRestoredMovieAsync(mappingKey, peerItemId, providers, current, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or StackOverflowException))
+        {
+            // Cleanup never turns completed local byte/history restoration into a failed undo.
+            return false;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<SyncReport> RunAsync(string peerKey, SyncTrigger trigger, bool bypassRemovals, bool bypassAdditions, IReadOnlySet<Guid>? releaseSeries, CancellationToken cancellationToken)
     {
         if (!_gate.Wait(0, CancellationToken.None))

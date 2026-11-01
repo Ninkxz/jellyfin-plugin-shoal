@@ -1,0 +1,37 @@
+{
+  "enabled": true,
+  "deleteAvailable": true,
+  "candidates": [
+    {
+      "candidateId": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "title": "Sintel",
+      "year": 2010,
+      "bytes": 199749
+    },
+    {
+      "candidateId": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "title": "Big Buck Bunny",
+      "year": null,
+      "bytes": 276134947
+    }
+  ],
+  "legacyJobs": [
+    {
+      "jobId": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "title": "Tears of Steel",
+      "phase": "replacementReady",
+      "bytesHeld": 185765954,
+      "canRestore": true,
+      "error": null
+    },
+    {
+      "jobId": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+      "title": "Elephants Dream",
+      "phase": "purgeOutcomeUnknown",
+      "bytesHeld": 0,
+      "canRestore": false,
+      "error": "recoveryRequired"
+    }
+  ],
+  "activeBatchId": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+}

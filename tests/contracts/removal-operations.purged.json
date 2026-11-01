@@ -1,0 +1,10 @@
+{
+  "jobId": "33333333333333333333333333333333",
+  "title": "Sintel",
+  "phase": "purged",
+  "canRestore": false,
+  "canReviewPermanentDeletion": false,
+  "outcome": "purged",
+  "bytesHeld": 0,
+  "error": null
+}

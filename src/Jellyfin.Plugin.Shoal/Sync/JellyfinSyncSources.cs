@@ -176,6 +176,57 @@ public sealed class JellyfinLibraryRefresh : ILibraryRefresh
         });
     }
 
+    /// <inheritdoc />
+    public void RefreshNearest(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        _monitor.ReportFileSystemChanged(path);
+        if (_fileSystem is null)
+        {
+            return;
+        }
+
+        var logger = _logger ?? (Microsoft.Extensions.Logging.ILogger)Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                // The folders between the nearest one core knows and the changed one (a scan may just have dropped an empty title folder).
+                var missing = new List<string>();
+                var dir = Path.GetFullPath(path);
+                Folder? known = null;
+                while (dir is not null && (known = _library.FindByPath(dir, true) as Folder) is null && missing.Count < 8)
+                {
+                    missing.Add(dir);
+                    dir = Path.GetDirectoryName(dir);
+                }
+
+                if (known is null || missing.Count >= 8)
+                {
+                    return;
+                }
+
+                // One level at a time: a parent learns its new child folder without walking its other children; only the changed folder itself is walked.
+                await known.ValidateChildren(new Progress<double>(), NewOptions(), recursive: missing.Count == 0, allowRemoveRoot: false, System.Threading.CancellationToken.None).ConfigureAwait(false);
+                for (var i = missing.Count - 1; i >= 0; i--)
+                {
+                    if (_library.FindByPath(missing[i], true) is not Folder next)
+                    {
+                        break;
+                    }
+
+                    await next.ValidateChildren(new Progress<double>(), NewOptions(), recursive: i == 0, allowRemoveRoot: false, System.Threading.CancellationToken.None).ConfigureAwait(false);
+                }
+
+                Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(logger, "Shoal indexed one folder it changed");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, "A folder Shoal changed could not be indexed now ({Error}); the next scan picks it up", ex.GetType().Name);
+            }
+        });
+    }
+
     /// <summary>
     /// Splits the changed folders (Pilot 16). A library of Shoal's own (one folder) gets the dashboard's "Scan library" refresh by its id, which also links a
     /// renamed library to its folder again. A folder inside a library with other folders (an admin's main library) is scanned alone, by path, never the whole

@@ -384,7 +384,7 @@ public sealed class CallerContextTests
         Assert.NotEmpty(controllers);
         // W6 L-7: a controller is a routable door. Only the admin API and the planned peer-facing controllers may exist; a leftover spike
         // would bypass CallerContext. A new one needs a deliberate edit here and a Warden look.
-        Assert.All(controllers, c => Assert.True(c.Name.StartsWith("Admin", StringComparison.Ordinal) || c.Name is "PairController" or "ShoalPingController" or "ShoalHlsController" or "ShoalSubtitlesController" or "ShareRotateController", c.Name + " is not an expected controller"));
+        Assert.All(controllers, c => Assert.True(c.Name.StartsWith("Admin", StringComparison.Ordinal) || c.Name is "PairController" or "ShoalPingController" or "ShoalHlsController" or "ShoalSubtitlesController" or "ShareRotateController" or "RemovalOriginController", c.Name + " is not an expected controller"));
         var anonymous = new List<string>();
         foreach (var controller in controllers)
         {

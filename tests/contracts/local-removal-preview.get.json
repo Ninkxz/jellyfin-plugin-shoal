@@ -1,0 +1,20 @@
+{
+  "previewOnly": true,
+  "removalEnabled": false,
+  "reclaimableBytes": 0,
+  "catalogStatus": "ready",
+  "computedUtc": "2026-10-25T08:00:00+00:00",
+  "offset": 0,
+  "limit": 50,
+  "total": 1,
+  "hasMore": false,
+  "items": [
+    {
+      "title": "Sintel",
+      "year": 2010,
+      "localBytesEstimate": 8000,
+      "safeToRemove": false,
+      "blockers": ["identityUnverified", "freshnessUnverified", "qualityUnverified", "originRetentionUnverified", "accessUnverified", "historyTransferUnverified"]
+    }
+  ]
+}

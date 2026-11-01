@@ -1,8 +1,10 @@
 using System;
+using System.IO;
 using Jellyfin.Data.Events.Users;
 using Jellyfin.Plugin.Shoal.Api.Admin;
 using Jellyfin.Plugin.Shoal.Authorization;
 using Jellyfin.Plugin.Shoal.Guard;
+using Jellyfin.Plugin.Shoal.LocalRemoval;
 using Jellyfin.Plugin.Shoal.Pairing;
 using Jellyfin.Plugin.Shoal.Peers;
 using Jellyfin.Plugin.Shoal.Playback;
@@ -33,6 +35,36 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddSingleton<RemovalOriginProof>();
+        serviceCollection.AddSingleton<JellyfinRemovalLibrary>();
+        serviceCollection.AddSingleton<IRemovalLibrary>(sp => sp.GetRequiredService<JellyfinRemovalLibrary>());
+        serviceCollection.AddSingleton<ILocalDeleteLibrary>(sp => sp.GetRequiredService<JellyfinRemovalLibrary>());
+        serviceCollection.AddSingleton<IRemovalOriginClient, RemovalOriginClient>();
+        serviceCollection.AddSingleton<IRemovalJournal>(sp => new RemovalJournal(Path.Combine(sp.GetRequiredService<ShoalPaths>().Root, "local-removal")));
+        serviceCollection.AddSingleton(sp => new RemovalCoordinator(
+            sp.GetRequiredService<IRemovalLibrary>(),
+            sp.GetRequiredService<IRemovalOriginClient>(),
+            sp.GetRequiredService<IRemovalJournal>(),
+            sp.GetRequiredService<ISettingsAccessor>(),
+            sp.GetRequiredService<CatalogSyncService>(),
+            sp.GetRequiredService<TimeProvider>()) { Gate = sp.GetRequiredService<RemovalGate>() });
+
+        // 2.10.4 K4a: delete like Jellyfin. The sync is the unthrottled Scheduled trigger (gate S5: a manual sync is skipped inside 5 minutes).
+        serviceCollection.AddSingleton<RemovalGate>();
+        serviceCollection.AddSingleton<ILocalDeleteAudit>(sp => new LocalDeleteAudit(sp.GetRequiredService<ShoalPaths>().Root, sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<LocalDeleteAudit>>()));
+        serviceCollection.AddSingleton(sp => new LocalDeleteService(
+            sp.GetRequiredService<ILocalDeleteLibrary>(),
+            sp.GetRequiredService<IRemovalOriginClient>(),
+            new PortableFileProbe().ProbeAsync,
+            () => sp.GetRequiredService<ISettingsAccessor>().Current.LocalDeleteEnabled,
+            (peer, token) => sp.GetRequiredService<CatalogSyncService>().SyncAsync(peer, SyncTrigger.Scheduled, token),
+            sp.GetRequiredService<RemovalGate>(),
+            sp.GetRequiredService<ILocalDeleteAudit>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<LocalDeleteService>>(),
+            sp.GetRequiredService<IRemovalJournal>()));
+        serviceCollection.AddHostedService<RemovalStartupSweep>(); // 2.10.3 W20-5: unfinished deletes are classified once at start
+
         // Shoal's own stores (DESIGN 3.7, 8.2). Nothing in the plugin XML is critical any more.
         serviceCollection.AddSingleton(sp => new ShoalPaths(sp.GetRequiredService<IApplicationPaths>().DataPath));
         serviceCollection.AddSingleton<IStateStore, StateStore>();
